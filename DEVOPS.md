@@ -86,6 +86,161 @@ PortAct/
    - `AWS_SECRET_ACCESS_KEY`: (Optional) For AWS deployments
 
 2. **Enable GitHub Actions:**
+## Database Initialization
+
+### Available Initialization Scripts
+
+The project includes multiple database initialization scripts for different deployment scenarios:
+
+#### 1. Local Development Setup (`init_database.sh`)
+
+**Use Case:** Setting up database on local machine with PostgreSQL installed
+
+**Features:**
+- Checks PostgreSQL installation and status
+- Creates database and user from .env configuration
+- Sets up Python virtual environment
+- Installs dependencies
+- Runs Alembic migrations
+- Seeds initial data (expense categories)
+- Verifies setup with table count
+
+**Usage:**
+```bash
+./init_database.sh
+```
+
+**Requirements:**
+- PostgreSQL installed locally
+- Python 3.11+
+- backend/.env file configured
+
+#### 2. Docker-based Setup (`init_database_docker.sh`)
+
+**Use Case:** Setting up database using Docker containers
+
+**Features:**
+- Starts PostgreSQL container via docker-compose
+- Waits for database to be ready
+- Builds backend container
+- Runs migrations in container
+- Seeds initial data
+- Verifies setup
+
+**Usage:**
+```bash
+./init_database_docker.sh
+```
+
+**Requirements:**
+- Docker and Docker Compose installed
+- infrastructure/docker-compose.yml configured
+
+#### 3. SQL Script (`backend/init.sql`)
+
+**Use Case:** Production database setup or manual initialization
+
+**Features:**
+- Creates database user with secure password
+- Creates database with proper ownership
+- Grants all necessary privileges
+- Enables required PostgreSQL extensions (uuid-ossp, pgcrypto)
+- Creates audit trigger function for updated_at columns
+- Sets default privileges for future tables
+
+**Usage:**
+```bash
+# As PostgreSQL superuser
+psql -U postgres -f backend/init.sql
+
+# Or remotely
+psql -h your-db-host -U postgres -f backend/init.sql
+```
+
+**Important:** Change the default password in the script before running in production!
+
+#### 4. Legacy Script (`backend/setup_database.sh`)
+
+**Use Case:** Simple database and user creation
+
+**Features:**
+- Creates PostgreSQL user and database
+- Grants basic privileges
+- Provides connection string
+
+**Usage:**
+```bash
+cd backend
+./setup_database.sh
+```
+
+### Database Migration Workflow
+
+After initializing the database, manage schema changes with Alembic:
+
+```bash
+cd backend
+source .venv/bin/activate  # If using virtual environment
+
+# View current migration status
+alembic current
+
+# View migration history
+alembic history
+
+# Create new migration (auto-generate from models)
+alembic revision --autogenerate -m "description of changes"
+
+# Apply all pending migrations
+alembic upgrade head
+
+# Rollback last migration
+alembic downgrade -1
+
+# Rollback to specific revision
+alembic downgrade <revision_id>
+```
+
+### Initial Data Seeding
+
+The application includes a seed script for expense categories:
+
+```bash
+cd backend
+python seed_categories.py
+```
+
+This creates default expense categories like:
+- Food & Dining
+- Transportation
+- Shopping
+- Bills & Utilities
+- Entertainment
+- Healthcare
+- etc.
+
+### Database Connection Strings
+
+**Local Development:**
+```
+postgresql://portact_user:portact_password@localhost:5432/portact_db
+```
+
+**Docker:**
+```
+postgresql://postgres:postgres@postgres:5432/portact_db
+```
+
+**Production (example):**
+```
+postgresql://portact_user:secure_password@db.example.com:5432/portact_db
+```
+
+Set in `backend/.env`:
+```env
+DATABASE_URL=postgresql://user:password@host:port/database
+```
+
    - Go to Settings → Actions → General
    - Enable "Allow all actions and reusable workflows"
 
