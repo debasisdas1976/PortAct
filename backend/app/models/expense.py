@@ -1,0 +1,77 @@
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Boolean, Text
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+import enum
+from app.core.database import Base
+
+
+class ExpenseType(str, enum.Enum):
+    """Enum for expense transaction types"""
+    DEBIT = "debit"  # Money out
+    CREDIT = "credit"  # Money in
+    TRANSFER = "transfer"  # Transfer between accounts
+
+
+class PaymentMethod(str, enum.Enum):
+    """Enum for payment methods"""
+    CASH = "cash"
+    DEBIT_CARD = "debit_card"
+    CREDIT_CARD = "credit_card"
+    UPI = "upi"
+    NET_BANKING = "net_banking"
+    CHEQUE = "cheque"
+    WALLET = "wallet"
+    OTHER = "other"
+
+
+class Expense(Base):
+    """Expense model for tracking all financial transactions from bank statements"""
+    __tablename__ = "expenses"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=False)
+    category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=True)
+    statement_id = Column(Integer, ForeignKey("statements.id"), nullable=True)
+    
+    # Transaction details
+    transaction_date = Column(DateTime(timezone=True), nullable=False, index=True)
+    transaction_type = Column(Enum(ExpenseType), nullable=False, index=True)
+    
+    # Amount information
+    amount = Column(Float, nullable=False)  # Transaction amount
+    balance_after = Column(Float)  # Account balance after transaction
+    
+    # Transaction description
+    description = Column(Text, nullable=False)  # Original transaction description
+    merchant_name = Column(String)  # Extracted merchant name
+    reference_number = Column(String)  # Bank reference/transaction ID
+    
+    # Payment details
+    payment_method = Column(Enum(PaymentMethod), nullable=True)
+    
+    # Categorization
+    is_categorized = Column(Boolean, default=False)
+    is_recurring = Column(Boolean, default=False)  # Recurring transaction
+    is_split = Column(Boolean, default=False)  # Split transaction
+    
+    # Additional information
+    location = Column(String)  # Transaction location if available
+    notes = Column(Text)  # User notes
+    tags = Column(String)  # Comma-separated tags
+    
+    # Reconciliation
+    is_reconciled = Column(Boolean, default=False)
+    reconciled_at = Column(DateTime(timezone=True))
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User", back_populates="expenses")
+    bank_account = relationship("BankAccount", back_populates="expenses")
+    category = relationship("ExpenseCategory", back_populates="expenses")
+    statement = relationship("Statement", back_populates="expenses")
+
+# Made with Bob

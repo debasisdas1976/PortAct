@@ -1,0 +1,100 @@
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, JSON, Text, Boolean
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+import enum
+from app.core.database import Base
+
+
+class AssetType(str, enum.Enum):
+    """Enum for different asset types"""
+    STOCK = "stock"
+    US_STOCK = "us_stock"
+    EQUITY_MUTUAL_FUND = "equity_mutual_fund"
+    DEBT_MUTUAL_FUND = "debt_mutual_fund"
+    COMMODITY = "commodity"
+    CRYPTO = "crypto"
+    SAVINGS_ACCOUNT = "savings_account"
+    RECURRING_DEPOSIT = "recurring_deposit"
+    FIXED_DEPOSIT = "fixed_deposit"
+    REAL_ESTATE = "real_estate"
+    PPF = "ppf"
+    PF = "pf"
+    NPS = "nps"
+    SSY = "ssy"
+    INSURANCE_POLICY = "insurance_policy"
+    CASH = "cash"  # For tracking cash balances in trading accounts
+
+
+class Asset(Base):
+    """Universal asset model for all investment types"""
+    __tablename__ = "assets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    statement_id = Column(Integer, ForeignKey("statements.id"), nullable=True)  # Link to source statement
+    demat_account_id = Column(Integer, ForeignKey("demat_accounts.id"), nullable=True)  # Link to demat account
+    crypto_account_id = Column(Integer, ForeignKey("crypto_accounts.id"), nullable=True)  # Link to crypto account
+    
+    # Asset identification
+    asset_type = Column(Enum(AssetType), nullable=False, index=True)
+    name = Column(String, nullable=False)  # Stock name, property address, etc.
+    symbol = Column(String, index=True)  # Ticker symbol, ISIN, etc. (for display)
+    api_symbol = Column(String, index=True)  # Symbol used for API price fetching (can be different from display symbol)
+    isin = Column(String, index=True)  # ISIN code for stocks, commodities, and mutual funds
+    
+    # Account information
+    account_id = Column(String, index=True)  # Account/Client ID from broker
+    broker_name = Column(String)  # Broker/Institution name (e.g., Zerodha, Groww)
+    account_holder_name = Column(String)  # Name of the account holder
+    
+    # Quantity and value
+    quantity = Column(Float, default=0.0)  # Shares, units, grams, etc.
+    purchase_price = Column(Float, default=0.0)  # Average purchase price per unit
+    current_price = Column(Float, default=0.0)  # Current market price per unit
+    total_invested = Column(Float, default=0.0)  # Total amount invested
+    current_value = Column(Float, default=0.0)  # Current total value
+    
+    # Performance metrics
+    profit_loss = Column(Float, default=0.0)  # Absolute profit/loss
+    profit_loss_percentage = Column(Float, default=0.0)  # Percentage profit/loss
+    
+    # Asset-specific details (stored as JSON for flexibility)
+    details = Column(JSON, default={})
+    # Examples:
+    # For stocks: {"exchange": "NSE", "sector": "IT", "market_cap": "Large"}
+    # For FD: {"bank_name": "HDFC", "maturity_date": "2025-12-31", "interest_rate": 7.5}
+    # For real estate: {"property_type": "Apartment", "area_sqft": 1200, "location": "Mumbai"}
+    # For crypto: {"blockchain": "Ethereum", "wallet_address": "0x..."}
+    
+    # Status and metadata
+    is_active = Column(Boolean, default=True)  # Active or sold/closed
+    notes = Column(Text)  # User notes
+    
+    # Price update tracking
+    price_update_failed = Column(Boolean, default=False)  # Flag for failed price updates
+    last_price_update = Column(DateTime(timezone=True))  # Last successful price update
+    price_update_error = Column(Text)  # Error message from last failed update
+    
+    # Timestamps
+    purchase_date = Column(DateTime(timezone=True))
+    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    owner = relationship("User", back_populates="assets")
+    statement = relationship("Statement", back_populates="assets")
+    demat_account = relationship("DematAccount", back_populates="assets")
+    crypto_account = relationship("CryptoAccount", back_populates="assets")
+    transactions = relationship("Transaction", back_populates="asset", cascade="all, delete-orphan")
+    
+    def calculate_metrics(self):
+        """Calculate profit/loss metrics"""
+        if self.total_invested > 0:
+            self.current_value = self.quantity * self.current_price
+            self.profit_loss = self.current_value - self.total_invested
+            self.profit_loss_percentage = (self.profit_loss / self.total_invested) * 100
+        else:
+            self.profit_loss = 0.0
+            self.profit_loss_percentage = 0.0
+
+# Made with Bob

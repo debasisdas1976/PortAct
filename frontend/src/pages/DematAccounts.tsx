@@ -1,0 +1,633 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Grid,
+  IconButton,
+  MenuItem,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+  Chip,
+  Alert,
+  InputAdornment,
+  CircularProgress
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  ShowChart as StockIcon,
+  CloudUpload as UploadIcon,
+  Visibility,
+  VisibilityOff
+} from '@mui/icons-material';
+import axios from 'axios';
+import api from '../services/api';
+
+interface DematAccount {
+  id: number;
+  broker_name: string;
+  account_id: string;
+  account_holder_name?: string;
+  demat_account_number?: string;
+  cash_balance: number;
+  cash_balance_usd?: number;
+  currency?: string;
+  nickname?: string;
+  is_active: boolean;
+  asset_count?: number;
+  total_invested?: number;
+  current_value?: number;
+  total_profit_loss?: number;
+}
+
+const DematAccounts: React.FC = () => {
+  const [accounts, setAccounts] = useState<DematAccount[]>([]);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [openUploadDialog, setOpenUploadDialog] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<DematAccount | null>(null);
+  const [formData, setFormData] = useState({
+    broker_name: 'zerodha',
+    account_id: '',
+    account_holder_name: '',
+    demat_account_number: '',
+    cash_balance: 0,
+    cash_balance_usd: 0,
+    nickname: '',
+    is_active: true
+  });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadBroker, setUploadBroker] = useState('');
+  const [statementType, setStatementType] = useState('broker_statement');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const statementTypes = [
+    { value: 'broker_statement', label: 'Broker Statement' },
+    { value: 'demat_statement', label: 'Demat Statement' },
+    { value: 'mutual_fund_statement', label: 'Mutual Fund Statement' },
+    { value: 'vested_statement', label: 'Vested Statement' },
+    { value: 'indmoney_statement', label: 'INDmoney Statement' }
+  ];
+
+  const brokerNames = [
+    { value: 'zerodha', label: 'Zerodha' },
+    { value: 'groww', label: 'Groww' },
+    { value: 'upstox', label: 'Upstox' },
+    { value: 'angel_one', label: 'Angel One' },
+    { value: 'icici_direct', label: 'ICICI Direct' },
+    { value: 'hdfc_securities', label: 'HDFC Securities' },
+    { value: 'kotak_securities', label: 'Kotak Securities' },
+    { value: 'axis_direct', label: 'Axis Direct' },
+    { value: 'sharekhan', label: 'Sharekhan' },
+    { value: 'motilal_oswal', label: 'Motilal Oswal' },
+    { value: 'iifl_securities', label: 'IIFL Securities' },
+    { value: 'indmoney', label: 'INDmoney' },
+    { value: 'vested', label: 'Vested' },
+    { value: 'other', label: 'Other' }
+  ];
+
+  useEffect(() => {
+    fetchAccounts();
+  }, []);
+
+  const fetchAccounts = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:8000/api/v1/demat-accounts/', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setAccounts(response.data);
+    } catch (err) {
+      setError('Failed to fetch demat accounts');
+    }
+  };
+
+  const handleOpenDialog = (account?: DematAccount) => {
+    if (account) {
+      setEditingAccount(account);
+      setFormData({
+        broker_name: account.broker_name,
+        account_id: account.account_id,
+        account_holder_name: account.account_holder_name || '',
+        demat_account_number: account.demat_account_number || '',
+        cash_balance: account.cash_balance,
+        cash_balance_usd: account.cash_balance_usd || 0,
+        nickname: account.nickname || '',
+        is_active: account.is_active
+      });
+    } else {
+      setEditingAccount(null);
+      setFormData({
+        broker_name: 'zerodha',
+        account_id: '',
+        account_holder_name: '',
+        demat_account_number: '',
+        cash_balance: 0,
+        cash_balance_usd: 0,
+        nickname: '',
+        is_active: true
+      });
+    }
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setEditingAccount(null);
+    setError('');
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Prepare data based on broker type
+      const isUsBroker = formData.broker_name === 'vested' || formData.broker_name === 'indmoney';
+      const submitData = isUsBroker
+        ? { ...formData, cash_balance: 0 } // Backend will calculate INR from USD
+        : { ...formData, cash_balance_usd: 0 }; // INR brokers don't need USD
+      
+      if (editingAccount) {
+        await axios.put(
+          `http://localhost:8000/api/v1/demat-accounts/${editingAccount.id}`,
+          submitData,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setSuccess('Demat account updated successfully');
+      } else {
+        await axios.post(
+          'http://localhost:8000/api/v1/demat-accounts/',
+          submitData,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setSuccess('Demat account created successfully');
+      }
+      handleCloseDialog();
+      fetchAccounts();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      const errorDetail = err.response?.data?.detail;
+      if (typeof errorDetail === 'string') {
+        setError(errorDetail);
+      } else if (Array.isArray(errorDetail)) {
+        const errorMessages = errorDetail.map((e: any) => {
+          if (typeof e === 'string') return e;
+          return `${e.loc?.join('.')}: ${e.msg}`;
+        }).join(', ');
+        setError(errorMessages);
+      } else {
+        setError(`Failed to save demat account: ${err.message}`);
+      }
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this demat account? This will also delete all associated assets.')) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`http://localhost:8000/api/v1/demat-accounts/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSuccess('Demat account deleted successfully');
+      fetchAccounts();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      const errorDetail = err.response?.data?.detail;
+      setError(typeof errorDetail === 'string' ? errorDetail : 'Failed to delete demat account');
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      setSelectedFile(event.target.files[0]);
+    }
+  };
+
+  const handleUploadStatement = async () => {
+    if (!selectedFile || !uploadBroker || !statementType) {
+      setError('Please fill all fields and select a file');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('institution_name', uploadBroker);
+      formData.append('statement_type', statementType);
+      if (password) {
+        formData.append('password', password);
+      }
+
+      await api.post('/statements/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      setOpenUploadDialog(false);
+      setSelectedFile(null);
+      setUploadBroker('');
+      setStatementType('broker_statement');
+      setPassword('');
+      setSuccess('Statement uploaded and processed successfully');
+      fetchAccounts();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      const errorDetail = err.response?.data?.detail;
+      if (Array.isArray(errorDetail)) {
+        setError(errorDetail.map((e: any) => e.msg).join(', '));
+      } else if (typeof errorDetail === 'string') {
+        setError(errorDetail);
+      } else {
+        setError('Failed to upload statement');
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR'
+    }).format(amount);
+  };
+
+  const totalCashBalance = accounts.reduce((sum, acc) => sum + acc.cash_balance, 0);
+  const totalInvested = accounts.reduce((sum, acc) => sum + (acc.total_invested || 0), 0);
+  const totalCurrentValue = accounts.reduce((sum, acc) => sum + (acc.current_value || 0), 0);
+  const totalProfitLoss = totalCurrentValue - totalInvested;
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">Demat/Trading Accounts</Typography>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<UploadIcon />}
+            onClick={() => setOpenUploadDialog(true)}
+          >
+            Upload Statement
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+          >
+            Add Account
+          </Button>
+        </Box>
+      </Box>
+
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
+
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Total Accounts
+              </Typography>
+              <Typography variant="h4">{accounts.length}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Cash Balance
+              </Typography>
+              <Typography variant="h4">{formatCurrency(totalCashBalance)}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Total Invested
+              </Typography>
+              <Typography variant="h4">{formatCurrency(totalInvested)}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Total P&L
+              </Typography>
+              <Typography 
+                variant="h4" 
+                color={totalProfitLoss >= 0 ? 'success.main' : 'error.main'}
+              >
+                {formatCurrency(totalProfitLoss)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Broker</TableCell>
+              <TableCell>Account ID</TableCell>
+              <TableCell>Holder Name</TableCell>
+              <TableCell>Nickname</TableCell>
+              <TableCell align="right">Cash Balance</TableCell>
+              <TableCell align="right">Holdings Value</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell align="center">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {accounts.map((account) => (
+              <TableRow key={account.id}>
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <StockIcon />
+                    {account.broker_name.replace('_', ' ')}
+                  </Box>
+                </TableCell>
+                <TableCell>{account.account_id}</TableCell>
+                <TableCell>{account.account_holder_name || '-'}</TableCell>
+                <TableCell>{account.nickname || '-'}</TableCell>
+                <TableCell align="right">
+                  {account.currency === 'USD' && account.cash_balance_usd ? (
+                    <Box>
+                      <Typography variant="body2">${account.cash_balance_usd.toFixed(2)}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatCurrency(account.cash_balance)}
+                      </Typography>
+                    </Box>
+                  ) : (
+                    formatCurrency(account.cash_balance)
+                  )}
+                </TableCell>
+                <TableCell align="right">
+                  {account.current_value ? formatCurrency(account.current_value) : '-'}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={account.is_active ? 'Active' : 'Inactive'}
+                    color={account.is_active ? 'success' : 'default'}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell align="center">
+                  <IconButton
+                    size="small"
+                    onClick={() => handleOpenDialog(account)}
+                    color="primary"
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleDelete(account.id)}
+                    color="error"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      {/* Upload Statement Dialog */}
+      <Dialog open={openUploadDialog} onClose={() => setOpenUploadDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Upload Demat/Trading Statement</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField
+              select
+              label="Broker"
+              value={uploadBroker}
+              onChange={(e) => {
+                const broker = e.target.value;
+                setUploadBroker(broker);
+                // Auto-set statement type based on broker
+                if (broker === 'vested') {
+                  setStatementType('vested_statement');
+                } else if (broker === 'indmoney') {
+                  setStatementType('indmoney_statement');
+                } else if (statementType === 'vested_statement' || statementType === 'indmoney_statement') {
+                  // Reset to broker_statement if switching from Vested/INDMoney to another broker
+                  setStatementType('broker_statement');
+                }
+              }}
+              fullWidth
+              required
+            >
+              {brokerNames.map((broker) => (
+                <MenuItem key={broker.value} value={broker.value}>
+                  {broker.label}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              select
+              label="Statement Type"
+              value={statementType}
+              onChange={(e) => setStatementType(e.target.value)}
+              fullWidth
+              required
+              disabled={uploadBroker === 'vested' || uploadBroker === 'indmoney'}
+              helperText={
+                uploadBroker === 'vested'
+                  ? 'Statement type is automatically set for Vested'
+                  : uploadBroker === 'indmoney'
+                  ? 'Statement type is automatically set for INDMoney'
+                  : ''
+              }
+            >
+              {statementTypes
+                .filter(type => {
+                  // Show only relevant statement types based on broker
+                  if (uploadBroker === 'vested') return type.value === 'vested_statement';
+                  if (uploadBroker === 'indmoney') return type.value === 'indmoney_statement';
+                  // For other brokers, exclude vested and indmoney statement types
+                  return type.value !== 'vested_statement' && type.value !== 'indmoney_statement';
+                })
+                .map((type) => (
+                  <MenuItem key={type.value} value={type.value}>
+                    {type.label}
+                  </MenuItem>
+                ))}
+            </TextField>
+
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<UploadIcon />}
+              fullWidth
+            >
+              {selectedFile ? selectedFile.name : 'Select File'}
+              <input
+                type="file"
+                hidden
+                accept=".pdf,.xlsx,.xls,.csv"
+                onChange={handleFileSelect}
+              />
+            </Button>
+
+            <TextField
+              label="Password (if PDF is encrypted)"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              fullWidth
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={() => setShowPassword(!showPassword)}
+                      edge="end"
+                    >
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+
+            {error && <Alert severity="error">{error}</Alert>}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenUploadDialog(false)} disabled={uploading}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleUploadStatement} 
+            variant="contained" 
+            disabled={uploading || !selectedFile}
+            startIcon={uploading ? <CircularProgress size={20} /> : <UploadIcon />}
+          >
+            {uploading ? 'Uploading...' : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      </TableContainer>
+
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {editingAccount ? 'Edit Demat Account' : 'Add Demat Account'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField
+              select
+              label="Broker Name"
+              value={formData.broker_name}
+              onChange={(e) => setFormData({ ...formData, broker_name: e.target.value })}
+              fullWidth
+            >
+              {brokerNames.map((broker) => (
+                <MenuItem key={broker.value} value={broker.value}>
+                  {broker.label}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              label="Account ID / Client ID"
+              value={formData.account_id}
+              onChange={(e) => setFormData({ ...formData, account_id: e.target.value })}
+              fullWidth
+              required
+            />
+
+            <TextField
+              label="Account Holder Name (Optional)"
+              value={formData.account_holder_name}
+              onChange={(e) => setFormData({ ...formData, account_holder_name: e.target.value })}
+              fullWidth
+            />
+
+            <TextField
+              label="Demat Account Number (Optional)"
+              value={formData.demat_account_number}
+              onChange={(e) => setFormData({ ...formData, demat_account_number: e.target.value })}
+              fullWidth
+              helperText="DP ID + Client ID"
+            />
+
+            <TextField
+              label="Nickname (Optional)"
+              value={formData.nickname}
+              onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
+              fullWidth
+            />
+
+            <TextField
+              label={formData.broker_name === 'vested' || formData.broker_name === 'indmoney' ? 'Cash Balance (USD)' : 'Cash Balance (INR)'}
+              type="number"
+              value={
+                formData.broker_name === 'vested' || formData.broker_name === 'indmoney'
+                  ? formData.cash_balance_usd
+                  : formData.cash_balance
+              }
+              onChange={(e) => {
+                const value = parseFloat(e.target.value) || 0;
+                if (formData.broker_name === 'vested' || formData.broker_name === 'indmoney') {
+                  setFormData({ ...formData, cash_balance_usd: value, cash_balance: 0 });
+                } else {
+                  setFormData({ ...formData, cash_balance: value, cash_balance_usd: 0 });
+                }
+              }}
+              fullWidth
+              helperText={
+                formData.broker_name === 'vested' || formData.broker_name === 'indmoney'
+                  ? 'Enter amount in USD (will be converted to INR automatically)'
+                  : 'Available cash in trading account'
+              }
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    {formData.broker_name === 'vested' || formData.broker_name === 'indmoney' ? '$' : '₹'}
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button onClick={handleSubmit} variant="contained">
+            {editingAccount ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default DematAccounts;
+
+// Made with Bob
