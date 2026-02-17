@@ -32,25 +32,45 @@ import {
   Work as WorkIcon,
   BarChart as BarChartIcon,
   CurrencyBitcoin as CryptoIcon,
+  PieChart as PieChartIcon,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { logout } from '../store/slices/authSlice';
 
 const drawerWidth = 240;
 
-const menuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-  { text: 'Assets', icon: <AccountBalanceIcon />, path: '/assets' },
-  { text: 'Bank Accounts', icon: <CreditCardIcon />, path: '/bank-accounts' },
-  { text: 'Demat Accounts', icon: <ShowChartIcon />, path: '/demat-accounts' },
-  { text: 'Crypto Accounts', icon: <CryptoIcon />, path: '/crypto-accounts' },
-  { text: 'PPF', icon: <SavingsIcon />, path: '/ppf' },
-  { text: 'PF/EPF', icon: <WorkIcon />, path: '/pf' },
-  { text: 'Expenses', icon: <ReceiptIcon />, path: '/expenses' },
-  { text: 'Expense Dashboard', icon: <BarChartIcon />, path: '/expense-dashboard' },
-  { text: 'Categories', icon: <CategoryIcon />, path: '/categories' },
-  { text: 'Alerts', icon: <NotificationsIcon />, path: '/alerts' },
+const menuSections = [
+  {
+    title: 'Overview',
+    items: [
+      { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+      { text: 'Alerts', icon: <NotificationsIcon />, path: '/alerts' },
+    ]
+  },
+  {
+    title: 'Portfolio Management',
+    items: [
+      { text: 'Assets', icon: <AccountBalanceIcon />, path: '/assets' },
+      { text: 'MF Holdings', icon: <PieChartIcon />, path: '/mutual-fund-holdings' },
+      { text: 'Bank Accounts', icon: <CreditCardIcon />, path: '/bank-accounts' },
+      { text: 'Demat Accounts', icon: <ShowChartIcon />, path: '/demat-accounts' },
+      { text: 'Crypto Accounts', icon: <CryptoIcon />, path: '/crypto-accounts' },
+      { text: 'PPF', icon: <SavingsIcon />, path: '/ppf' },
+      { text: 'PF/EPF', icon: <WorkIcon />, path: '/pf' },
+    ]
+  },
+  {
+    title: 'Expense Management',
+    items: [
+      { text: 'Expense Dashboard', icon: <BarChartIcon />, path: '/expense-dashboard' },
+      { text: 'Expenses', icon: <ReceiptIcon />, path: '/expenses' },
+      { text: 'Categories', icon: <CategoryIcon />, path: '/categories' },
+    ]
+  }
 ];
+
+// Flatten menu items for path matching in AppBar
+const allMenuItems = menuSections.flatMap(section => section.items);
 
 const Layout: React.FC = () => {
   const navigate = useNavigate();
@@ -92,19 +112,39 @@ const Layout: React.FC = () => {
         </Typography>
       </Toolbar>
       <Divider />
-      <List>
-        {menuItems.map((item) => (
-          <ListItem key={item.text} disablePadding>
-            <ListItemButton
-              selected={location.pathname === item.path}
-              onClick={() => handleMenuClick(item.path)}
-            >
-              <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.text} />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
+      {menuSections.map((section, sectionIndex) => (
+        <React.Fragment key={section.title}>
+          <List
+            subheader={
+              <ListItem>
+                <ListItemText
+                  primary={section.title}
+                  primaryTypographyProps={{
+                    fontSize: '0.75rem',
+                    fontWeight: 'bold',
+                    color: 'text.secondary',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                  }}
+                />
+              </ListItem>
+            }
+          >
+            {section.items.map((item) => (
+              <ListItem key={item.text} disablePadding>
+                <ListItemButton
+                  selected={location.pathname === item.path}
+                  onClick={() => handleMenuClick(item.path)}
+                >
+                  <ListItemIcon>{item.icon}</ListItemIcon>
+                  <ListItemText primary={item.text} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+          {sectionIndex < menuSections.length - 1 && <Divider />}
+        </React.Fragment>
+      ))}
     </Box>
   );
 
@@ -128,7 +168,7 @@ const Layout: React.FC = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {menuItems.find((item) => item.path === location.pathname)?.text || 'PortAct'}
+            {allMenuItems.find((item) => item.path === location.pathname)?.text || 'PortAct'}
           </Typography>
           <IconButton
             size="large"

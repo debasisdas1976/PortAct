@@ -14,6 +14,7 @@ from app.schemas.asset import (
     AssetSummary
 )
 from app.services.price_updater import update_asset_price
+from app.services.currency_converter import convert_usd_to_inr
 
 router = APIRouter()
 
@@ -126,9 +127,28 @@ async def create_asset(
     """
     Create a new asset
     """
+    asset_dict = asset_data.model_dump()
+    
+    # Get currency from details if present (for crypto assets)
+    currency = None
+    if 'details' in asset_dict and asset_dict['details']:
+        currency = asset_dict['details'].get('currency', 'USD')
+    
+    # Convert USD to INR for crypto assets if currency is USD
+    if asset_dict.get('asset_type') == AssetType.CRYPTO and currency == 'USD':
+        # Convert purchase_price, current_price, and total_invested from USD to INR
+        if 'purchase_price' in asset_dict and asset_dict['purchase_price']:
+            asset_dict['purchase_price'] = convert_usd_to_inr(asset_dict['purchase_price'])
+        
+        if 'current_price' in asset_dict and asset_dict['current_price']:
+            asset_dict['current_price'] = convert_usd_to_inr(asset_dict['current_price'])
+        
+        if 'total_invested' in asset_dict and asset_dict['total_invested']:
+            asset_dict['total_invested'] = convert_usd_to_inr(asset_dict['total_invested'])
+    
     new_asset = Asset(
         user_id=current_user.id,
-        **asset_data.model_dump()
+        **asset_dict
     )
     
     new_asset.calculate_metrics()

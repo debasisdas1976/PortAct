@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
     auth, users, assets, transactions, statements, alerts, dashboard, prices,
-    bank_accounts, demat_accounts, crypto_accounts, expense_categories, expenses, bank_statements, ppf, pf
+    bank_accounts, demat_accounts, crypto_accounts, expense_categories, expenses, bank_statements, ppf, pf, mutual_fund_holdings
 )
 
 api_router = APIRouter()
@@ -23,5 +23,6 @@ api_router.include_router(expenses.router, prefix="/expenses", tags=["Expenses"]
 api_router.include_router(bank_statements.router, prefix="/bank-statements", tags=["Bank Statements"])
 api_router.include_router(ppf.router, prefix="/ppf", tags=["PPF"])
 api_router.include_router(pf.router, prefix="/pf", tags=["PF/EPF"])
+api_router.include_router(mutual_fund_holdings.router, prefix="/mutual-fund-holdings", tags=["Mutual Fund Holdings"])
 
 # Made with Bob

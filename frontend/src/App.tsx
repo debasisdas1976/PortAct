@@ -26,6 +26,7 @@ import ExpenseDashboard from './pages/ExpenseDashboard';
 import Categories from './pages/Categories';
 import PPF from './pages/PPF';
 import PF from './pages/PF';
+import MutualFundHoldings from './pages/MutualFundHoldings';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -82,6 +83,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="assets" element={<Assets />} />
+          <Route path="mutual-fund-holdings" element={<MutualFundHoldings />} />
           <Route path="statements" element={<Statements />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="bank-accounts" element={<BankAccounts />} />

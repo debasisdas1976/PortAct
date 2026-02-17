@@ -33,7 +33,7 @@ import {
   FormControl,
   InputLabel,
 } from '@mui/material';
-import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, Add, AccountBalance, Refresh, Delete, Warning, Edit, CheckCircle } from '@mui/icons-material';
+import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, Add, AccountBalance, Refresh, Delete, Warning, Edit, CheckCircle, CameraAlt } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchAssets } from '../store/slices/assetsSlice';
 import { assetsAPI } from '../services/api';
@@ -147,6 +147,7 @@ const Assets: React.FC = () => {
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
 
   useEffect(() => {
     dispatch(fetchAssets());
@@ -174,6 +175,28 @@ const Assets: React.FC = () => {
       setSnackbarOpen(true);
     } finally {
       setRefreshingPrices(false);
+    }
+  };
+
+  const handleTakeSnapshot = async () => {
+    try {
+      setSnapshotLoading(true);
+      const token = localStorage.getItem('token');
+      await axios.post('http://localhost:8000/api/v1/dashboard/take-snapshot', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setSnackbarMessage('Snapshot created successfully!');
+      setSnackbarOpen(true);
+      
+      // Refresh assets after snapshot
+      dispatch(fetchAssets());
+    } catch (error: any) {
+      console.error('Error taking snapshot:', error);
+      setSnackbarMessage(error.response?.data?.detail || 'Failed to take snapshot');
+      setSnackbarOpen(true);
+    } finally {
+      setSnapshotLoading(false);
     }
   };
 
@@ -873,6 +896,14 @@ const Assets: React.FC = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">Assets</Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={snapshotLoading ? <CircularProgress size={20} /> : <CameraAlt />}
+            onClick={handleTakeSnapshot}
+            disabled={snapshotLoading}
+          >
+            {snapshotLoading ? 'Taking Snapshot...' : 'Take Snapshot'}
+          </Button>
           <Button
             variant="outlined"
             startIcon={refreshingPrices ? <CircularProgress size={20} /> : <Refresh />}

@@ -50,16 +50,16 @@ async def get_crypto_accounts(
         ).all()
         
         asset_count = len(assets)
-        total_invested_inr = sum(asset.total_invested for asset in assets)
-        current_value_inr = sum(asset.current_value for asset in assets)
-        total_profit_loss_inr = current_value_inr - total_invested_inr
+        total_invested_usd = sum(asset.total_invested for asset in assets)
+        current_value_usd = sum(asset.current_value for asset in assets)
+        total_profit_loss_usd = current_value_usd - total_invested_usd
         
         account_dict = {
             **account.__dict__,
             "asset_count": asset_count,
-            "total_invested_inr": total_invested_inr,
-            "current_value_inr": current_value_inr,
-            "total_profit_loss_inr": total_profit_loss_inr
+            "total_invested_usd": total_invested_usd,
+            "current_value_usd": current_value_usd,
+            "total_profit_loss_usd": total_profit_loss_usd
         }
         result.append(CryptoAccountWithAssets(**account_dict))
     
@@ -79,11 +79,11 @@ async def get_crypto_accounts_summary(
         CryptoAccount.is_active == True
     ).all()
     
-    total_cash_balance_inr = sum(acc.cash_balance_inr for acc in accounts)
+    total_cash_balance_usd = sum(acc.cash_balance_usd for acc in accounts)
     
     # Get asset statistics for all crypto accounts
-    total_invested_inr = 0.0
-    total_current_value_inr = 0.0
+    total_invested_usd = 0.0
+    total_current_value_usd = 0.0
     
     for account in accounts:
         assets = db.query(Asset).filter(
@@ -93,10 +93,10 @@ async def get_crypto_accounts_summary(
         ).all()
         
         for asset in assets:
-            total_invested_inr += asset.total_invested
-            total_current_value_inr += asset.current_value
+            total_invested_usd += asset.total_invested
+            total_current_value_usd += asset.current_value
     
-    total_profit_loss_inr = total_current_value_inr - total_invested_inr
+    total_profit_loss_usd = total_current_value_usd - total_invested_usd
     
     accounts_by_exchange = {}
     for account in accounts:
@@ -105,10 +105,10 @@ async def get_crypto_accounts_summary(
     
     return CryptoAccountSummary(
         total_accounts=len(accounts),
-        total_cash_balance_inr=total_cash_balance_inr,
-        total_invested_inr=total_invested_inr,
-        total_current_value_inr=total_current_value_inr,
-        total_profit_loss_inr=total_profit_loss_inr,
+        total_cash_balance_usd=total_cash_balance_usd,
+        total_invested_usd=total_invested_usd,
+        total_current_value_usd=total_current_value_usd,
+        total_profit_loss_usd=total_profit_loss_usd,
         accounts_by_exchange=accounts_by_exchange
     )
 
@@ -146,17 +146,17 @@ async def get_crypto_account(
         Asset.is_active == True
     ).all()
     
-    total_invested_inr = sum(asset.total_invested for asset in assets)
-    current_value_inr = sum(asset.current_value for asset in assets)
-    total_profit_loss_inr = current_value_inr - total_invested_inr
+    total_invested_usd = sum(asset.total_invested for asset in assets)
+    current_value_usd = sum(asset.current_value for asset in assets)
+    total_profit_loss_usd = current_value_usd - total_invested_usd
     
     # Convert to dict and add statistics
     account_dict = {
         **account.__dict__,
         "asset_count": asset_count,
-        "total_invested_inr": total_invested_inr,
-        "current_value_inr": current_value_inr,
-        "total_profit_loss_inr": total_profit_loss_inr
+        "total_invested_usd": total_invested_usd,
+        "current_value_usd": current_value_usd,
+        "total_profit_loss_usd": total_profit_loss_usd
     }
     
     return CryptoAccountWithAssets(**account_dict)

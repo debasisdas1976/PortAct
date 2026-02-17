@@ -77,7 +77,8 @@ const CryptoAccounts: React.FC = () => {
     coin_id: '',
     quantity: 0,
     purchase_price: 0,
-    total_invested: 0
+    total_invested: 0,
+    currency: 'USD'
   });
   const [cryptoOptions, setCryptoOptions] = useState<CryptoSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -101,6 +102,8 @@ const CryptoAccounts: React.FC = () => {
     { value: 'trust_wallet', label: 'Trust Wallet' },
     { value: 'ledger', label: 'Ledger' },
     { value: 'trezor', label: 'Trezor' },
+    { value: 'tangem', label: 'Tangem' },
+    { value: 'getbit', label: 'Getbit' },
     { value: 'other', label: 'Other' }
   ];
 
@@ -195,7 +198,8 @@ const CryptoAccounts: React.FC = () => {
       coin_id: '',
       quantity: 0,
       purchase_price: 0,
-      total_invested: 0
+      total_invested: 0,
+      currency: 'USD'
     });
     setCurrentPrice(null);
     setOpenAssetDialog(true);
@@ -248,6 +252,7 @@ const CryptoAccounts: React.FC = () => {
         current_price: currentPrice || assetForm.purchase_price,
         total_invested: assetForm.total_invested,
         crypto_account_id: selectedAccount,
+        currency: assetForm.currency,
         details: {
           coin_id: assetForm.coin_id
         }
@@ -361,7 +366,7 @@ const CryptoAccounts: React.FC = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Exchange</TableCell>
+              <TableCell>Exchange/Wallets</TableCell>
               <TableCell>Account ID</TableCell>
               <TableCell>Holder Name</TableCell>
               <TableCell>Nickname</TableCell>
@@ -431,7 +436,7 @@ const CryptoAccounts: React.FC = () => {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
             <TextField
               select
-              label="Exchange"
+              label="Exchange/Wallets"
               value={formData.exchange_name}
               onChange={(e) => setFormData({ ...formData, exchange_name: e.target.value })}
               fullWidth
@@ -534,6 +539,16 @@ const CryptoAccounts: React.FC = () => {
               </Alert>
             )}
             <TextField
+              select
+              label="Currency"
+              value={assetForm.currency}
+              onChange={(e) => setAssetForm({ ...assetForm, currency: e.target.value })}
+              fullWidth
+            >
+              <MenuItem value="USD">USD</MenuItem>
+              <MenuItem value="INR">INR</MenuItem>
+            </TextField>
+            <TextField
               label="Quantity"
               type="number"
               value={assetForm.quantity}
@@ -549,7 +564,7 @@ const CryptoAccounts: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="Purchase Price (USD)"
+              label={`Purchase Price (${assetForm.currency})`}
               type="number"
               value={assetForm.purchase_price}
               onChange={(e) => {
@@ -564,7 +579,7 @@ const CryptoAccounts: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="Total Invested (USD)"
+              label={`Total Invested (${assetForm.currency})`}
               type="number"
               value={assetForm.total_invested}
               InputProps={{ readOnly: true }}

@@ -6,6 +6,9 @@ interface PortfolioState {
   allocation: any;
   summary: any;
   history: any[];
+  performanceData: any;
+  assetPerformanceData: any;
+  assetsList: any[];
   loading: boolean;
   error: string | null;
 }
@@ -15,6 +18,9 @@ const initialState: PortfolioState = {
   allocation: null,
   summary: null,
   history: [],
+  performanceData: null,
+  assetPerformanceData: null,
+  assetsList: [],
   loading: false,
   error: null,
 };
@@ -67,6 +73,42 @@ export const fetchPortfolioHistory = createAsyncThunk(
   }
 );
 
+export const fetchPortfolioPerformance = createAsyncThunk(
+  'portfolio/fetchPerformance',
+  async (days: number = 30, { rejectWithValue }) => {
+    try {
+      const response = await dashboardAPI.getPortfolioPerformance(days);
+      return response;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch performance data');
+    }
+  }
+);
+
+export const fetchAssetPerformance = createAsyncThunk(
+  'portfolio/fetchAssetPerformance',
+  async ({ assetId, days = 30 }: { assetId: number; days?: number }, { rejectWithValue }) => {
+    try {
+      const response = await dashboardAPI.getAssetPerformance(assetId, days);
+      return response;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch asset performance');
+    }
+  }
+);
+
+export const fetchAssetsList = createAsyncThunk(
+  'portfolio/fetchAssetsList',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await dashboardAPI.getAssetsList();
+      return response.assets || [];
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch assets list');
+    }
+  }
+);
+
 const portfolioSlice = createSlice({
   name: 'portfolio',
   initialState,
@@ -115,6 +157,15 @@ const portfolioSlice = createSlice({
       .addCase(fetchPortfolioHistory.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+      })
+      .addCase(fetchPortfolioPerformance.fulfilled, (state, action) => {
+        state.performanceData = action.payload;
+      })
+      .addCase(fetchAssetPerformance.fulfilled, (state, action) => {
+        state.assetPerformanceData = action.payload;
+      })
+      .addCase(fetchAssetsList.fulfilled, (state, action) => {
+        state.assetsList = action.payload;
       });
   },
 });

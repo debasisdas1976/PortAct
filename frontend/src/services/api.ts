@@ -85,6 +85,30 @@ export const dashboardAPI = {
     const response = await api.get('/dashboard/asset-allocation');
     return response.data;
   },
+  
+  getPortfolioPerformance: async (days: number = 30) => {
+    const response = await api.get('/dashboard/portfolio-performance', {
+      params: { days }
+    });
+    return response.data;
+  },
+  
+  getAssetPerformance: async (assetId: number, days: number = 30) => {
+    const response = await api.get(`/dashboard/asset-performance/${assetId}`, {
+      params: { days }
+    });
+    return response.data;
+  },
+  
+  getAssetsList: async () => {
+    const response = await api.get('/dashboard/assets-list');
+    return response.data;
+  },
+  
+  takeSnapshot: async () => {
+    const response = await api.post('/dashboard/take-snapshot');
+    return response.data;
+  },
 };
 
 // Assets API

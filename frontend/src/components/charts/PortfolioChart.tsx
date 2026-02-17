@@ -1,5 +1,5 @@
-import React from 'react';
-import { useSelector } from 'react-redux';
+import React, { useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import {
   LineChart,
@@ -11,10 +11,18 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { RootState } from '../../store';
+import { AppDispatch, RootState } from '../../store';
+import { fetchPortfolioPerformance } from '../../store/slices/portfolioSlice';
 
 const PortfolioChart: React.FC = () => {
-  const { history, loading } = useSelector((state: RootState) => state.portfolio);
+  const dispatch = useDispatch<AppDispatch>();
+  const { performanceData, loading } = useSelector((state: RootState) => state.portfolio);
+
+  useEffect(() => {
+    // Fetch 90 days of data for the bottom chart
+    dispatch(fetchPortfolioPerformance(90));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) {
     return (
@@ -37,17 +45,19 @@ const PortfolioChart: React.FC = () => {
     return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
   };
 
-  if (!history || history.length === 0) {
+  if (!performanceData?.snapshots || performanceData.snapshots.length === 0) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
-        <Typography color="text.secondary">No portfolio history available yet</Typography>
+        <Typography color="text.secondary">
+          No portfolio history available yet. Historical data will be captured daily at 7 PM.
+        </Typography>
       </Box>
     );
   }
 
-  const chartData = history.map((item) => ({
+  const chartData = performanceData.snapshots.map((item: any) => ({
     date: formatDate(item.date),
-    value: item.total_value,
+    value: item.total_current_value,
     invested: item.total_invested,
   }));
 

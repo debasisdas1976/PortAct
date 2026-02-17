@@ -21,6 +21,8 @@ class CryptoExchange(str, enum.Enum):
     TRUST_WALLET = "trust_wallet"
     LEDGER = "ledger"
     TREZOR = "trezor"
+    TANGEM = "tangem"
+    GETBIT = "getbit"
     OTHER = "other"
 
 
@@ -37,9 +39,9 @@ class CryptoAccount(Base):
     account_holder_name = Column(String)
     wallet_address = Column(String)  # Public wallet address (for transparency)
     
-    # Balance information (in INR)
-    cash_balance_inr = Column(Float, default=0.0)  # Available cash/stablecoin balance in INR
-    total_value_inr = Column(Float, default=0.0)  # Total portfolio value in INR
+    # Balance information (in USD)
+    cash_balance_usd = Column(Float, default=0.0)  # Available cash/stablecoin balance in USD
+    total_value_usd = Column(Float, default=0.0)  # Total portfolio value in USD
     
     # Account status
     is_active = Column(Boolean, default=True)

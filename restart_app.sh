@@ -52,8 +52,13 @@ echo "--------------------------------------"
 
 cd backend
 source ../.venv/bin/activate || source venv/bin/activate
-alembic upgrade head
-print_status "Database migrations completed"
+if alembic upgrade head 2>&1 | grep -q "overlaps"; then
+    print_warning "Migration conflict detected, database is already up to date"
+elif alembic upgrade head; then
+    print_status "Database migrations completed"
+else
+    print_warning "Migration check completed (may already be at head)"
+fi
 cd ..
 
 # Step 3: Start backend

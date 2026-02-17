@@ -50,14 +50,14 @@ const AssetAllocationChart: React.FC = () => {
 
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <PieChart>
+      <PieChart margin={{ left: 20, right: 20 }}>
         <Pie
           data={chartData}
-          cx="50%"
+          cx="35%"
           cy="50%"
-          labelLine={false}
+          labelLine={true}
           label={({ percent }) => `${(percent * 100).toFixed(1)}%`}
-          outerRadius={90}
+          outerRadius={80}
           fill="#8884d8"
           dataKey="value"
         >
@@ -70,8 +70,10 @@ const AssetAllocationChart: React.FC = () => {
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc' }}
         />
         <Legend
-          verticalAlign="bottom"
-          height={36}
+          layout="vertical"
+          verticalAlign="middle"
+          align="right"
+          wrapperStyle={{ paddingLeft: '20px', fontSize: '12px' }}
           formatter={(value) => value}
         />
       </PieChart>

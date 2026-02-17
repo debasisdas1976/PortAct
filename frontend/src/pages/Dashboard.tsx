@@ -23,7 +23,7 @@ import {
   ShowChart,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
-import { fetchPortfolioSummary, fetchPortfolioHistory } from '../store/slices/portfolioSlice';
+import { fetchPortfolioSummary } from '../store/slices/portfolioSlice';
 import { fetchAssets } from '../store/slices/assetsSlice';
 import PortfolioChart from '../components/charts/PortfolioChart';
 import PerformanceChart from '../components/charts/PerformanceChart';
@@ -53,9 +53,9 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color }
   const isPositive = change !== undefined && change >= 0;
   
   return (
-    <Card>
-      <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <Card sx={{ height: '100%' }}>
+      <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flex: 1 }}>
           <Box>
             <Typography color="text.secondary" gutterBottom variant="body2">
               {title}
@@ -108,7 +108,6 @@ const Dashboard: React.FC = () => {
     // Fetch all data once when component mounts
     const fetchData = async () => {
       await dispatch(fetchPortfolioSummary());
-      await dispatch(fetchPortfolioHistory());
       await dispatch(fetchAssets());
       await fetchBankAccounts();
     };
@@ -197,6 +196,19 @@ const Dashboard: React.FC = () => {
     .sort((a, b) => b.value - a.value);
 
   const formatAssetType = (type: string) => {
+    // Map specific asset types to their full names
+    const assetTypeMap: { [key: string]: string } = {
+      'ppf': 'Public Provident Fund',
+      'pf': 'Provident Fund',
+      'nps': 'National Pension System',
+      'ssy': 'Sukanya Samriddhi Yojana',
+    };
+    
+    // Return mapped name if exists, otherwise format the type
+    if (assetTypeMap[type.toLowerCase()]) {
+      return assetTypeMap[type.toLowerCase()];
+    }
+    
     return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
@@ -252,16 +264,16 @@ const Dashboard: React.FC = () => {
 
       {/* Charts */}
       <Grid container spacing={3}>
-        <Grid item xs={12} lg={8}>
-          <Paper sx={{ p: 3 }}>
+        <Grid item xs={12} lg={7}>
+          <Paper sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
               Portfolio Performance
             </Typography>
             <PerformanceChart />
           </Paper>
         </Grid>
-        <Grid item xs={12} lg={4}>
-          <Paper sx={{ p: 3 }}>
+        <Grid item xs={12} lg={5}>
+          <Paper sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
               Asset Allocation
             </Typography>
@@ -375,6 +387,7 @@ const Dashboard: React.FC = () => {
           </Paper>
         </Grid>
       </Grid>
+
     </Box>
   );
 };

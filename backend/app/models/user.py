@@ -27,5 +27,6 @@ class User(Base):
     crypto_accounts = relationship("CryptoAccount", back_populates="user", cascade="all, delete-orphan")
     expense_categories = relationship("ExpenseCategory", back_populates="user", cascade="all, delete-orphan")
     expenses = relationship("Expense", back_populates="user", cascade="all, delete-orphan")
+    portfolio_snapshots = relationship("PortfolioSnapshot", back_populates="owner", cascade="all, delete-orphan")
 
 # Made with Bob
