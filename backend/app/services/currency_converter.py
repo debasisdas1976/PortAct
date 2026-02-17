@@ -5,6 +5,7 @@ import requests
 from typing import Optional
 from datetime import datetime, timedelta
 import logging
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +63,8 @@ class CurrencyConverter:
         """
         try:
             # Using exchangerate-api.com free tier (no API key required for basic usage)
-            url = "https://api.exchangerate-api.com/v4/latest/USD"
-            response = requests.get(url, timeout=5)
+            url = settings.EXCHANGE_RATE_API
+            response = requests.get(url, timeout=settings.API_TIMEOUT_SHORT)
             response.raise_for_status()
             
             data = response.json()
@@ -80,8 +81,8 @@ class CurrencyConverter:
         # Try alternative API
         try:
             # Using fixer.io alternative (open.er-api.com)
-            url = "https://open.er-api.com/v6/latest/USD"
-            response = requests.get(url, timeout=5)
+            url = settings.EXCHANGE_RATE_FALLBACK_API
+            response = requests.get(url, timeout=settings.API_TIMEOUT_SHORT)
             response.raise_for_status()
             
             data = response.json()

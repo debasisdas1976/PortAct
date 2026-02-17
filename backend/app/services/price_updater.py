@@ -9,6 +9,7 @@ from app.core.database import SessionLocal
 from datetime import datetime
 import logging
 from app.services.currency_converter import get_usd_to_inr_rate, convert_usd_to_inr
+from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,14 +21,14 @@ def get_stock_price_nse(symbol: str) -> float:
     """
     try:
         # NSE India API endpoint
-        url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
+        url = f"{settings.NSE_API_BASE}/quote-equity?symbol={symbol}"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
             'Accept-Language': 'en-US,en;q=0.9',
         }
         
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=settings.API_TIMEOUT)
         if response.status_code == 200:
             data = response.json()
             price = data.get('priceInfo', {}).get('lastPrice')
@@ -67,8 +68,8 @@ def get_mutual_fund_price(identifier: str) -> tuple:
                 break
         
         # AMFI India NAV API
-        url = "https://www.amfiindia.com/spages/NAVAll.txt"
-        response = requests.get(url, timeout=10)
+        url = settings.AMFI_NAV_URL
+        response = requests.get(url, timeout=settings.API_TIMEOUT)
         
         if response.status_code == 200:
             lines = response.text.split('\n')
@@ -162,8 +163,8 @@ def get_gold_price() -> float:
     """
     try:
         # Gold price API (returns price in USD per ounce)
-        url = "https://api.metals.live/v1/spot/gold"
-        response = requests.get(url, timeout=10)
+        url = settings.GOLD_PRICE_API
+        response = requests.get(url, timeout=settings.API_TIMEOUT)
         
         if response.status_code == 200:
             data = response.json()
@@ -188,8 +189,8 @@ def get_us_stock_price(symbol: str) -> float:
     """
     try:
         # Try using financialmodelingprep API (free tier)
-        url = f"https://financialmodelingprep.com/api/v3/quote-short/{symbol}?apikey=demo"
-        response = requests.get(url, timeout=10)
+        url = f"{settings.FMP_API_BASE}/quote-short/{symbol}?apikey={settings.FMP_API_KEY}"
+        response = requests.get(url, timeout=settings.API_TIMEOUT)
         
         if response.status_code == 200:
             data = response.json()

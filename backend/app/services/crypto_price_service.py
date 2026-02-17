@@ -6,11 +6,9 @@ import requests
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import logging
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-
-# CoinGecko API base URL (free tier, no API key required)
-COINGECKO_API_BASE = "https://api.coingecko.com/api/v3"
 
 # Cache for coin list (to avoid repeated API calls)
 _coin_list_cache = None
@@ -32,8 +30,8 @@ def get_coin_list() -> List[Dict]:
     
     try:
         response = requests.get(
-            f"{COINGECKO_API_BASE}/coins/list",
-            timeout=10
+            f"{settings.COINGECKO_API_BASE}/coins/list",
+            timeout=settings.API_TIMEOUT
         )
         response.raise_for_status()
         
@@ -94,7 +92,7 @@ def get_crypto_price(coin_id: str, vs_currency: str = "usd") -> Optional[Dict]:
     """
     try:
         response = requests.get(
-            f"{COINGECKO_API_BASE}/simple/price",
+            f"{settings.COINGECKO_API_BASE}/simple/price",
             params={
                 "ids": coin_id,
                 "vs_currencies": vs_currency,
@@ -102,7 +100,7 @@ def get_crypto_price(coin_id: str, vs_currency: str = "usd") -> Optional[Dict]:
                 "include_market_cap": "true",
                 "include_24hr_vol": "true"
             },
-            timeout=10
+            timeout=settings.API_TIMEOUT
         )
         response.raise_for_status()
         
@@ -137,7 +135,7 @@ def get_multiple_crypto_prices(coin_ids: List[str], vs_currency: str = "usd") ->
         ids_str = ",".join(coin_ids[:250])
         
         response = requests.get(
-            f"{COINGECKO_API_BASE}/simple/price",
+            f"{settings.COINGECKO_API_BASE}/simple/price",
             params={
                 "ids": ids_str,
                 "vs_currencies": vs_currency,
@@ -145,7 +143,7 @@ def get_multiple_crypto_prices(coin_ids: List[str], vs_currency: str = "usd") ->
                 "include_market_cap": "true",
                 "include_24hr_vol": "true"
             },
-            timeout=10
+            timeout=settings.API_TIMEOUT
         )
         response.raise_for_status()
         

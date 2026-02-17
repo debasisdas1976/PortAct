@@ -5,6 +5,7 @@ Fetches ISIN codes for stocks, mutual funds, and commodities from various APIs
 import logging
 import requests
 from typing import Optional, Tuple
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +16,14 @@ def get_isin_from_nse(symbol: str) -> Optional[str]:
     """
     try:
         # NSE API to get stock info
-        url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
+        url = f"{settings.NSE_API_BASE}/quote-equity?symbol={symbol}"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
             'Accept-Language': 'en-US,en;q=0.9',
         }
         
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=settings.API_TIMEOUT)
         if response.status_code == 200:
             data = response.json()
             isin = data.get('info', {}).get('isin')
@@ -41,8 +42,8 @@ def get_isin_from_amfi(fund_name: str) -> Optional[Tuple[str, str]]:
     Returns: (isin, exact_fund_name) or (None, None)
     """
     try:
-        url = "https://www.amfiindia.com/spages/NAVAll.txt"
-        response = requests.get(url, timeout=10)
+        url = settings.AMFI_NAV_URL
+        response = requests.get(url, timeout=settings.API_TIMEOUT)
         
         if response.status_code == 200:
             lines = response.text.split('\n')

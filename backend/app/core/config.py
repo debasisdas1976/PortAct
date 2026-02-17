@@ -47,6 +47,21 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
     
+    # API Endpoints
+    COINGECKO_API_BASE: str = "https://api.coingecko.com/api/v3"
+    NSE_API_BASE: str = "https://www.nseindia.com/api"
+    AMFI_NAV_URL: str = "https://www.amfiindia.com/spages/NAVAll.txt"
+    GOLD_PRICE_API: str = "https://api.metals.live/v1/spot/gold"
+    EXCHANGE_RATE_API: str = "https://api.exchangerate-api.com/v4/latest/USD"
+    EXCHANGE_RATE_FALLBACK_API: str = "https://open.er-api.com/v6/latest/USD"
+    YAHOO_FINANCE_API: str = "https://query1.finance.yahoo.com/v8/finance/chart"
+    FMP_API_BASE: str = "https://financialmodelingprep.com/api/v3"
+    FMP_API_KEY: str = "demo"
+    
+    # API Timeouts (in seconds)
+    API_TIMEOUT: int = 10
+    API_TIMEOUT_SHORT: int = 5
+    
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
     
