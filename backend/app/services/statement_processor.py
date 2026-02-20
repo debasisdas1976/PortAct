@@ -107,8 +107,16 @@ def get_or_create_demat_account(
         demat_account.last_statement_date = datetime.utcnow()
         if account_holder_name and not demat_account.account_holder_name:
             demat_account.account_holder_name = account_holder_name
-        
-        if is_us_broker and cash_balance_usd is not None:
+
+        # Ensure currency is correct for US brokers (may be wrong for old accounts)
+        if is_us_broker and demat_account.currency != 'USD':
+            demat_account.currency = 'USD'
+
+        # Only update cash balance when the parser found a positive value.
+        # If the parser returns 0.0 (either genuinely $0 or because it failed to
+        # locate the cash row in the file), we preserve the previously stored balance
+        # to avoid silently zeroing it out on every re-upload.
+        if is_us_broker and cash_balance_usd is not None and cash_balance_usd > 0:
             usd_to_inr = get_usd_to_inr_rate()
             demat_account.cash_balance = cash_balance_usd * usd_to_inr
             demat_account.cash_balance_usd = cash_balance_usd
@@ -228,10 +236,13 @@ def process_statement(statement_id: int, db: Session):
                     )
                     
                     # Delete existing assets for this demat account to refresh holdings
+                    # Use ORM-level delete so the Asset.transactions cascade fires correctly
                     if demat_account:
-                        db.query(Asset).filter(
+                        existing_assets = db.query(Asset).filter(
                             Asset.demat_account_id == demat_account.id
-                        ).delete()
+                        ).all()
+                        for asset in existing_assets:
+                            db.delete(asset)
                         db.flush()
         
         for asset_data in assets:

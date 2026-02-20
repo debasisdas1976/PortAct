@@ -27,6 +27,7 @@ class DematAccountCreate(DematAccountBase):
 class DematAccountUpdate(BaseModel):
     """Schema for updating a demat account"""
     broker_name: Optional[BrokerName] = None
+    account_id: Optional[str] = Field(None, min_length=1, max_length=50)
     account_holder_name: Optional[str] = Field(None, max_length=200)
     demat_account_number: Optional[str] = Field(None, max_length=50)
     cash_balance: Optional[float] = None

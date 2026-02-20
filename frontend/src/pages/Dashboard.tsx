@@ -15,12 +15,16 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   TrendingUp,
   TrendingDown,
   AccountBalance,
   ShowChart,
+  Visibility,
+  VisibilityOff,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchPortfolioSummary } from '../store/slices/portfolioSlice';
@@ -28,7 +32,7 @@ import { fetchAssets } from '../store/slices/assetsSlice';
 import PortfolioChart from '../components/charts/PortfolioChart';
 import PerformanceChart from '../components/charts/PerformanceChart';
 import AssetAllocationChart from '../components/charts/AssetAllocationChart';
-import axios from 'axios';
+import api from '../services/api';
 
 interface BankAccount {
   id: number;
@@ -41,15 +45,24 @@ interface BankAccount {
   is_active: boolean;
 }
 
+interface DematAccount {
+  id: number;
+  broker_name: string;
+  account_id: string;
+  cash_balance: number;
+  is_active: boolean;
+}
+
 interface StatCardProps {
   title: string;
   value: string;
   change?: number;
   icon: React.ReactNode;
   color: string;
+  hideNumbers: boolean;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color }) => {
+const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color, hideNumbers }) => {
   const isPositive = change !== undefined && change >= 0;
   
   return (
@@ -61,7 +74,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color }
               {title}
             </Typography>
             <Typography variant="h4" component="div">
-              {value}
+              {hideNumbers ? '••••••' : value}
             </Typography>
             {change !== undefined && (
               <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
@@ -74,7 +87,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color }
                   variant="body2"
                   sx={{ color: isPositive ? 'success.main' : 'error.main' }}
                 >
-                  {isPositive ? '+' : ''}{change.toFixed(2)}%
+                  {hideNumbers ? '••••' : `${isPositive ? '+' : ''}${change.toFixed(2)}%`}
                 </Typography>
               </Box>
             )}
@@ -103,13 +116,15 @@ const Dashboard: React.FC = () => {
   const { assets } = useSelector((state: RootState) => state.assets);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
+  const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
+  const [dematAccountsLoading, setDematAccountsLoading] = useState(false);
+  const [hideNumbers, setHideNumbers] = useState(false);
 
   useEffect(() => {
-    // Fetch all data once when component mounts
     const fetchData = async () => {
       await dispatch(fetchPortfolioSummary());
       await dispatch(fetchAssets());
-      await fetchBankAccounts();
+      await Promise.all([fetchBankAccounts(), fetchDematAccounts()]);
     };
     fetchData();
   }, [dispatch]);
@@ -117,10 +132,7 @@ const Dashboard: React.FC = () => {
   const fetchBankAccounts = async () => {
     try {
       setBankAccountsLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/bank-accounts/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/bank-accounts/');
       setBankAccounts(response.data);
     } catch (err) {
       console.error('Failed to fetch bank accounts:', err);
@@ -129,7 +141,19 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  if (loading || bankAccountsLoading) {
+  const fetchDematAccounts = async () => {
+    try {
+      setDematAccountsLoading(true);
+      const response = await api.get('/demat-accounts/');
+      setDematAccounts(response.data);
+    } catch (err) {
+      console.error('Failed to fetch demat accounts:', err);
+    } finally {
+      setDematAccountsLoading(false);
+    }
+  };
+
+  if (loading || bankAccountsLoading || dematAccountsLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
         <CircularProgress />
@@ -145,7 +169,10 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number, hide: boolean = false) => {
+    if (hide) {
+      return '₹ ••••••';
+    }
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
@@ -153,18 +180,19 @@ const Dashboard: React.FC = () => {
     }).format(value);
   };
 
-  // Calculate bank account totals
-  const totalBankBalance = bankAccounts.reduce((sum, account) => sum + account.current_balance, 0);
+  const toggleHideNumbers = () => {
+    setHideNumbers(!hideNumbers);
+  };
+
+  // Calculate cash totals
+  const totalBankBalance = bankAccounts.reduce((sum, a) => sum + a.current_balance, 0);
+  const totalDematCash = dematAccounts.reduce((sum, a) => sum + a.cash_balance, 0);
 
   // Calculate asset allocation data
   const assetsByType = (assets || []).reduce((acc: any, asset: any) => {
     const type = asset.asset_type || 'Other';
     if (!acc[type]) {
-      acc[type] = {
-        value: 0,
-        count: 0,
-        invested: 0,
-      };
+      acc[type] = { value: 0, count: 0, invested: 0 };
     }
     acc[type].value += asset.current_value || 0;
     acc[type].count += 1;
@@ -177,7 +205,17 @@ const Dashboard: React.FC = () => {
     assetsByType['Bank Accounts'] = {
       value: totalBankBalance,
       count: bankAccounts.length,
-      invested: totalBankBalance, // Bank accounts have no gain/loss
+      invested: totalBankBalance,
+    };
+  }
+
+  // Add demat cash balance as a separate category
+  const dematWithCash = dematAccounts.filter(a => a.cash_balance > 0);
+  if (dematWithCash.length > 0) {
+    assetsByType['Demat Cash'] = {
+      value: totalDematCash,
+      count: dematWithCash.length,
+      invested: totalDematCash,
     };
   }
 
@@ -202,6 +240,25 @@ const Dashboard: React.FC = () => {
       'pf': 'Provident Fund',
       'nps': 'National Pension System',
       'ssy': 'Sukanya Samriddhi Yojana',
+      'gratuity': 'Gratuity',
+      'insurance_policy': 'Insurance',
+      'us_stock': 'US Stocks',
+      'equity_mutual_fund': 'Equity Mutual Funds',
+      'debt_mutual_fund': 'Debt Mutual Funds',
+      'fixed_deposit': 'Fixed Deposit',
+      'recurring_deposit': 'Recurring Deposit',
+      'real_estate': 'Real Estate',
+      'savings_account': 'Savings Account',
+      'nsc': 'National Savings Certificate',
+      'kvp': 'Kisan Vikas Patra',
+      'scss': 'Senior Citizens Savings Scheme',
+      'mis': 'Monthly Income Scheme',
+      'corporate_bond': 'Corporate Bonds',
+      'rbi_bond': 'RBI Bonds',
+      'tax_saving_bond': 'Tax Saving Bonds',
+      'reit': 'REITs',
+      'invit': 'InvITs',
+      'sovereign_gold_bond': 'Sovereign Gold Bonds',
     };
     
     // Return mapped name if exists, otherwise format the type
@@ -214,27 +271,36 @@ const Dashboard: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Portfolio Dashboard
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4">
+          Portfolio Dashboard
+        </Typography>
+        <Tooltip title={hideNumbers ? "Show Numbers" : "Hide Numbers"}>
+          <IconButton onClick={toggleHideNumbers} color="primary">
+            {hideNumbers ? <Visibility /> : <VisibilityOff />}
+          </IconButton>
+        </Tooltip>
+      </Box>
       
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Total Value"
-            value={formatCurrency((summary?.portfolio_summary?.total_current_value || 0) + totalBankBalance)}
+            value={formatCurrency((summary?.portfolio_summary?.total_current_value || 0) + totalBankBalance + totalDematCash)}
             change={summary?.portfolio_summary?.total_profit_loss_percentage}
             icon={<AccountBalance sx={{ color: 'white' }} />}
             color="primary.main"
+            hideNumbers={hideNumbers}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Total Investment"
-            value={formatCurrency((summary?.portfolio_summary?.total_invested || 0) + totalBankBalance)}
+            value={formatCurrency((summary?.portfolio_summary?.total_invested || 0) + totalBankBalance + totalDematCash)}
             icon={<ShowChart sx={{ color: 'white' }} />}
             color="secondary.main"
+            hideNumbers={hideNumbers}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -250,14 +316,16 @@ const Dashboard: React.FC = () => {
               )
             }
             color={(summary?.portfolio_summary?.total_profit_loss || 0) >= 0 ? 'success.main' : 'error.main'}
+            hideNumbers={hideNumbers}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Total Assets"
-            value={((summary?.portfolio_summary?.total_assets || 0) + bankAccounts.length).toString()}
+            value={hideNumbers ? '•••' : ((summary?.portfolio_summary?.total_assets || 0) + bankAccounts.length).toString()}
             icon={<AccountBalance sx={{ color: 'white' }} />}
             color="info.main"
+            hideNumbers={false}
           />
         </Grid>
       </Grid>
@@ -269,7 +337,7 @@ const Dashboard: React.FC = () => {
             <Typography variant="h6" gutterBottom>
               Portfolio Performance
             </Typography>
-            <PerformanceChart />
+            <PerformanceChart hideNumbers={hideNumbers} />
           </Paper>
         </Grid>
         <Grid item xs={12} lg={5}>
@@ -314,9 +382,9 @@ const Dashboard: React.FC = () => {
                       {allocationData.map((row) => (
                         <TableRow key={row.type}>
                           <TableCell>{formatAssetType(row.type)}</TableCell>
-                          <TableCell align="right">{row.count}</TableCell>
-                          <TableCell align="right">{formatCurrency(row.value)}</TableCell>
-                          <TableCell align="right">{formatCurrency(row.invested)}</TableCell>
+                          <TableCell align="right">{hideNumbers ? '•••' : row.count}</TableCell>
+                          <TableCell align="right">{formatCurrency(row.value, hideNumbers)}</TableCell>
+                          <TableCell align="right">{formatCurrency(row.invested, hideNumbers)}</TableCell>
                           <TableCell
                             align="right"
                             sx={{
@@ -324,7 +392,7 @@ const Dashboard: React.FC = () => {
                               fontWeight: 'medium'
                             }}
                           >
-                            {formatCurrency(row.gainLoss)}
+                            {formatCurrency(row.gainLoss, hideNumbers)}
                           </TableCell>
                           <TableCell
                             align="right"
@@ -333,18 +401,18 @@ const Dashboard: React.FC = () => {
                               fontWeight: 'medium'
                             }}
                           >
-                            {row.gainLossPercentage >= 0 ? '+' : ''}{row.gainLossPercentage.toFixed(2)}%
+                            {hideNumbers ? '••••' : `${row.gainLossPercentage >= 0 ? '+' : ''}${row.gainLossPercentage.toFixed(2)}%`}
                           </TableCell>
-                          <TableCell align="right">{row.percentage.toFixed(2)}%</TableCell>
+                          <TableCell align="right">{hideNumbers ? '••••' : `${row.percentage.toFixed(2)}%`}</TableCell>
                         </TableRow>
                       ))}
                       <TableRow sx={{ backgroundColor: 'action.hover' }}>
                         <TableCell><strong>Total</strong></TableCell>
-                        <TableCell align="right"><strong>{(assets || []).length}</strong></TableCell>
-                        <TableCell align="right"><strong>{formatCurrency(totalValue)}</strong></TableCell>
+                        <TableCell align="right"><strong>{hideNumbers ? '•••' : (assets || []).length}</strong></TableCell>
+                        <TableCell align="right"><strong>{formatCurrency(totalValue, hideNumbers)}</strong></TableCell>
                         <TableCell align="right">
                           <strong>
-                            {formatCurrency(allocationData.reduce((sum, row) => sum + row.invested, 0))}
+                            {formatCurrency(allocationData.reduce((sum, row) => sum + row.invested, 0), hideNumbers)}
                           </strong>
                         </TableCell>
                         <TableCell
@@ -357,18 +425,18 @@ const Dashboard: React.FC = () => {
                           }}
                         >
                           <strong>
-                            {formatCurrency(totalValue - allocationData.reduce((sum, row) => sum + row.invested, 0))}
+                            {formatCurrency(totalValue - allocationData.reduce((sum, row) => sum + row.invested, 0), hideNumbers)}
                           </strong>
                         </TableCell>
                         <TableCell align="right">
                           <strong>
-                            {allocationData.reduce((sum, row) => sum + row.invested, 0) > 0
+                            {hideNumbers ? '••••' : (allocationData.reduce((sum, row) => sum + row.invested, 0) > 0
                               ? `${((totalValue - allocationData.reduce((sum, row) => sum + row.invested, 0)) /
                                   allocationData.reduce((sum, row) => sum + row.invested, 0) * 100).toFixed(2)}%`
-                              : '0.00%'}
+                              : '0.00%')}
                           </strong>
                         </TableCell>
-                        <TableCell align="right"><strong>100.00%</strong></TableCell>
+                        <TableCell align="right"><strong>{hideNumbers ? '••••' : '100.00%'}</strong></TableCell>
                       </TableRow>
                     </>
                   )}

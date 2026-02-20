@@ -59,13 +59,23 @@ async def update_current_user(
     
     if user_update.full_name is not None:
         current_user.full_name = user_update.full_name
-    
+
     if user_update.password is not None:
         current_user.hashed_password = get_password_hash(user_update.password)
-    
+
+    # Profile fields
+    for field in (
+        "phone", "date_of_birth", "gender", "address", "city", "state", "pincode",
+        "is_employed", "basic_salary", "da_percentage", "employer_name", "date_of_joining",
+        "pf_employee_pct", "pf_employer_pct",
+    ):
+        val = getattr(user_update, field, None)
+        if val is not None:
+            setattr(current_user, field, val)
+
     db.commit()
     db.refresh(current_user)
-    
+
     return current_user
 
 

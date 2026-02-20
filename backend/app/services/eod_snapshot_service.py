@@ -11,6 +11,7 @@ import logging
 from app.models.user import User
 from app.models.asset import Asset
 from app.models.bank_account import BankAccount
+from app.models.demat_account import DematAccount
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
 from app.core.database import SessionLocal
 
@@ -73,6 +74,12 @@ class EODSnapshotService:
             BankAccount.user_id == user_id,
             BankAccount.is_active == True
         ).all()
+
+        # Get all active demat accounts with cash balance
+        demat_accounts = db.query(DematAccount).filter(
+            DematAccount.user_id == user_id,
+            DematAccount.is_active == True
+        ).all()
         
         # Calculate metrics for each asset
         total_invested = 0.0
@@ -127,7 +134,33 @@ class EODSnapshotService:
             # Bank accounts: invested = current value (no profit/loss)
             total_invested += bank_account.current_balance
             total_current_value += bank_account.current_balance
-        
+
+        # Add demat account cash balances to the snapshot
+        for demat_account in demat_accounts:
+            if not demat_account.cash_balance or demat_account.cash_balance <= 0:
+                continue
+
+            asset_snapshot = AssetSnapshot(
+                portfolio_snapshot_id=portfolio_snapshot.id,
+                asset_id=None,
+                snapshot_date=snapshot_date,
+                asset_type='demat_cash',
+                asset_name=f"{demat_account.broker_name.value} - Cash",
+                asset_symbol=demat_account.account_id[-4:] if demat_account.account_id else 'N/A',
+                quantity=1.0,
+                purchase_price=demat_account.cash_balance,
+                current_price=demat_account.cash_balance,
+                total_invested=demat_account.cash_balance,
+                current_value=demat_account.cash_balance,
+                profit_loss=0.0,
+                profit_loss_percentage=0.0
+            )
+            db.add(asset_snapshot)
+
+            # Demat cash: invested = current value (no profit/loss)
+            total_invested += demat_account.cash_balance
+            total_current_value += demat_account.cash_balance
+
         # Update portfolio snapshot with totals
         total_profit_loss = total_current_value - total_invested
         total_profit_loss_percentage = (
@@ -138,7 +171,8 @@ class EODSnapshotService:
         portfolio_snapshot.total_current_value = total_current_value
         portfolio_snapshot.total_profit_loss = total_profit_loss
         portfolio_snapshot.total_profit_loss_percentage = total_profit_loss_percentage
-        portfolio_snapshot.total_assets_count = len(assets) + len(bank_accounts)
+        demat_accounts_with_cash = [a for a in demat_accounts if a.cash_balance and a.cash_balance > 0]
+        portfolio_snapshot.total_assets_count = len(assets) + len(bank_accounts) + len(demat_accounts_with_cash)
         
         db.commit()
         db.refresh(portfolio_snapshot)
@@ -146,6 +180,7 @@ class EODSnapshotService:
         logger.info(
             f"Snapshot captured for user {user_id}: "
             f"{len(assets)} assets, {len(bank_accounts)} bank accounts, "
+            f"{len(demat_accounts_with_cash)} demat accounts with cash, "
             f"Total Value: {total_current_value:.2f}, "
             f"P/L: {total_profit_loss:.2f} ({total_profit_loss_percentage:.2f}%)"
         )

@@ -56,6 +56,6 @@ class DematAccount(Base):
     
     # Relationships
     user = relationship("User", back_populates="demat_accounts")
-    assets = relationship("Asset", back_populates="demat_account", cascade="all, delete-orphan")
+    assets = relationship("Asset", back_populates="demat_account", cascade="all, delete-orphan", passive_deletes=True)
 
 # Made with Bob

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
+  Collapse,
   Drawer,
   AppBar,
   Toolbar,
@@ -24,7 +25,6 @@ import {
   AccountBalance as AccountBalanceIcon,
   Notifications as NotificationsIcon,
   AccountCircle,
-  CreditCard as CreditCardIcon,
   ShowChart as ShowChartIcon,
   Receipt as ReceiptIcon,
   Category as CategoryIcon,
@@ -33,57 +33,216 @@ import {
   BarChart as BarChartIcon,
   CurrencyBitcoin as CryptoIcon,
   PieChart as PieChartIcon,
+  ChildCare as SSYIcon,
+  AccountBalanceWallet as NPSIcon,
+  Shield as InsuranceIcon,
+  TrendingUp as StocksIcon,
+  Language as USStocksIcon,
+  Lock as FDIcon,
+  Autorenew as RDIcon,
+  MonetizationOn as DebtFundIcon,
+  Grain as CommodityIcon,
+  ExpandLess,
+  ExpandMore,
+  AdminPanelSettings as AdminIcon,
+  Settings as SettingsIcon,
+  LocalPostOffice as LocalPostOfficeIcon,
+  Gavel as GavelIcon,
+  Business as BusinessIcon,
+  Diamond as DiamondIcon,
+  Home as HomeIcon,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { logout } from '../store/slices/authSlice';
 
 const drawerWidth = 240;
 
-const menuSections = [
+interface NavItem {
+  text: string;
+  icon: React.ReactNode;
+  path: string;
+}
+
+interface AssetGroup {
+  key: string;
+  title: string;
+  icon: React.ReactNode;
+  items: NavItem[];
+}
+
+// Groups nested under the "Assets" section
+const assetGroups: AssetGroup[] = [
   {
-    title: 'Overview',
+    key: 'demat_holding',
+    title: 'Demat Holding',
+    icon: <ShowChartIcon />,
     items: [
-      { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-      { text: 'Alerts', icon: <NotificationsIcon />, path: '/alerts' },
-    ]
-  },
-  {
-    title: 'Portfolio Management',
-    items: [
-      { text: 'Assets', icon: <AccountBalanceIcon />, path: '/assets' },
-      { text: 'MF Holdings', icon: <PieChartIcon />, path: '/mutual-fund-holdings' },
-      { text: 'Bank Accounts', icon: <CreditCardIcon />, path: '/bank-accounts' },
+      { text: 'Stocks', icon: <StocksIcon />, path: '/stocks' },
+      { text: 'US Stocks', icon: <USStocksIcon />, path: '/us-stocks' },
+      { text: 'Equity MF', icon: <PieChartIcon />, path: '/equity-mf' },
+      { text: 'Debt Funds', icon: <DebtFundIcon />, path: '/debt-funds' },
+      { text: 'Commodities', icon: <CommodityIcon />, path: '/commodities' },
+      { text: 'Sovereign Gold Bonds', icon: <DiamondIcon />, path: '/sovereign-gold-bonds' },
       { text: 'Demat Accounts', icon: <ShowChartIcon />, path: '/demat-accounts' },
-      { text: 'Crypto Accounts', icon: <CryptoIcon />, path: '/crypto-accounts' },
-      { text: 'PPF', icon: <SavingsIcon />, path: '/ppf' },
-      { text: 'PF/EPF', icon: <WorkIcon />, path: '/pf' },
-    ]
+    ],
   },
   {
-    title: 'Expense Management',
+    key: 'banking',
+    title: 'Banking',
+    icon: <AccountBalanceIcon />,
     items: [
-      { text: 'Expense Dashboard', icon: <BarChartIcon />, path: '/expense-dashboard' },
-      { text: 'Expenses', icon: <ReceiptIcon />, path: '/expenses' },
-      { text: 'Categories', icon: <CategoryIcon />, path: '/categories' },
-    ]
-  }
+      { text: 'Savings', icon: <AccountBalanceIcon />, path: '/savings' },
+      { text: 'Fixed Deposit', icon: <FDIcon />, path: '/fixed-deposit' },
+      { text: 'Recurring Deposit', icon: <RDIcon />, path: '/recurring-deposit' },
+    ],
+  },
+  {
+    key: 'retirement',
+    title: 'Retirement Savings',
+    icon: <SavingsIcon />,
+    items: [
+      { text: 'PPF', icon: <SavingsIcon />, path: '/ppf' },
+      { text: 'PF / EPF', icon: <WorkIcon />, path: '/pf' },
+      { text: 'NPS', icon: <NPSIcon />, path: '/nps' },
+      { text: 'SSY', icon: <SSYIcon />, path: '/ssy' },
+      { text: 'Gratuity', icon: <WorkIcon />, path: '/gratuity' },
+      { text: 'Insurance', icon: <InsuranceIcon />, path: '/insurance' },
+    ],
+  },
+  {
+    key: 'crypto',
+    title: 'Crypto Investment',
+    icon: <CryptoIcon />,
+    items: [
+      { text: 'Crypto Accounts', icon: <CryptoIcon />, path: '/crypto-accounts' },
+    ],
+  },
+  {
+    key: 'post_office',
+    title: 'Post Office Schemes',
+    icon: <LocalPostOfficeIcon />,
+    items: [
+      { text: 'NSC', icon: <LocalPostOfficeIcon />, path: '/nsc' },
+      { text: 'KVP', icon: <LocalPostOfficeIcon />, path: '/kvp' },
+      { text: 'SCSS', icon: <LocalPostOfficeIcon />, path: '/scss' },
+      { text: 'MIS', icon: <LocalPostOfficeIcon />, path: '/mis' },
+    ],
+  },
+  {
+    key: 'bonds',
+    title: 'Bonds',
+    icon: <GavelIcon />,
+    items: [
+      { text: 'Corporate Bond', icon: <GavelIcon />, path: '/corporate-bond' },
+      { text: 'RBI Bond', icon: <GavelIcon />, path: '/rbi-bond' },
+      { text: 'Tax Saving Bond', icon: <GavelIcon />, path: '/tax-saving-bond' },
+    ],
+  },
+  {
+    key: 'reits',
+    title: 'REITs / InvITs',
+    icon: <BusinessIcon />,
+    items: [
+      { text: 'REITs', icon: <BusinessIcon />, path: '/reits' },
+      { text: 'InvITs', icon: <BusinessIcon />, path: '/invits' },
+    ],
+  },
+  {
+    key: 'real_estate',
+    title: 'Real Estate',
+    icon: <HomeIcon />,
+    items: [
+      { text: 'Land', icon: <HomeIcon />, path: '/land' },
+      { text: 'Farm Land', icon: <HomeIcon />, path: '/farm-land' },
+      { text: 'House', icon: <HomeIcon />, path: '/house' },
+    ],
+  },
 ];
 
-// Flatten menu items for path matching in AppBar
-const allMenuItems = menuSections.flatMap(section => section.items);
+const overviewItems: NavItem[] = [
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+  { text: 'Alerts', icon: <NotificationsIcon />, path: '/alerts' },
+];
+
+const assetOverviewItem: NavItem = {
+  text: 'Overview',
+  icon: <AccountBalanceIcon />,
+  path: '/assets',
+};
+
+const expenseItems: NavItem[] = [
+  { text: 'Expense Dashboard', icon: <BarChartIcon />, path: '/expense-dashboard' },
+  { text: 'Expenses', icon: <ReceiptIcon />, path: '/expenses' },
+  { text: 'Categories', icon: <CategoryIcon />, path: '/categories' },
+];
+
+const adminItems: NavItem[] = [
+  { text: 'Portfolio Admin', icon: <AdminIcon />, path: '/portfolio-admin' },
+  { text: 'Application Setup', icon: <SettingsIcon />, path: '/settings' },
+];
+
+// All leaf items flattened for AppBar title lookup
+const allNavItems: NavItem[] = [
+  ...overviewItems,
+  assetOverviewItem,
+  ...assetGroups.flatMap((g) => g.items),
+  ...expenseItems,
+  ...adminItems,
+];
+
+// Returns the group key that owns a given path
+const groupKeyForPath = (path: string): string | null => {
+  for (const group of assetGroups) {
+    if (group.items.some((item) => item.path === path)) return group.key;
+  }
+  return null;
+};
+
+const sectionHeaderSx = {
+  fontSize: '0.7rem',
+  fontWeight: 'bold',
+  color: 'text.secondary',
+  textTransform: 'uppercase' as const,
+  letterSpacing: 1,
+};
 
 const Layout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useSelector((state: RootState) => state.auth);
-  
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
+  // Track which asset groups are expanded; auto-open the active group
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const active = groupKeyForPath(location.pathname);
+    return {
+      demat_holding: active === 'demat_holding',
+      banking: active === 'banking',
+      retirement: active === 'retirement',
+      crypto: active === 'crypto',
+      post_office: active === 'post_office',
+      bonds: active === 'bonds',
+      reits: active === 'reits',
+      real_estate: active === 'real_estate',
+    };
+  });
+
+  // When navigating to a page inside a collapsed group, auto-expand it
+  useEffect(() => {
+    const active = groupKeyForPath(location.pathname);
+    if (active && !openGroups[active]) {
+      setOpenGroups((prev) => ({ ...prev, [active]: true }));
+    }
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleGroup = (key: string) => {
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
 
   const handleMenuClick = (path: string) => {
     navigate(path);
@@ -94,9 +253,7 @@ const Layout: React.FC = () => {
     setAnchorEl(event.currentTarget);
   };
 
-  const handleProfileMenuClose = () => {
-    setAnchorEl(null);
-  };
+  const handleProfileMenuClose = () => setAnchorEl(null);
 
   const handleLogout = () => {
     dispatch(logout());
@@ -104,47 +261,101 @@ const Layout: React.FC = () => {
     navigate('/login');
   };
 
+  const renderNavItem = (item: NavItem, indent = false) => (
+    <ListItem key={item.path} disablePadding>
+      <ListItemButton
+        selected={location.pathname === item.path}
+        onClick={() => handleMenuClick(item.path)}
+        sx={indent ? { pl: 4 } : undefined}
+      >
+        <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+        <ListItemText
+          primary={item.text}
+          primaryTypographyProps={{ fontSize: indent ? '0.875rem' : undefined }}
+        />
+      </ListItemButton>
+    </ListItem>
+  );
+
   const drawer = (
-    <Box>
+    <Box sx={{ overflowY: 'auto' }}>
       <Toolbar>
         <Typography variant="h6" noWrap component="div">
           PortAct
         </Typography>
       </Toolbar>
+
       <Divider />
-      {menuSections.map((section, sectionIndex) => (
-        <React.Fragment key={section.title}>
-          <List
-            subheader={
-              <ListItem>
-                <ListItemText
-                  primary={section.title}
-                  primaryTypographyProps={{
-                    fontSize: '0.75rem',
-                    fontWeight: 'bold',
-                    color: 'text.secondary',
-                    textTransform: 'uppercase',
-                    letterSpacing: 1,
-                  }}
-                />
-              </ListItem>
-            }
-          >
-            {section.items.map((item) => (
-              <ListItem key={item.text} disablePadding>
-                <ListItemButton
-                  selected={location.pathname === item.path}
-                  onClick={() => handleMenuClick(item.path)}
-                >
-                  <ListItemIcon>{item.icon}</ListItemIcon>
-                  <ListItemText primary={item.text} />
-                </ListItemButton>
-              </ListItem>
-            ))}
-          </List>
-          {sectionIndex < menuSections.length - 1 && <Divider />}
-        </React.Fragment>
-      ))}
+
+      {/* ── Overview ── */}
+      <List
+        subheader={
+          <ListItem sx={{ py: 0.5 }}>
+            <ListItemText primary="Overview" primaryTypographyProps={sectionHeaderSx} />
+          </ListItem>
+        }
+      >
+        {overviewItems.map((item) => renderNavItem(item))}
+      </List>
+
+      <Divider />
+
+      {/* ── Assets ── */}
+      <List
+        subheader={
+          <ListItem sx={{ py: 0.5 }}>
+            <ListItemText primary="Assets" primaryTypographyProps={sectionHeaderSx} />
+          </ListItem>
+        }
+      >
+        {renderNavItem(assetOverviewItem)}
+        {assetGroups.map((group) => (
+          <React.Fragment key={group.key}>
+            {/* Group toggle row */}
+            <ListItemButton onClick={() => toggleGroup(group.key)} sx={{ py: 0.75 }}>
+              <ListItemIcon sx={{ minWidth: 36 }}>{group.icon}</ListItemIcon>
+              <ListItemText
+                primary={group.title}
+                primaryTypographyProps={{ fontWeight: 500, fontSize: '0.9rem' }}
+              />
+              {openGroups[group.key] ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+            </ListItemButton>
+
+            {/* Collapsed children */}
+            <Collapse in={openGroups[group.key]} timeout="auto" unmountOnExit>
+              <List disablePadding>
+                {group.items.map((item) => renderNavItem(item, true))}
+              </List>
+            </Collapse>
+          </React.Fragment>
+        ))}
+      </List>
+
+      <Divider />
+
+      {/* ── Expense Management ── */}
+      <List
+        subheader={
+          <ListItem sx={{ py: 0.5 }}>
+            <ListItemText primary="Expense Management" primaryTypographyProps={sectionHeaderSx} />
+          </ListItem>
+        }
+      >
+        {expenseItems.map((item) => renderNavItem(item))}
+      </List>
+
+      <Divider />
+
+      {/* ── Administration ── */}
+      <List
+        subheader={
+          <ListItem sx={{ py: 0.5 }}>
+            <ListItemText primary="Administration" primaryTypographyProps={sectionHeaderSx} />
+          </ListItem>
+        }
+      >
+        {adminItems.map((item) => renderNavItem(item))}
+      </List>
     </Box>
   );
 
@@ -168,7 +379,7 @@ const Layout: React.FC = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {allMenuItems.find((item) => item.path === location.pathname)?.text || 'PortAct'}
+            {allNavItems.find((item) => item.path === location.pathname)?.text || 'PortAct'}
           </Typography>
           <IconButton
             size="large"
@@ -186,15 +397,9 @@ const Layout: React.FC = () => {
           <Menu
             id="menu-appbar"
             anchorEl={anchorEl}
-            anchorOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
+            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
             keepMounted
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
             open={Boolean(anchorEl)}
             onClose={handleProfileMenuClose}
           >
@@ -206,17 +411,13 @@ const Layout: React.FC = () => {
           </Menu>
         </Toolbar>
       </AppBar>
-      <Box
-        component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
-      >
+
+      <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
         <Drawer
           variant="temporary"
           open={mobileOpen}
           onClose={handleDrawerToggle}
-          ModalProps={{
-            keepMounted: true,
-          }}
+          ModalProps={{ keepMounted: true }}
           sx={{
             display: { xs: 'block', sm: 'none' },
             '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
@@ -235,6 +436,7 @@ const Layout: React.FC = () => {
           {drawer}
         </Drawer>
       </Box>
+
       <Box
         component="main"
         sx={{
@@ -242,6 +444,7 @@ const Layout: React.FC = () => {
           p: 3,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           mt: 8,
+          minWidth: 0,
         }}
       >
         <Outlet />

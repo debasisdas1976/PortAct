@@ -24,6 +24,7 @@ pdfplumber==0.10.3
 python-docx==1.1.0
 openpyxl==3.1.2
 xlrd==2.0.2
+msoffcrypto-tool==5.4.2
 
 # Data processing
 pandas==2.2.0
@@ -74,3 +75,6 @@ alpha-vantage==2.3.1
 
 # Caching
 cachetools==5.3.2
+
+# PDF statement generation
+reportlab==4.2.5

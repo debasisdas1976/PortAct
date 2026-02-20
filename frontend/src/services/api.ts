@@ -72,6 +72,28 @@ export const authAPI = {
     const response = await api.get('/users/me');
     return response.data;
   },
+
+  forgotPassword: async (email: string) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data as {
+      message: string;
+      reset_token: string;
+      expires_in_minutes: number;
+    };
+  },
+
+  resetPassword: async (token: string, newPassword: string) => {
+    const response = await api.post('/auth/reset-password', {
+      token,
+      new_password: newPassword,
+    });
+    return response.data as { message: string };
+  },
+
+  updateProfile: async (data: Record<string, any>) => {
+    const response = await api.put('/users/me', data);
+    return response.data;
+  },
 };
 
 // Dashboard API
@@ -197,6 +219,24 @@ export const statementsAPI = {
   
   delete: async (id: number) => {
     await api.delete(`/statements/${id}`);
+  },
+};
+
+// Application Settings API
+export const settingsAPI = {
+  getAll: async () => {
+    const response = await api.get('/settings/');
+    return response.data;
+  },
+
+  bulkUpdate: async (settings: { key: string; value: string }[]) => {
+    const response = await api.put('/settings/', { settings });
+    return response.data;
+  },
+
+  reset: async () => {
+    const response = await api.post('/settings/reset');
+    return response.data;
   },
 };
 

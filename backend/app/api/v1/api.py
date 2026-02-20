@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
     auth, users, assets, transactions, statements, alerts, dashboard, prices,
-    bank_accounts, demat_accounts, crypto_accounts, expense_categories, expenses, bank_statements, ppf, pf, mutual_fund_holdings
+    bank_accounts, demat_accounts, crypto_accounts, expense_categories, expenses, bank_statements, ppf, pf, mutual_fund_holdings, ssy, nps,
+    gratuity, insurance, fixed_deposit, recurring_deposit, portfolio_admin, settings, real_estate
 )
 
 api_router = APIRouter()
@@ -24,5 +25,14 @@ api_router.include_router(bank_statements.router, prefix="/bank-statements", tag
 api_router.include_router(ppf.router, prefix="/ppf", tags=["PPF"])
 api_router.include_router(pf.router, prefix="/pf", tags=["PF/EPF"])
 api_router.include_router(mutual_fund_holdings.router, prefix="/mutual-fund-holdings", tags=["Mutual Fund Holdings"])
+api_router.include_router(ssy.router, prefix="/ssy", tags=["SSY"])
+api_router.include_router(nps.router, prefix="/nps", tags=["NPS"])
+api_router.include_router(gratuity.router, prefix="/gratuity", tags=["Gratuity"])
+api_router.include_router(insurance.router, prefix="/insurance", tags=["Insurance"])
+api_router.include_router(fixed_deposit.router, prefix="/fixed-deposits", tags=["Fixed Deposits"])
+api_router.include_router(recurring_deposit.router, prefix="/recurring-deposits", tags=["Recurring Deposits"])
+api_router.include_router(portfolio_admin.router, prefix="/portfolio", tags=["Portfolio Admin"])
+api_router.include_router(settings.router, prefix="/settings", tags=["Application Settings"])
+api_router.include_router(real_estate.router, prefix="/real-estates", tags=["Real Estate"])
 
 # Made with Bob

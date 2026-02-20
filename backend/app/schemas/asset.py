@@ -50,6 +50,7 @@ class AssetInDB(AssetBase):
     id: int
     user_id: int
     statement_id: Optional[int] = None
+    demat_account_id: Optional[int] = None
     current_value: float
     profit_loss: float
     profit_loss_percentage: float

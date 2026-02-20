@@ -6,7 +6,7 @@ import re
 from sqlalchemy.orm import Session
 from app.models.asset import Asset, AssetType
 from app.core.database import SessionLocal
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from app.services.currency_converter import get_usd_to_inr_rate, convert_usd_to_inr
 from app.core.config import settings
@@ -281,7 +281,7 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                     asset.details = {}
                 asset.details['price_usd'] = us_price_usd
                 asset.details['usd_to_inr_rate'] = usd_to_inr
-                asset.details['last_updated'] = datetime.utcnow().isoformat()
+                asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
                 
                 logger.info(f"Updated US stock {asset.symbol}: ${us_price_usd} (₹{new_price:.2f} at rate {usd_to_inr})")
             else:
@@ -328,7 +328,7 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                 
                 # Update details
                 asset.details['usd_to_inr_rate'] = usd_to_inr
-                asset.details['last_updated'] = datetime.utcnow().isoformat()
+                asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
                 
                 logger.info(f"Updated cash balance: ${usd_balance} at rate {usd_to_inr}")
         
@@ -349,7 +349,7 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                     asset.details = {}
                 asset.details['price_usd'] = crypto_price_usd
                 asset.details['usd_to_inr_rate'] = usd_to_inr
-                asset.details['last_updated'] = datetime.utcnow().isoformat()
+                asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
                 
                 logger.info(f"Updated crypto {asset.symbol}: ${crypto_price_usd} (₹{new_price:.2f} at rate {usd_to_inr})")
             else:
@@ -362,7 +362,7 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
             
             # Mark price update as successful
             asset.price_update_failed = False
-            asset.last_price_update = datetime.utcnow()
+            asset.last_price_update = datetime.now(timezone.utc)
             asset.price_update_error = None
             
             db.commit()

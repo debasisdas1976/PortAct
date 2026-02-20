@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import os
@@ -20,6 +20,7 @@ async def upload_bank_statement(
     file: UploadFile = File(...),
     bank_account_id: int = Form(...),
     auto_categorize: bool = Form(True),
+    password: Optional[str] = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -143,8 +144,8 @@ async def upload_bank_statement(
                 detail=f"{account_type_str.capitalize()} statement parsing not supported for {bank_account.bank_name.value}"
             )
         
-        # Parse the statement
-        parser = get_parser(parser_bank_name, file_path)
+        # Parse the statement (pass password for encrypted files, e.g. SBI)
+        parser = get_parser(parser_bank_name, file_path, password=password)
         transactions = parser.parse()
         
         if not transactions:

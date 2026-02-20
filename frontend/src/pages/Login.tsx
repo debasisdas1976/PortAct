@@ -128,7 +128,10 @@ const Login: React.FC = () => {
             >
               {loading ? <CircularProgress size={24} /> : 'Sign In'}
             </Button>
-            <Box sx={{ textAlign: 'center' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Link component={RouterLink} to="/forgot-password" variant="body2">
+                Forgot password?
+              </Link>
               <Link component={RouterLink} to="/register" variant="body2">
                 Don't have an account? Sign Up
               </Link>

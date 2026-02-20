@@ -14,9 +14,10 @@ from app.models.expense import ExpenseType, PaymentMethod
 
 class BankStatementParser(ABC):
     """Base class for bank statement parsers"""
-    
-    def __init__(self, file_path: str):
+
+    def __init__(self, file_path: str, password: str = None):
         self.file_path = file_path
+        self.password = password
         self.transactions: List[Dict[str, Any]] = []
     
     @abstractmethod
@@ -829,43 +830,125 @@ class SBIBankParser(BankStatementParser):
         return transactions
     
     def _parse_excel(self) -> List[Dict[str, Any]]:
-        """Parse SBI Excel statement"""
+        """Parse SBI Excel statement (supports password-protected .xlsx files).
+
+        SBI statement layout (as seen in practice):
+          Rows 1-17  : Account header info (name, account number, IFSC, balance, etc.)
+          Row 18     : Column headers — Date | Details | Ref No/Cheque No | Debit | Credit | Balance
+          Rows 19+   : One transaction per row until an empty date cell or the summary section
+        """
+        import io
+        import openpyxl
+
         transactions = []
-        
-        # Auto-detect engine based on file extension
-        engine = 'xlrd' if self.file_path.lower().endswith('.xls') else 'openpyxl'
-        df = pd.read_excel(self.file_path, engine=engine)
-        
-        # SBI Excel columns: Txn Date, Value Date, Description, Ref No/Cheque No, Debit, Credit, Balance
-        for _, row in df.iterrows():
-            try:
-                date_str = str(row.get('Txn Date', ''))
-                description = str(row.get('Description', ''))
-                ref_no = str(row.get('Ref No/Cheque No', ''))
-                debit = self._clean_amount(row.get('Debit', 0))
-                credit = self._clean_amount(row.get('Credit', 0))
-                balance = self._clean_amount(row.get('Balance', 0))
-                
-                transaction_date = self._parse_date(date_str, ['%d %b %Y', '%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y'])
-                
-                if transaction_date and description:
-                    transactions.append({
-                        'transaction_date': transaction_date,
-                        'description': description.strip(),
-                        'amount': debit if debit > 0 else credit,
-                        'transaction_type': self._detect_transaction_type(description, debit, credit),
-                        'payment_method': self._detect_payment_method(description),
-                        'merchant_name': self._extract_merchant_name(description),
-                        'reference_number': ref_no if ref_no and ref_no != 'nan' else None,
-                        'balance_after': balance
-                    })
-            except Exception as e:
-                continue
-        
+
+        try:
+            # ── 1. Load workbook (decrypt first if password-protected) ──────────
+            with open(self.file_path, 'rb') as fh:
+                raw = fh.read()
+
+            file_data = io.BytesIO(raw)
+            if self.password:
+                try:
+                    import msoffcrypto
+                    office_file = msoffcrypto.OfficeFile(file_data)
+                    office_file.load_key(password=self.password)
+                    decrypted = io.BytesIO()
+                    office_file.decrypt(decrypted)
+                    decrypted.seek(0)
+                    file_data = decrypted
+                except Exception as exc:
+                    raise ValueError(f"Failed to decrypt SBI statement (wrong password?): {exc}")
+
+            wb = openpyxl.load_workbook(file_data, data_only=True)
+            ws = wb.active
+
+            # ── 2. Locate the header row ─────────────────────────────────────
+            HEADER_KEYWORDS = {'date', 'debit', 'credit', 'balance'}
+            header_row_idx = None
+            for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+                cells = {str(c).strip().lower() for c in row if c is not None}
+                if HEADER_KEYWORDS.issubset(cells):
+                    header_row_idx = row_idx
+                    break
+
+            if header_row_idx is None:
+                raise ValueError(
+                    "Could not find the transaction header row in the SBI statement. "
+                    "Expected a row containing: Date, Debit, Credit, Balance."
+                )
+
+            # ── 3. Parse transaction rows ────────────────────────────────────
+            STOP_KEYWORDS = ('statement summary', 'brought forward', 'total debit', 'closing balance')
+
+            for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+                if row_idx <= header_row_idx:
+                    continue
+
+                date_cell = row[0]
+
+                # Detect end-of-transactions sentinel rows
+                row_text = ' '.join(str(c).lower() for c in row if c is not None)
+                if any(kw in row_text for kw in STOP_KEYWORDS):
+                    break
+
+                # Skip rows without a date
+                if date_cell is None or str(date_cell).strip() in ('', 'None'):
+                    continue
+
+                # ── Date (DD/MM/YYYY string or datetime object from openpyxl) ─
+                if hasattr(date_cell, 'strftime'):
+                    transaction_date = date_cell
+                else:
+                    date_str = str(date_cell).strip()
+                    transaction_date = self._parse_date(
+                        date_str, ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%d %b %Y']
+                    )
+                    if not transaction_date:
+                        continue
+
+                # ── Description (clean embedded newlines / tabs) ──────────────
+                desc_raw = str(row[1]).strip() if row[1] is not None else ''
+                description = ' '.join(desc_raw.replace('\n', ' ').replace('\t', ' ').split())
+                if not description or description == 'None':
+                    continue
+
+                # ── Reference number ─────────────────────────────────────────
+                ref_raw = str(row[2]).strip() if row[2] is not None else ''
+                ref_no = ref_raw if ref_raw not in ('', 'None', 'nan') else None
+
+                # ── Debit / Credit ────────────────────────────────────────────
+                debit = self._clean_amount(str(row[3])) if row[3] is not None else 0.0
+                credit = self._clean_amount(str(row[4])) if row[4] is not None else 0.0
+
+                if debit == 0.0 and credit == 0.0:
+                    continue
+
+                # ── Balance (strip trailing CR / DR suffix) ───────────────────
+                bal_raw = str(row[5]).strip() if row[5] is not None else '0'
+                bal_clean = re.sub(r'[A-Za-z\s]+$', '', bal_raw)  # remove 'CR', 'DR', etc.
+                balance = self._clean_amount(bal_clean)
+
+                transactions.append({
+                    'transaction_date': transaction_date,
+                    'description': description,
+                    'amount': debit if debit > 0 else credit,
+                    'transaction_type': self._detect_transaction_type(description, debit, credit),
+                    'payment_method': self._detect_payment_method(description),
+                    'merchant_name': self._extract_merchant_name(description),
+                    'reference_number': ref_no,
+                    'balance_after': balance,
+                })
+
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError(f"Error parsing SBI Excel statement: {exc}")
+
         return transactions
 
 
-def get_parser(bank_name: str, file_path: str) -> BankStatementParser:
+def get_parser(bank_name: str, file_path: str, password: str = None) -> BankStatementParser:
     """Factory function to get appropriate parser based on bank name"""
     parsers = {
         'ICICI': ICICIBankParser,
@@ -876,11 +959,11 @@ def get_parser(bank_name: str, file_path: str) -> BankStatementParser:
         'IDFC_FIRST_CC': IDFCFirstCreditCardParser,
         'SBI': SBIBankParser,
     }
-    
+
     parser_class = parsers.get(bank_name.upper())
     if not parser_class:
         raise ValueError(f"Unsupported bank: {bank_name}")
-    
-    return parser_class(file_path)
+
+    return parser_class(file_path, password=password)
 
 # Made with Bob

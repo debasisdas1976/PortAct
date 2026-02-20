@@ -22,7 +22,18 @@ class AssetType(str, enum.Enum):
     NPS = "nps"
     SSY = "ssy"
     INSURANCE_POLICY = "insurance_policy"
+    GRATUITY = "gratuity"
     CASH = "cash"  # For tracking cash balances in trading accounts
+    NSC = "nsc"
+    KVP = "kvp"
+    SCSS = "scss"
+    MIS = "mis"
+    CORPORATE_BOND = "corporate_bond"
+    RBI_BOND = "rbi_bond"
+    TAX_SAVING_BOND = "tax_saving_bond"
+    REIT = "reit"
+    INVIT = "invit"
+    SOVEREIGN_GOLD_BOND = "sovereign_gold_bond"
 
 
 class Asset(Base):
@@ -32,7 +43,7 @@ class Asset(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     statement_id = Column(Integer, ForeignKey("statements.id"), nullable=True)  # Link to source statement
-    demat_account_id = Column(Integer, ForeignKey("demat_accounts.id"), nullable=True)  # Link to demat account
+    demat_account_id = Column(Integer, ForeignKey("demat_accounts.id", ondelete="CASCADE"), nullable=True)  # Link to demat account
     crypto_account_id = Column(Integer, ForeignKey("crypto_accounts.id"), nullable=True)  # Link to crypto account
     
     # Asset identification
@@ -85,7 +96,7 @@ class Asset(Base):
     statement = relationship("Statement", back_populates="assets")
     demat_account = relationship("DematAccount", back_populates="assets")
     crypto_account = relationship("CryptoAccount", back_populates="assets")
-    transactions = relationship("Transaction", back_populates="asset", cascade="all, delete-orphan")
+    transactions = relationship("Transaction", back_populates="asset", cascade="all, delete-orphan", passive_deletes=True)
     
     def calculate_metrics(self):
         """Calculate profit/loss metrics"""

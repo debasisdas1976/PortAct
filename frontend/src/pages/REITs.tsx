@@ -1,0 +1,188 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  Box, Card, CardContent, CircularProgress, Grid, Paper, Table, TableBody,
+  TableCell, TableContainer, TableHead, TableRow, Typography, Chip, Alert, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, Snackbar,
+} from '@mui/material';
+import { Add, Edit, Delete, TrendingUp, TrendingDown } from '@mui/icons-material';
+import { assetsAPI } from '../services/api';
+import api from '../services/api';
+
+interface AssetItem {
+  id: number; name: string; symbol: string; quantity: number; purchase_price: number;
+  current_price: number; total_invested: number; current_value: number;
+  profit_loss: number; profit_loss_percentage: number; asset_type: string;
+  demat_account_id?: number; broker_name?: string; account_id?: string;
+  account_holder_name?: string; notes?: string;
+}
+interface DematAccount { id: number; broker_name: string; account_id: string; account_holder_name?: string; nickname?: string; }
+
+const ASSET_TYPE = 'reit';
+const PAGE_TITLE = 'REITs';
+const EMPTY_FORM = { name: '', symbol: '', quantity: '', purchase_price: '', current_price: '', broker_name: '', account_id: '', notes: '' };
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+
+const buildDematLabel = (da: DematAccount) => {
+  const parts: string[] = [String(da.broker_name), `(${da.account_id})`];
+  if (da.account_holder_name) parts.push(`— ${da.account_holder_name}`);
+  return parts.join(' ');
+};
+
+const REITs: React.FC = () => {
+  const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '' });
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [assetsRes, dematRes] = await Promise.all([api.get('/assets/'), api.get('/demat-accounts/')]);
+      setAssets((assetsRes.data as AssetItem[]).filter((a) => a.asset_type?.toLowerCase() === ASSET_TYPE));
+      const labelMap: Record<number, string> = {};
+      for (const da of dematRes.data as DematAccount[]) labelMap[da.id] = buildDematLabel(da);
+      setDematLabelMap(labelMap);
+    } catch { setError('Failed to fetch holdings'); } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const totalInvested = assets.reduce((s, a) => s + (a.total_invested || 0), 0);
+  const totalValue = assets.reduce((s, a) => s + (a.current_value || 0), 0);
+  const totalPnL = totalValue - totalInvested;
+  const totalPnLPct = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
+
+  const groups: Record<string, AssetItem[]> = {};
+  for (const asset of assets) {
+    const key = asset.demat_account_id != null ? String(asset.demat_account_id) : ([asset.broker_name, asset.account_id].filter(Boolean).join('|') || 'unlinked');
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(asset);
+  }
+  const groupLabel = (ga: AssetItem[]) => {
+    const f = ga[0];
+    if (f.demat_account_id != null && dematLabelMap[f.demat_account_id]) return dematLabelMap[f.demat_account_id];
+    const parts: string[] = [];
+    if (f.broker_name) parts.push(f.broker_name);
+    if (f.account_id) parts.push(`(${f.account_id})`);
+    if (f.account_holder_name) parts.push(`— ${f.account_holder_name}`);
+    return parts.length ? parts.join(' ') : 'Unlinked Holdings';
+  };
+
+  const handleAdd = () => { setEditingId(null); setForm(EMPTY_FORM); setDialogOpen(true); };
+  const handleEdit = (asset: AssetItem) => {
+    setEditingId(asset.id);
+    setForm({ name: asset.name || '', symbol: asset.symbol || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '' });
+    setDialogOpen(true);
+  };
+  const handleSave = async () => {
+    if (!form.name) { setSnackbar({ open: true, message: 'Name is required' }); return; }
+    const qty = parseFloat(form.quantity) || 1;
+    const buyPrice = parseFloat(form.purchase_price) || 0;
+    const curPrice = parseFloat(form.current_price) || buyPrice;
+    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, current_value: qty * curPrice, broker_name: form.broker_name || undefined, account_id: form.account_id || undefined, notes: form.notes || undefined };
+    try {
+      setSaving(true);
+      if (editingId) { await assetsAPI.update(editingId, payload); } else { await assetsAPI.create(payload); }
+      setSnackbar({ open: true, message: editingId ? 'Updated successfully' : 'Added successfully' });
+      setDialogOpen(false); fetchData();
+    } catch (err: any) { setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to save' }); } finally { setSaving(false); }
+  };
+  const handleDelete = async (id: number, name: string) => {
+    if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    try { await assetsAPI.delete(id); setSnackbar({ open: true, message: 'Deleted successfully' }); fetchData(); }
+    catch (err: any) { setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to delete' }); }
+  };
+
+  if (loading) return (<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh' }}><CircularProgress /></Box>);
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4">{PAGE_TITLE}</Typography>
+        <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>Add</Button>
+      </Box>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Holdings</Typography><Typography variant="h4">{assets.length}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Current Value</Typography><Typography variant="h5">{formatCurrency(totalValue)}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Total Invested</Typography><Typography variant="h5">{formatCurrency(totalInvested)}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Total P&L</Typography><Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{formatCurrency(totalPnL)}</Typography><Typography variant="body2" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%</Typography></CardContent></Card></Grid>
+      </Grid>
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead><TableRow>
+            <TableCell><strong>REIT</strong></TableCell><TableCell align="right"><strong>Qty</strong></TableCell>
+            <TableCell align="right"><strong>Avg Buy</strong></TableCell><TableCell align="right"><strong>Current</strong></TableCell>
+            <TableCell align="right"><strong>Invested</strong></TableCell><TableCell align="right"><strong>Value</strong></TableCell>
+            <TableCell align="right"><strong>P&L</strong></TableCell><TableCell align="right"><strong>P&L %</strong></TableCell>
+            <TableCell align="center"><strong>Actions</strong></TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {assets.length === 0 ? (
+              <TableRow><TableCell colSpan={9} align="center"><Typography color="text.secondary">No holdings found. Click "Add" to create one.</Typography></TableCell></TableRow>
+            ) : Object.entries(groups).map(([key, ga]) => {
+              const gI = ga.reduce((s, a) => s + (a.total_invested || 0), 0);
+              const gV = ga.reduce((s, a) => s + (a.current_value || 0), 0);
+              const gP = gV - gI;
+              return (
+                <React.Fragment key={key}>
+                  <TableRow sx={{ bgcolor: 'action.hover' }}>
+                    <TableCell colSpan={4}><Typography variant="subtitle2" fontWeight="bold">{groupLabel(ga)}</Typography><Typography variant="caption" color="text.secondary">{ga.length} holding{ga.length !== 1 ? 's' : ''}</Typography></TableCell>
+                    <TableCell align="right"><Typography variant="caption" color="text.secondary">Invested</Typography><Typography variant="body2" fontWeight="medium">{formatCurrency(gI)}</Typography></TableCell>
+                    <TableCell align="right"><Typography variant="caption" color="text.secondary">Value</Typography><Typography variant="body2" fontWeight="medium">{formatCurrency(gV)}</Typography></TableCell>
+                    <TableCell align="right" colSpan={3}><Typography variant="caption" color="text.secondary">P&L</Typography><Typography variant="body2" fontWeight="medium" color={gP >= 0 ? 'success.main' : 'error.main'}>{formatCurrency(gP)}</Typography></TableCell>
+                  </TableRow>
+                  {ga.map((asset) => (
+                    <TableRow key={asset.id} hover>
+                      <TableCell><Typography variant="body2" fontWeight="medium">{asset.symbol || asset.name}</Typography><Typography variant="caption" color="text.secondary">{asset.name}</Typography></TableCell>
+                      <TableCell align="right">{asset.quantity?.toFixed(4)}</TableCell>
+                      <TableCell align="right">{formatCurrency(asset.purchase_price)}</TableCell>
+                      <TableCell align="right">{formatCurrency(asset.current_price)}</TableCell>
+                      <TableCell align="right">{formatCurrency(asset.total_invested)}</TableCell>
+                      <TableCell align="right">{formatCurrency(asset.current_value)}</TableCell>
+                      <TableCell align="right" sx={{ color: asset.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>{formatCurrency(asset.profit_loss)}</TableCell>
+                      <TableCell align="right"><Chip label={`${asset.profit_loss_percentage >= 0 ? '+' : ''}${asset.profit_loss_percentage?.toFixed(2)}%`} color={asset.profit_loss_percentage >= 0 ? 'success' : 'error'} size="small" icon={asset.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />} /></TableCell>
+                      <TableCell align="center">
+                        <IconButton size="small" color="primary" onClick={() => handleEdit(asset)} title="Edit"><Edit fontSize="small" /></IconButton>
+                        <IconButton size="small" color="error" onClick={() => handleDelete(asset.id, asset.name)} title="Delete"><Delete fontSize="small" /></IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </React.Fragment>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingId ? 'Edit' : 'Add'} {PAGE_TITLE}</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12}><TextField fullWidth label="Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Symbol / Ticker" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Quantity" type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} inputProps={{ min: 0, step: '0.0001' }} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Purchase Price" type="number" value={form.purchase_price} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} inputProps={{ min: 0, step: '0.01' }} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Current Price" type="number" value={form.current_price} onChange={(e) => setForm({ ...form, current_price: e.target.value })} inputProps={{ min: 0, step: '0.01' }} helperText="Leave empty to use purchase price" /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Broker" value={form.broker_name} onChange={(e) => setForm({ ...form, broker_name: e.target.value })} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Account ID" value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })} /></Grid>
+            <Grid item xs={12}><TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleSave} variant="contained" disabled={saving}>{saving ? <CircularProgress size={24} /> : editingId ? 'Save' : 'Add'}</Button>
+        </DialogActions>
+      </Dialog>
+      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })} message={snackbar.message} />
+    </Box>
+  );
+};
+
+export default REITs;

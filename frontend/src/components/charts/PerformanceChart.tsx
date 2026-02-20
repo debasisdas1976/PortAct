@@ -25,7 +25,11 @@ import {
 import { AppDispatch, RootState } from '../../store';
 import { fetchPortfolioPerformance, fetchAssetPerformance, fetchAssetsList } from '../../store/slices/portfolioSlice';
 
-const PerformanceChart: React.FC = () => {
+interface PerformanceChartProps {
+  hideNumbers?: boolean;
+}
+
+const PerformanceChart: React.FC<PerformanceChartProps> = ({ hideNumbers = false }) => {
   const dispatch = useDispatch<AppDispatch>();
   const { performanceData, assetPerformanceData, assetsList, loading } = useSelector(
     (state: RootState) => state.portfolio
@@ -54,7 +58,10 @@ const PerformanceChart: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, selectedAssetId, timePeriod]);
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number, hide: boolean = false) => {
+    if (hide) {
+      return '₹ ••••••';
+    }
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
@@ -235,24 +242,24 @@ const PerformanceChart: React.FC = () => {
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="date" />
           <YAxis
-            tickFormatter={(value) => formatCurrency(value)}
+            tickFormatter={(value) => hideNumbers ? '•••' : formatCurrency(value)}
             width={100}
           />
           <Tooltip
             formatter={(value: number, name: string) => {
               if (name === 'returnPercentage') {
-                return [`${value.toFixed(2)}%`, 'Return %'];
+                return [hideNumbers ? '••••' : `${value.toFixed(2)}%`, 'Return %'];
               }
               if (name === 'value') {
-                return [formatCurrency(value), 'Current Value'];
+                return [formatCurrency(value, hideNumbers), 'Current Value'];
               }
               if (name === 'invested') {
-                return [formatCurrency(value), 'Invested'];
+                return [formatCurrency(value, hideNumbers), 'Invested'];
               }
               if (name === 'gainLoss') {
-                return [formatCurrency(value), 'Gain/Loss'];
+                return [formatCurrency(value, hideNumbers), 'Gain/Loss'];
               }
-              return [formatCurrency(value), name];
+              return [formatCurrency(value, hideNumbers), name];
             }}
             labelStyle={{ color: '#000' }}
           />

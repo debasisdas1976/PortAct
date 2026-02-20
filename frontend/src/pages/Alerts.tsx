@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
@@ -14,14 +14,19 @@ import {
   CircularProgress,
   Alert as MuiAlert,
   IconButton,
+  Button,
+  Snackbar,
 } from '@mui/material';
-import { Delete, CheckCircle, Warning, Error as ErrorIcon } from '@mui/icons-material';
+import { Delete, CheckCircle, Warning, Error as ErrorIcon, Refresh } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchAlerts, deleteAlert } from '../store/slices/alertsSlice';
+import api from '../services/api';
 
 const Alerts: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { alerts, loading, error } = useSelector((state: RootState) => state.alerts);
+  const [fetchingNews, setFetchingNews] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' });
 
   useEffect(() => {
     dispatch(fetchAlerts());
@@ -29,6 +34,34 @@ const Alerts: React.FC = () => {
 
   const handleDelete = (id: number) => {
     dispatch(deleteAlert(id));
+  };
+
+  const handleFetchNews = async () => {
+    setFetchingNews(true);
+    try {
+      await api.post('/alerts/fetch-news?limit=10');
+      setSnackbar({
+        open: true,
+        message: 'News fetching started! New alerts will appear shortly.',
+        severity: 'success'
+      });
+      // Refresh alerts after a delay
+      setTimeout(() => {
+        dispatch(fetchAlerts());
+      }, 5000);
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.detail || 'Failed to fetch news',
+        severity: 'error'
+      });
+    } finally {
+      setFetchingNews(false);
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   const getSeverityIcon = (severity: string) => {
@@ -85,9 +118,19 @@ const Alerts: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Alerts & Notifications
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">
+          Alerts & Notifications
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={fetchingNews ? <CircularProgress size={20} color="inherit" /> : <Refresh />}
+          onClick={handleFetchNews}
+          disabled={fetchingNews}
+        >
+          {fetchingNews ? 'Fetching News...' : 'Fetch Latest News'}
+        </Button>
+      </Box>
 
       <Paper>
         <TableContainer>
@@ -161,6 +204,17 @@ const Alerts: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <MuiAlert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </MuiAlert>
+      </Snackbar>
     </Box>
   );
 };
