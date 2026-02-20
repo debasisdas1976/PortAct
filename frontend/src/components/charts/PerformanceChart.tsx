@@ -31,7 +31,7 @@ interface PerformanceChartProps {
 
 const PerformanceChart: React.FC<PerformanceChartProps> = ({ hideNumbers = false }) => {
   const dispatch = useDispatch<AppDispatch>();
-  const { performanceData, assetPerformanceData, assetsList, loading } = useSelector(
+  const { performanceData, assetPerformanceData, assetsList, performanceLoading: loading, performanceError: error } = useSelector(
     (state: RootState) => state.portfolio
   );
 
@@ -97,6 +97,16 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ hideNumbers = false
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
+        <Typography color="error">
+          Failed to load performance data. Please try refreshing the page.
+        </Typography>
       </Box>
     );
   }

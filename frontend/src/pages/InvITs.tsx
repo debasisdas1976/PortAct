@@ -2,11 +2,13 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Card, CardContent, CircularProgress, Grid, Paper, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Typography, Chip, Alert, Button,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, Snackbar,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton,
 } from '@mui/material';
 import { Add, Edit, Delete, TrendingUp, TrendingDown } from '@mui/icons-material';
 import { assetsAPI } from '../services/api';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface AssetItem {
   id: number; name: string; symbol: string; quantity: number; purchase_price: number;
@@ -31,15 +33,15 @@ const buildDematLabel = (da: DematAccount) => {
 };
 
 const InvITs: React.FC = () => {
+  const { notify } = useNotification();
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '' });
+  const [dialogError, setDialogError] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
@@ -49,8 +51,8 @@ const InvITs: React.FC = () => {
       const labelMap: Record<number, string> = {};
       for (const da of dematRes.data as DematAccount[]) labelMap[da.id] = buildDematLabel(da);
       setDematLabelMap(labelMap);
-    } catch { setError('Failed to fetch holdings'); } finally { setLoading(false); }
-  }, []);
+    } catch (err) { notify.error(getErrorMessage(err, 'Failed to load data')); } finally { setLoading(false); }
+  }, [notify]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -82,22 +84,23 @@ const InvITs: React.FC = () => {
     setDialogOpen(true);
   };
   const handleSave = async () => {
-    if (!form.name) { setSnackbar({ open: true, message: 'Name is required' }); return; }
+    if (!form.name) { setDialogError('Name is required'); return; }
+    setDialogError('');
     const qty = parseFloat(form.quantity) || 1;
     const buyPrice = parseFloat(form.purchase_price) || 0;
     const curPrice = parseFloat(form.current_price) || buyPrice;
-    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, current_value: qty * curPrice, broker_name: form.broker_name || undefined, account_id: form.account_id || undefined, notes: form.notes || undefined };
+    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, broker_name: form.broker_name || undefined, account_id: form.account_id || undefined, notes: form.notes || undefined };
     try {
       setSaving(true);
       if (editingId) { await assetsAPI.update(editingId, payload); } else { await assetsAPI.create(payload); }
-      setSnackbar({ open: true, message: editingId ? 'Updated successfully' : 'Added successfully' });
+      notify.success(editingId ? 'InvIT updated successfully' : 'InvIT added successfully');
       setDialogOpen(false); fetchData();
-    } catch (err: any) { setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to save' }); } finally { setSaving(false); }
+    } catch (err) { notify.error(getErrorMessage(err, 'Failed to save')); } finally { setSaving(false); }
   };
   const handleDelete = async (id: number, name: string) => {
     if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    try { await assetsAPI.delete(id); setSnackbar({ open: true, message: 'Deleted successfully' }); fetchData(); }
-    catch (err: any) { setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to delete' }); }
+    try { await assetsAPI.delete(id); notify.success('InvIT deleted successfully'); fetchData(); }
+    catch (err) { notify.error(getErrorMessage(err, 'Failed to delete')); }
   };
 
   if (loading) return (<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh' }}><CircularProgress /></Box>);
@@ -108,7 +111,6 @@ const InvITs: React.FC = () => {
         <Typography variant="h4">{PAGE_TITLE}</Typography>
         <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>Add</Button>
       </Box>
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Holdings</Typography><Typography variant="h4">{assets.length}</Typography></CardContent></Card></Grid>
         <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Current Value</Typography><Typography variant="h5">{formatCurrency(totalValue)}</Typography></CardContent></Card></Grid>
@@ -164,6 +166,7 @@ const InvITs: React.FC = () => {
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingId ? 'Edit' : 'Add'} {PAGE_TITLE}</DialogTitle>
         <DialogContent>
+          {dialogError && <Alert severity="error" sx={{ mb: 2 }}>{dialogError}</Alert>}
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}><TextField fullWidth label="Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Symbol / Ticker" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} /></Grid>
@@ -180,7 +183,6 @@ const InvITs: React.FC = () => {
           <Button onClick={handleSave} variant="contained" disabled={saving}>{saving ? <CircularProgress size={24} /> : editingId ? 'Save' : 'Add'}</Button>
         </DialogActions>
       </Dialog>
-      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })} message={snackbar.message} />
     </Box>
   );
 };

@@ -32,6 +32,8 @@ import {
   CurrencyBitcoin as CryptoIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface CryptoAccount {
   id: number;
@@ -56,6 +58,7 @@ interface CryptoSearchResult {
 }
 
 const CryptoAccounts: React.FC = () => {
+  const { notify } = useNotification();
   const [accounts, setAccounts] = useState<CryptoAccount[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [openAssetDialog, setOpenAssetDialog] = useState(false);
@@ -84,9 +87,6 @@ const CryptoAccounts: React.FC = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
   const exchangeNames = [
     { value: 'binance', label: 'Binance' },
     { value: 'coinbase', label: 'Coinbase' },
@@ -119,7 +119,7 @@ const CryptoAccounts: React.FC = () => {
       });
       setAccounts(response.data);
     } catch (err) {
-      setError('Failed to fetch crypto accounts');
+      notify.error(getErrorMessage(err, 'Failed to fetch crypto accounts'));
     }
   };
 
@@ -137,7 +137,7 @@ const CryptoAccounts: React.FC = () => {
       });
       setCryptoOptions(response.data.results || []);
     } catch (err) {
-      console.error('Failed to search crypto:', err);
+      notify.error(getErrorMessage(err, 'Failed to search crypto'));
     } finally {
       setSearchLoading(false);
     }
@@ -152,7 +152,7 @@ const CryptoAccounts: React.FC = () => {
       setCurrentPrice(response.data.price);
       return response.data.price;
     } catch (err) {
-      console.error('Failed to fetch price:', err);
+      notify.error(getErrorMessage(err, 'Failed to fetch price'));
       return null;
     }
   };
@@ -187,7 +187,6 @@ const CryptoAccounts: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingAccount(null);
-    setError('');
   };
 
   const handleOpenAssetDialog = (accountId: number) => {
@@ -221,20 +220,19 @@ const CryptoAccounts: React.FC = () => {
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('Crypto account updated successfully');
+        notify.success('Crypto account updated successfully');
       } else {
         await axios.post(
           'http://localhost:8000/api/v1/crypto-accounts/',
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('Crypto account created successfully');
+        notify.success('Crypto account added successfully');
       }
       handleCloseDialog();
       fetchAccounts();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to save crypto account');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save crypto account'));
     }
   };
 
@@ -261,12 +259,11 @@ const CryptoAccounts: React.FC = () => {
       await axios.post('http://localhost:8000/api/v1/assets/', assetData, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess('Crypto asset added successfully');
+      notify.success('Crypto asset added successfully');
       handleCloseAssetDialog();
       fetchAccounts();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to add crypto asset');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to add crypto asset'));
     }
   };
 
@@ -278,11 +275,10 @@ const CryptoAccounts: React.FC = () => {
       await axios.delete(`http://localhost:8000/api/v1/crypto-accounts/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess('Crypto account deleted successfully');
+      notify.success('Crypto account deleted successfully');
       fetchAccounts();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to delete crypto account');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete crypto account'));
     }
   };
 
@@ -310,9 +306,6 @@ const CryptoAccounts: React.FC = () => {
           Add Account
         </Button>
       </Box>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} md={3}>

@@ -16,7 +16,7 @@ import { fetchPortfolioPerformance } from '../../store/slices/portfolioSlice';
 
 const PortfolioChart: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { performanceData, loading } = useSelector((state: RootState) => state.portfolio);
+  const { performanceData, performanceLoading: loading, performanceError: error } = useSelector((state: RootState) => state.portfolio);
 
   useEffect(() => {
     // Fetch 90 days of data for the bottom chart
@@ -44,6 +44,16 @@ const PortfolioChart: React.FC = () => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
   };
+
+  if (error) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
+        <Typography color="error">
+          Failed to load chart data. Please try refreshing the page.
+        </Typography>
+      </Box>
+    );
+  }
 
   if (!performanceData?.snapshots || performanceData.snapshots.length === 0) {
     return (

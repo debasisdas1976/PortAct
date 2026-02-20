@@ -10,6 +10,7 @@ import Layout from './components/Layout';
 
 // Components
 import SessionTimeout from './components/SessionTimeout';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Pages
 import Login from './pages/Login';
@@ -54,6 +55,7 @@ import InvITs from './pages/InvITs';
 import SovereignGoldBond from './pages/SovereignGoldBond';
 import RealEstate from './pages/RealEstate';
 import Settings from './pages/Settings';
+import Help from './pages/Help';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -94,17 +96,19 @@ window.location.href = '/login?session_expired=true';
       
       <Routes>
         {/* Public Routes */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
+        <Route path="/register" element={<ErrorBoundary><Register /></ErrorBoundary>} />
+        <Route path="/forgot-password" element={<ErrorBoundary><ForgotPassword /></ErrorBoundary>} />
+        <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
         
         {/* Protected Routes */}
         <Route
           path="/"
           element={
             <ProtectedRoute>
-              <Layout />
+              <ErrorBoundary>
+                <Layout />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         >
@@ -149,6 +153,7 @@ window.location.href = '/login?session_expired=true';
           <Route path="farm-land" element={<RealEstate propertyType="farm_land" title="Farm Land" />} />
           <Route path="house" element={<RealEstate propertyType="house" title="House" />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="help" element={<Help />} />
         </Route>
         
         {/* Catch all */}

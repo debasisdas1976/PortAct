@@ -2,11 +2,13 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Card, CardContent, CircularProgress, Grid, Paper, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Typography, Chip, Alert, Button,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, Snackbar,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton,
 } from '@mui/material';
 import { Add, Edit, Delete, TrendingUp, TrendingDown } from '@mui/icons-material';
 import { assetsAPI } from '../services/api';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface AssetItem {
   id: number; name: string; symbol: string; isin?: string; quantity: number;
@@ -23,22 +25,22 @@ const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
 
 const RBIBond: React.FC = () => {
+  const { notify } = useNotification();
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '' });
+  const [dialogError, setDialogError] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get('/assets/');
       setAssets((res.data as AssetItem[]).filter((a) => a.asset_type?.toLowerCase() === ASSET_TYPE));
-    } catch { setError('Failed to fetch holdings'); } finally { setLoading(false); }
-  }, []);
+    } catch (err) { notify.error(getErrorMessage(err, 'Failed to load data')); } finally { setLoading(false); }
+  }, [notify]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -55,26 +57,27 @@ const RBIBond: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!form.name) { setSnackbar({ open: true, message: 'Name is required' }); return; }
+    if (!form.name) { setDialogError('Name is required'); return; }
+    setDialogError('');
     const qty = parseFloat(form.quantity) || 1;
     const buyPrice = parseFloat(form.purchase_price) || 0;
     const curPrice = parseFloat(form.current_price) || buyPrice;
     const details: Record<string, any> = {};
     if (form.interest_rate) details.interest_rate = parseFloat(form.interest_rate);
     if (form.maturity_date) details.maturity_date = form.maturity_date;
-    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, isin: form.isin || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, current_value: qty * curPrice, broker_name: form.broker_name || undefined, notes: form.notes || undefined, details };
+    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, isin: form.isin || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, broker_name: form.broker_name || undefined, notes: form.notes || undefined, details };
     try {
       setSaving(true);
       if (editingId) { await assetsAPI.update(editingId, payload); } else { await assetsAPI.create(payload); }
-      setSnackbar({ open: true, message: editingId ? 'Updated successfully' : 'Added successfully' });
+      notify.success(editingId ? 'Bond updated successfully' : 'Bond added successfully');
       setDialogOpen(false); fetchData();
-    } catch (err: any) { setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to save' }); } finally { setSaving(false); }
+    } catch (err) { notify.error(getErrorMessage(err, 'Failed to save')); } finally { setSaving(false); }
   };
 
   const handleDelete = async (id: number, name: string) => {
     if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    try { await assetsAPI.delete(id); setSnackbar({ open: true, message: 'Deleted successfully' }); fetchData(); }
-    catch (err: any) { setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to delete' }); }
+    try { await assetsAPI.delete(id); notify.success('Bond deleted successfully'); fetchData(); }
+    catch (err) { notify.error(getErrorMessage(err, 'Failed to delete')); }
   };
 
   if (loading) return (<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh' }}><CircularProgress /></Box>);
@@ -85,7 +88,6 @@ const RBIBond: React.FC = () => {
         <Typography variant="h4">{PAGE_TITLE}</Typography>
         <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>Add</Button>
       </Box>
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Holdings</Typography><Typography variant="h4">{assets.length}</Typography></CardContent></Card></Grid>
         <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Current Value</Typography><Typography variant="h5">{formatCurrency(totalValue)}</Typography></CardContent></Card></Grid>
@@ -126,6 +128,7 @@ const RBIBond: React.FC = () => {
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingId ? 'Edit' : 'Add'} {PAGE_TITLE}</DialogTitle>
         <DialogContent>
+          {dialogError && <Alert severity="error" sx={{ mb: 2 }}>{dialogError}</Alert>}
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}><TextField fullWidth label="Bond Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Symbol" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} /></Grid>
@@ -144,7 +147,6 @@ const RBIBond: React.FC = () => {
           <Button onClick={handleSave} variant="contained" disabled={saving}>{saving ? <CircularProgress size={24} /> : editingId ? 'Save' : 'Add'}</Button>
         </DialogActions>
       </Dialog>
-      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })} message={snackbar.message} />
     </Box>
   );
 };

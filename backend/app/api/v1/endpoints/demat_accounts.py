@@ -7,6 +7,10 @@ from app.api.dependencies import get_current_active_user
 from app.models.user import User
 from app.models.demat_account import DematAccount, BrokerName
 from app.models.asset import Asset, AssetType
+from app.models.alert import Alert
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.mutual_fund_holding import MutualFundHolding
+from app.models.transaction import Transaction
 from app.schemas.demat_account import (
     DematAccount as DematAccountSchema,
     DematAccountCreate,
@@ -283,16 +287,41 @@ async def delete_demat_account(
         DematAccount.id == account_id,
         DematAccount.user_id == current_user.id
     ).first()
-    
+
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Demat account not found"
         )
-    
+
+    # Get all asset IDs linked to this demat account
+    asset_ids = [a.id for a in db.query(Asset.id).filter(
+        Asset.demat_account_id == account.id
+    ).all()]
+
+    if asset_ids:
+        # Clear FK references that lack ON DELETE CASCADE
+        db.query(Alert).filter(Alert.asset_id.in_(asset_ids)).update(
+            {Alert.asset_id: None}, synchronize_session=False
+        )
+        db.query(AssetSnapshot).filter(AssetSnapshot.asset_id.in_(asset_ids)).update(
+            {AssetSnapshot.asset_id: None}, synchronize_session=False
+        )
+        db.query(MutualFundHolding).filter(MutualFundHolding.asset_id.in_(asset_ids)).delete(
+            synchronize_session=False
+        )
+        # Delete transactions referencing the assets
+        db.query(Transaction).filter(Transaction.asset_id.in_(asset_ids)).delete(
+            synchronize_session=False
+        )
+        # Delete the assets themselves
+        db.query(Asset).filter(Asset.demat_account_id == account.id).delete(
+            synchronize_session=False
+        )
+
     db.delete(account)
     db.commit()
-    
+
     return None
 
 # Made with Bob

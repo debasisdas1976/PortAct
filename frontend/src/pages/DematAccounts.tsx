@@ -21,7 +21,6 @@ import {
   TextField,
   Typography,
   Chip,
-  Alert,
   InputAdornment,
   CircularProgress
 } from '@mui/material';
@@ -36,6 +35,8 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface DematAccount {
   id: number;
@@ -55,6 +56,7 @@ interface DematAccount {
 }
 
 const DematAccounts: React.FC = () => {
+  const { notify } = useNotification();
   const [accounts, setAccounts] = useState<DematAccount[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [openUploadDialog, setOpenUploadDialog] = useState(false);
@@ -75,8 +77,6 @@ const DematAccounts: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const statementTypes = [
     { value: 'broker_statement', label: 'Broker Statement' },
@@ -115,7 +115,7 @@ const DematAccounts: React.FC = () => {
       });
       setAccounts(response.data);
     } catch (err) {
-      setError('Failed to fetch demat accounts');
+      notify.error(getErrorMessage(err, 'Failed to fetch demat accounts'));
     }
   };
 
@@ -151,7 +151,6 @@ const DematAccounts: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingAccount(null);
-    setError('');
   };
 
   const handleSubmit = async () => {
@@ -170,31 +169,19 @@ const DematAccounts: React.FC = () => {
           submitData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('Demat account updated successfully');
+        notify.success('Demat account updated successfully');
       } else {
         await axios.post(
           'http://localhost:8000/api/v1/demat-accounts/',
           submitData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('Demat account created successfully');
+        notify.success('Demat account added successfully');
       }
       handleCloseDialog();
       fetchAccounts();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail;
-      if (typeof errorDetail === 'string') {
-        setError(errorDetail);
-      } else if (Array.isArray(errorDetail)) {
-        const errorMessages = errorDetail.map((e: any) => {
-          if (typeof e === 'string') return e;
-          return `${e.loc?.join('.')}: ${e.msg}`;
-        }).join(', ');
-        setError(errorMessages);
-      } else {
-        setError(`Failed to save demat account: ${err.message}`);
-      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save demat account'));
     }
   };
 
@@ -206,12 +193,10 @@ const DematAccounts: React.FC = () => {
       await axios.delete(`http://localhost:8000/api/v1/demat-accounts/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess('Demat account deleted successfully');
+      notify.success('Demat account deleted successfully');
       fetchAccounts();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail;
-      setError(typeof errorDetail === 'string' ? errorDetail : 'Failed to delete demat account');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete demat account'));
     }
   };
 
@@ -223,7 +208,7 @@ const DematAccounts: React.FC = () => {
 
   const handleUploadStatement = async () => {
     if (!selectedFile || !uploadBroker || !statementType) {
-      setError('Please fill all fields and select a file');
+      notify.error('Please fill all fields and select a file');
       return;
     }
 
@@ -248,18 +233,10 @@ const DematAccounts: React.FC = () => {
       setUploadBroker('');
       setStatementType('broker_statement');
       setPassword('');
-      setSuccess('Statement uploaded and processed successfully');
+      notify.success('Statement uploaded and processed successfully');
       fetchAccounts();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail;
-      if (Array.isArray(errorDetail)) {
-        setError(errorDetail.map((e: any) => e.msg).join(', '));
-      } else if (typeof errorDetail === 'string') {
-        setError(errorDetail);
-      } else {
-        setError('Failed to upload statement');
-      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to upload statement'));
     } finally {
       setUploading(false);
     }
@@ -298,9 +275,6 @@ const DematAccounts: React.FC = () => {
           </Button>
         </Box>
       </Box>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} md={3}>
@@ -516,7 +490,6 @@ const DematAccounts: React.FC = () => {
               }}
             />
 
-            {error && <Alert severity="error">{error}</Alert>}
           </Box>
         </DialogContent>
         <DialogActions>

@@ -84,7 +84,6 @@ class NewsScheduler:
                     assets_processed, alerts_created, _ = await ai_news_service.process_user_portfolio(
                         db=db,
                         user_id=user.id,
-                        limit=settings.NEWS_LIMIT_PER_USER,
                     )
                     total_assets += assets_processed
                     total_alerts += alerts_created
@@ -131,7 +130,6 @@ class NewsScheduler:
             assets_processed, alerts_created, _ = await ai_news_service.process_user_portfolio(
                 db=db,
                 user_id=user_id,
-                limit=limit or settings.NEWS_LIMIT_PER_USER,
             )
             logger.info(
                 f"Manual news fetch for user {user_id}: "

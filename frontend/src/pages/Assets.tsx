@@ -22,7 +22,6 @@ import {
   Tab,
   Menu,
   MenuItem,
-  Snackbar,
   Button,
   Dialog,
   DialogTitle,
@@ -32,11 +31,14 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Tooltip,
 } from '@mui/material';
-import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, Add, AccountBalance, Refresh, Delete, Warning, Edit, CheckCircle, CameraAlt } from '@mui/icons-material';
+import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, Add, AccountBalance, Refresh, Delete, Warning, Edit, CheckCircle, CameraAlt, Error as ErrorIcon } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchAssets } from '../store/slices/assetsSlice';
 import api, { assetsAPI } from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface Asset {
   id: number;
@@ -145,12 +147,11 @@ const ASSET_TYPES = [
 const Assets: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { assets, loading, error } = useSelector((state: RootState) => state.assets);
+  const { notify } = useNotification();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [currentTab, setCurrentTab] = useState(0);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedAsset, setSelectedAsset] = useState<GroupedAsset | null>(null);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [updating, setUpdating] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newAsset, setNewAsset] = useState({
@@ -188,17 +189,14 @@ const Assets: React.FC = () => {
       setRefreshingPrices(true);
       await api.post('/prices/update', {});
       
-      setSnackbarMessage('Price update triggered! Prices will be updated in the background.');
-      setSnackbarOpen(true);
-      
+      notify.success('Price update triggered! Prices will be updated in the background.');
+
       // Refresh assets after a short delay to show updated prices
       setTimeout(() => {
         dispatch(fetchAssets());
       }, 3000);
-    } catch (error: any) {
-      console.error('Error refreshing prices:', error);
-      setSnackbarMessage(error.response?.data?.detail || 'Failed to refresh prices');
-      setSnackbarOpen(true);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to refresh prices'));
     } finally {
       setRefreshingPrices(false);
     }
@@ -209,15 +207,12 @@ const Assets: React.FC = () => {
       setSnapshotLoading(true);
       await api.post('/dashboard/take-snapshot', {});
       
-      setSnackbarMessage('Snapshot created successfully!');
-      setSnackbarOpen(true);
-      
+      notify.success('Snapshot created successfully!');
+
       // Refresh assets after snapshot
       dispatch(fetchAssets());
-    } catch (error: any) {
-      console.error('Error taking snapshot:', error);
-      setSnackbarMessage(error.response?.data?.detail || 'Failed to take snapshot');
-      setSnackbarOpen(true);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to take snapshot'));
     } finally {
       setSnapshotLoading(false);
     }
@@ -229,7 +224,7 @@ const Assets: React.FC = () => {
       const response = await api.get('/bank-accounts/');
       setBankAccounts(response.data);
     } catch (err) {
-      console.error('Failed to fetch bank accounts:', err);
+      notify.error(getErrorMessage(err, 'Failed to load bank accounts'));
     } finally {
       setBankAccountsLoading(false);
     }
@@ -241,7 +236,7 @@ const Assets: React.FC = () => {
       const response = await api.get('/demat-accounts/');
       setDematAccounts(response.data);
     } catch (err) {
-      console.error('Failed to fetch demat accounts:', err);
+      notify.error(getErrorMessage(err, 'Failed to load demat accounts'));
     } finally {
       setDematAccountsLoading(false);
     }
@@ -413,12 +408,9 @@ const Assets: React.FC = () => {
       // Refresh assets
       await dispatch(fetchAssets());
 
-      setSnackbarMessage(`Successfully reclassified ${selectedAsset.symbol} as ${getAssetTypeLabel(newType)}`);
-      setSnackbarOpen(true);
-    } catch (error) {
-      console.error('Error updating asset type:', error);
-      setSnackbarMessage('Failed to update asset type. Please try again.');
-      setSnackbarOpen(true);
+      notify.success(`Successfully reclassified ${selectedAsset.symbol} as ${getAssetTypeLabel(newType)}`);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to update asset type'));
     } finally {
       setUpdating(false);
     }
@@ -433,19 +425,12 @@ const Assets: React.FC = () => {
     try {
       await assetsAPI.delete(assetId);
       await dispatch(fetchAssets());
-      setSnackbarMessage(`Successfully deleted ${assetName}`);
-      setSnackbarOpen(true);
-    } catch (error) {
-      console.error('Error deleting asset:', error);
-      setSnackbarMessage('Failed to delete asset. Please try again.');
-      setSnackbarOpen(true);
+      notify.success('Asset deleted successfully');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete asset'));
     } finally {
       setUpdating(false);
     }
-  };
-
-  const handleSnackbarClose = () => {
-    setSnackbarOpen(false);
   };
 
   const handleAddAssetClick = () => {
@@ -479,8 +464,7 @@ const Assets: React.FC = () => {
       const currentPrice = parseFloat(newAsset.current_price || newAsset.purchase_price);
       
       if (!newAsset.name || !newAsset.symbol || isNaN(quantity) || isNaN(purchasePrice)) {
-        setSnackbarMessage('Please fill in all required fields with valid values');
-        setSnackbarOpen(true);
+        notify.error('Please fill in all required fields with valid values');
         setUpdating(false);
         return;
       }
@@ -500,14 +484,11 @@ const Assets: React.FC = () => {
 
       await assetsAPI.create(assetData);
       await dispatch(fetchAssets());
-      
-      setSnackbarMessage(`Successfully added ${newAsset.symbol}`);
-      setSnackbarOpen(true);
+
+      notify.success('Asset created successfully');
       handleAddDialogClose();
-    } catch (error: any) {
-      console.error('Error adding asset:', error);
-      setSnackbarMessage(error.response?.data?.detail || 'Failed to add asset. Please try again.');
-      setSnackbarOpen(true);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to add asset'));
     } finally {
       setUpdating(false);
     }
@@ -516,15 +497,18 @@ const Assets: React.FC = () => {
   const handleManualPriceUpdate = async (assetId: number, assetSymbol: string) => {
     try {
       setUpdatingAssetId(assetId);
-      await api.post(`/assets/${assetId}/update-price`, {});
-      
+      const response = await api.post(`/assets/${assetId}/update-price`, {});
+
       await dispatch(fetchAssets());
-      setSnackbarMessage(`Price updated for ${assetSymbol}`);
-      setSnackbarOpen(true);
-    } catch (error: any) {
-      console.error('Error updating price:', error);
-      setSnackbarMessage(error.response?.data?.detail || `Failed to update price for ${assetSymbol}`);
-      setSnackbarOpen(true);
+
+      // Check if the price update actually succeeded by inspecting the response
+      if (response.data?.price_update_failed) {
+        notify.error(`Failed to update price for ${assetSymbol}: ${response.data.price_update_error || 'Price source unavailable'}`);
+      } else {
+        notify.success(`Price updated for ${assetSymbol}`);
+      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, `Failed to update price for ${assetSymbol}`));
     } finally {
       setUpdatingAssetId(null);
     }
@@ -576,13 +560,10 @@ const Assets: React.FC = () => {
       });
       
       await dispatch(fetchAssets());
-      setSnackbarMessage(`Successfully updated ${editingAsset.symbol}`);
-      setSnackbarOpen(true);
+      notify.success('Asset updated successfully');
       handleEditDialogClose();
-    } catch (error: any) {
-      console.error('Error updating asset:', error);
-      setSnackbarMessage(error.response?.data?.detail || 'Failed to update asset');
-      setSnackbarOpen(true);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to update asset'));
     } finally {
       setUpdating(false);
     }
@@ -848,14 +829,17 @@ const Assets: React.FC = () => {
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
                         {formatCurrency(currentPrice)}
                         {group.instances.some(i => i.price_update_failed) ? (
-                          <Warning fontSize="small" color="warning"
-                            titleAccess={group.instances.find(i => i.price_update_failed)?.price_update_error || "Price update failed"} />
+                          <Tooltip title={group.instances.find(i => i.price_update_failed)?.price_update_error || "Price update failed"} arrow>
+                            <ErrorIcon fontSize="small" color="error" />
+                          </Tooltip>
                         ) : group.instances.some(i => i.last_price_update) ? (
-                          <CheckCircle fontSize="small" color="success" sx={{ opacity: 0.6 }}
-                            titleAccess={`Last updated: ${new Date(group.instances[0].last_price_update!).toLocaleString()}`} />
+                          <Tooltip title={`Last updated: ${new Date(group.instances[0].last_price_update!).toLocaleString()}`} arrow>
+                            <CheckCircle fontSize="small" color="success" sx={{ opacity: 0.6 }} />
+                          </Tooltip>
                         ) : (
-                          <Warning fontSize="small" sx={{ opacity: 0.4, color: 'grey.500' }}
-                            titleAccess="Price never updated - click refresh to update" />
+                          <Tooltip title="Price never updated - click refresh to update" arrow>
+                            <Warning fontSize="small" sx={{ opacity: 0.4, color: 'grey.500' }} />
+                          </Tooltip>
                         )}
                       </Box>
                     </TableCell>
@@ -1444,13 +1428,6 @@ const Assets: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={4000}
-        onClose={handleSnackbarClose}
-        message={snackbarMessage}
-      />
     </Box>
   );
 };

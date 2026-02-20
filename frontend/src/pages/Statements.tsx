@@ -12,7 +12,6 @@ import {
   TableRow,
   Chip,
   CircularProgress,
-  Alert,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -25,6 +24,8 @@ import {
 } from '@mui/material';
 import { Upload, CloudUpload, Delete, Visibility, VisibilityOff } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface Statement {
   id: number;
@@ -38,10 +39,9 @@ interface Statement {
 }
 
 const Statements: React.FC = () => {
+  const { notify } = useNotification();
   const [statements, setStatements] = useState<Statement[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<Statement | null>(null);
@@ -62,16 +62,8 @@ const Statements: React.FC = () => {
       setLoading(true);
       const response = await api.get('/statements/');
       setStatements(response.data);
-      setError('');
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail;
-      if (Array.isArray(errorDetail)) {
-        setError(errorDetail.map((e: any) => e.msg).join(', '));
-      } else if (typeof errorDetail === 'string') {
-        setError(errorDetail);
-      } else {
-        setError('Failed to fetch statements');
-      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to fetch statements'));
     } finally {
       setLoading(false);
     }
@@ -85,7 +77,7 @@ const Statements: React.FC = () => {
 
   const handleUpload = async () => {
     if (!selectedFile || !broker || !statementType) {
-      setError('Please fill all fields and select a file');
+      notify.error('Please fill all fields and select a file');
       return;
     }
 
@@ -110,17 +102,10 @@ const Statements: React.FC = () => {
       setBroker('');
       setStatementType('');
       setPassword('');
-      setError('');
+      notify.success('Statement uploaded successfully');
       fetchStatements();
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail;
-      if (Array.isArray(errorDetail)) {
-        setError(errorDetail.map((e: any) => e.msg).join(', '));
-      } else if (typeof errorDetail === 'string') {
-        setError(errorDetail);
-      } else {
-        setError('Failed to upload statement');
-      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to upload statement'));
     } finally {
       setUploading(false);
     }
@@ -137,17 +122,12 @@ const Statements: React.FC = () => {
     try {
       setDeleting(true);
       await api.delete(`/statements/${statementToDelete.id}`);
-      setSuccess(`Statement "${statementToDelete.filename}" deleted successfully`);
+      notify.success(`Statement "${statementToDelete.filename}" deleted successfully`);
       setDeleteDialogOpen(false);
       setStatementToDelete(null);
       fetchStatements();
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail;
-      if (typeof errorDetail === 'string') {
-        setError(errorDetail);
-      } else {
-        setError('Failed to delete statement');
-      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete statement'));
     } finally {
       setDeleting(false);
     }
@@ -188,18 +168,6 @@ const Statements: React.FC = () => {
           Upload Statement
         </Button>
       </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>
-          {success}
-        </Alert>
-      )}
 
       <Paper>
         <TableContainer>

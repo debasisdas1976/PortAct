@@ -124,7 +124,7 @@ const AlertsWithProgress: React.FC = () => {
     setFetchingNews(true);
     setProgress(null);
     try {
-      const response = await api.post('/alerts/fetch-news?limit=10');
+      const response = await api.post('/alerts/fetch-news');
       setSessionId(response.data.session_id);
       setTabValue(1);
     } catch (err: any) {
@@ -150,8 +150,15 @@ const AlertsWithProgress: React.FC = () => {
     }
   };
 
-  const handleDelete = (id: number) => {
-    dispatch(deleteAlert(id));
+  const handleDelete = async (id: number) => {
+    try {
+      await dispatch(deleteAlert(id)).unwrap();
+    } catch (err: any) {
+      showSnackbar(
+        err?.detail || err || 'Failed to dismiss alert',
+        'error',
+      );
+    }
   };
 
   const getSeverityIcon = (severity: string) => {

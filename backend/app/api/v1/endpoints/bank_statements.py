@@ -2,7 +2,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import os
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
@@ -116,9 +119,10 @@ async def upload_bank_statement(
                                         detail="Could not detect credit card bank from statement. Please update bank account to specify the correct bank."
                                     )
                     except Exception as e:
+                        logger.error(f"Error detecting bank from statement: {e}")
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Error detecting bank from statement: {str(e)}"
+                            detail="The statement format is not recognized. Please check the file."
                         )
                 else:
                     raise HTTPException(
@@ -200,6 +204,7 @@ async def upload_bank_statement(
                 created_expenses.append(expense)
                 
             except Exception as e:
+                logger.warning(f"Error processing transaction row: {e}")
                 error_count += 1
                 continue
         
@@ -233,17 +238,19 @@ async def upload_bank_statement(
         
     except ValueError as e:
         # Parser error
+        logger.error(f"Invalid statement format: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail="The statement format is not recognized. Please check the file."
         )
     except Exception as e:
         # Clean up file on error
         if os.path.exists(file_path):
             os.remove(file_path)
+        logger.error(f"Error processing statement: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing statement: {str(e)}"
+            detail="Failed to process the statement. Please check the file format and try again."
         )
 
 
@@ -388,9 +395,10 @@ async def reprocess_statement(
         }
         
     except Exception as e:
+        logger.error(f"Error reprocessing statement: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error reprocessing statement: {str(e)}"
+            detail="Failed to process the statement. Please check the file format and try again."
         )
 
 # Made with Bob

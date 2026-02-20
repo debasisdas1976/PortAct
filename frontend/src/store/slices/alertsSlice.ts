@@ -62,9 +62,15 @@ const alertsSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       })
+      .addCase(deleteAlert.pending, (state) => {
+        state.error = null;
+      })
       .addCase(deleteAlert.fulfilled, (state, action) => {
         state.alerts = state.alerts.filter((alert: any) => alert.id !== action.payload);
         state.unreadCount = state.alerts.filter((a: any) => !a.is_read).length;
+      })
+      .addCase(deleteAlert.rejected, (state, action) => {
+        state.error = action.payload as string;
       });
   },
 });

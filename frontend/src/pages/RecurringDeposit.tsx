@@ -43,6 +43,8 @@ import {
   Savings,
 } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface RDAccount {
   id: number;
@@ -89,9 +91,9 @@ const fmt = (v: number) =>
   }).format(v);
 
 const RecurringDeposit: React.FC = () => {
+  const { notify } = useNotification();
   const [rds, setRds] = useState<RDAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [txMap, setTxMap] = useState<Record<number, RDTx[]>>({});
   const [txLoading, setTxLoading] = useState(false);
@@ -142,20 +144,20 @@ const RecurringDeposit: React.FC = () => {
       for (const rd of autoAccounts) {
         try {
           await api.post(`/recurring-deposits/${rd.id}/generate`);
-        } catch {
-          // silently skip
+        } catch (err) {
+          console.warn(`Auto-update failed for RD ${rd.id}:`, err);
         }
       }
       if (autoAccounts.length > 0) {
         const res2 = await api.get('/recurring-deposits/');
         setRds(res2.data);
       }
-    } catch {
-      setError('Failed to load recurring deposits');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load recurring deposits'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [notify]);
 
   useEffect(() => {
     loadRds();
@@ -167,8 +169,8 @@ const RecurringDeposit: React.FC = () => {
     try {
       const res = await api.get(`/recurring-deposits/${rdId}`);
       setTxMap((prev) => ({ ...prev, [rdId]: res.data.transactions || [] }));
-    } catch {
-      setError('Failed to load transactions');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load transactions'));
     } finally {
       setTxLoading(false);
     }
@@ -199,8 +201,8 @@ const RecurringDeposit: React.FC = () => {
       setRds(rdRes.data);
       const txRes = await api.get(`/recurring-deposits/${rdId}`);
       setTxMap((prev) => ({ ...prev, [rdId]: txRes.data.transactions || [] }));
-    } catch {
-      setError('Failed to generate transactions');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to generate transactions'));
     } finally {
       setGenerating(null);
     }
@@ -227,13 +229,15 @@ const RecurringDeposit: React.FC = () => {
       };
       if (rdDlg.mode === 'add') {
         await api.post('/recurring-deposits/', payload);
+        notify.success('Recurring deposit added successfully');
       } else {
         await api.put(`/recurring-deposits/${rdDlg.data.id}`, payload);
+        notify.success('Recurring deposit updated successfully');
       }
       closeRdDlg();
       await loadRds();
-    } catch {
-      setError('Failed to save recurring deposit');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save recurring deposit'));
     } finally {
       setSaving(false);
     }
@@ -251,8 +255,9 @@ const RecurringDeposit: React.FC = () => {
         return n;
       });
       await loadRds();
-    } catch {
-      setError('Failed to delete recurring deposit');
+      notify.success('Recurring deposit deleted successfully');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete recurring deposit'));
     }
   };
 
@@ -297,16 +302,18 @@ const RecurringDeposit: React.FC = () => {
       };
       if (mode === 'add') {
         await api.post(`/recurring-deposits/${rdId}/transactions`, payload);
+        notify.success('Transaction added successfully');
       } else {
         await api.put(`/recurring-deposits/${rdId}/transactions/${data.id}`, payload);
+        notify.success('Transaction updated successfully');
       }
       closeTxDlg();
       const txRes = await api.get(`/recurring-deposits/${rdId}`);
       setTxMap((prev) => ({ ...prev, [rdId]: txRes.data.transactions || [] }));
       const rdRes = await api.get('/recurring-deposits/');
       setRds(rdRes.data);
-    } catch {
-      setError('Failed to save transaction');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save transaction'));
     } finally {
       setSaving(false);
     }
@@ -322,8 +329,9 @@ const RecurringDeposit: React.FC = () => {
       setTxMap((prev) => ({ ...prev, [rdId]: txRes.data.transactions || [] }));
       const rdRes = await api.get('/recurring-deposits/');
       setRds(rdRes.data);
-    } catch {
-      setError('Failed to delete transaction');
+      notify.success('Transaction deleted successfully');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete transaction'));
     }
   };
 
@@ -351,11 +359,6 @@ const RecurringDeposit: React.FC = () => {
         </Button>
       </Box>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
       {genMessage && (
         <Alert severity="info" sx={{ mb: 2 }} onClose={() => setGenMessage('')}>
           {genMessage}

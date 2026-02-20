@@ -36,6 +36,8 @@ import {
   Upload as UploadIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface MutualFundHolding {
   id: number;
@@ -101,10 +103,10 @@ interface HoldingsDashboard {
 }
 
 const MutualFundHoldings: React.FC = () => {
+  const { notify } = useNotification();
   const [mutualFunds, setMutualFunds] = useState<MutualFundWithHoldings[]>([]);
   const [dashboard, setDashboard] = useState<HoldingsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [fetchingHoldings, setFetchingHoldings] = useState<number | null>(null);
   const [selectedStock, setSelectedStock] = useState<HoldingsDashboardStock | null>(null);
   const [view, setView] = useState<'funds' | 'dashboard'>('dashboard');
@@ -126,8 +128,8 @@ const MutualFundHoldings: React.FC = () => {
         }
       );
       setMutualFunds(response.data);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to fetch mutual funds');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to fetch mutual funds'));
     }
   };
 
@@ -142,7 +144,7 @@ const MutualFundHoldings: React.FC = () => {
       );
       setDashboard(response.data);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to fetch dashboard');
+      notify.error(err.response?.data?.detail || 'Failed to fetch dashboard');
     }
   };
 
@@ -160,7 +162,7 @@ const MutualFundHoldings: React.FC = () => {
       await fetchMutualFunds();
       await fetchDashboard();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to fetch holdings');
+      notify.error(err.response?.data?.detail || 'Failed to fetch holdings');
     } finally {
       setFetchingHoldings(null);
     }
@@ -193,9 +195,8 @@ const MutualFundHoldings: React.FC = () => {
 
       await fetchMutualFunds();
       await fetchDashboard();
-      setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to upload CSV');
+      notify.error(err.response?.data?.detail || 'Failed to upload CSV');
     } finally {
       setUploadingFor(null);
     }
@@ -208,12 +209,11 @@ const MutualFundHoldings: React.FC = () => {
 
     // Validate file type
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      setError('Please upload an Excel file (.xlsx or .xls)');
+      notify.error('Please upload an Excel file (.xlsx or .xls)');
       return;
     }
 
     setUploadingConsolidatedFile(true);
-    setError(null);
     try {
       const token = localStorage.getItem('token');
       const formData = new FormData();
@@ -235,7 +235,7 @@ const MutualFundHoldings: React.FC = () => {
       setFundMappingPreview(response.data);
       setShowFundMappingDialog(true);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to preview consolidated file');
+      notify.error(err.response?.data?.detail || 'Failed to preview consolidated file');
     } finally {
       setUploadingConsolidatedFile(false);
       // Reset file input
@@ -247,7 +247,6 @@ const MutualFundHoldings: React.FC = () => {
     if (!fundMappingPreview) return;
 
     setConfirmingImport(true);
-    setError(null);
     try {
       const token = localStorage.getItem('token');
       
@@ -283,7 +282,7 @@ const MutualFundHoldings: React.FC = () => {
       await fetchMutualFunds();
       await fetchDashboard();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to import consolidated file');
+      notify.error(err.response?.data?.detail || 'Failed to import consolidated file');
     } finally {
       setConfirmingImport(false);
     }
@@ -359,12 +358,6 @@ const MutualFundHoldings: React.FC = () => {
           </Button>
         </Box>
       </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
 
       {view === 'dashboard' && dashboard && (
         <>

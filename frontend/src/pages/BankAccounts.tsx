@@ -27,6 +27,8 @@ import {
   FormControlLabel,
   Checkbox,
 } from '@mui/material';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -52,6 +54,7 @@ interface BankAccount {
 }
 
 const BankAccounts: React.FC = () => {
+  const { notify } = useNotification();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
 
   // Add/Edit dialog
@@ -77,9 +80,6 @@ const BankAccounts: React.FC = () => {
   const [autoCategorize, setAutoCategorize] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ imported: number; duplicates: number; categorized: number } | null>(null);
-
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const bankNames = [
     { value: 'icici_bank', label: 'ICICI Bank' },
@@ -112,7 +112,7 @@ const BankAccounts: React.FC = () => {
       });
       setAccounts(response.data);
     } catch (err) {
-      setError('Failed to fetch bank accounts');
+      notify.error(getErrorMessage(err, 'Failed to fetch bank accounts'));
     }
   };
 
@@ -149,7 +149,6 @@ const BankAccounts: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingAccount(null);
-    setError('');
   };
 
   const handleSubmit = async () => {
@@ -161,25 +160,17 @@ const BankAccounts: React.FC = () => {
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('Bank account updated successfully');
+        notify.success('Bank account updated successfully');
       } else {
         await axios.post('http://localhost:8000/api/v1/bank-accounts/', formData, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setSuccess('Bank account created successfully');
+        notify.success('Bank account added successfully');
       }
       handleCloseDialog();
       fetchAccounts();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail;
-      if (typeof errorDetail === 'string') {
-        setError(errorDetail);
-      } else if (Array.isArray(errorDetail)) {
-        setError(errorDetail.map((e: any) => `${e.loc?.join('.')}: ${e.msg}`).join(', '));
-      } else {
-        setError(`Failed to save bank account: ${err.message}`);
-      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save bank account'));
     }
   };
 
@@ -190,12 +181,10 @@ const BankAccounts: React.FC = () => {
       await axios.delete(`http://localhost:8000/api/v1/bank-accounts/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setSuccess('Bank account deleted successfully');
+      notify.success('Bank account deleted successfully');
       fetchAccounts();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail;
-      setError(typeof errorDetail === 'string' ? errorDetail : 'Failed to delete bank account');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete bank account'));
     }
   };
 
@@ -206,25 +195,22 @@ const BankAccounts: React.FC = () => {
     setUploadPassword('');
     setAutoCategorize(true);
     setUploadResult(null);
-    setError('');
     setOpenUploadDialog(true);
   };
 
   const handleCloseUpload = () => {
     setOpenUploadDialog(false);
     setUploadResult(null);
-    setError('');
   };
 
   const handleUploadStatement = async () => {
     if (!selectedFile || !uploadAccountId) {
-      setError('Please select an account and a statement file');
+      notify.error('Please select an account and a statement file');
       return;
     }
 
     try {
       setUploading(true);
-      setError('');
 
       const formPayload = new FormData();
       formPayload.append('file', selectedFile);
@@ -247,9 +233,8 @@ const BankAccounts: React.FC = () => {
 
       // Refresh balances
       fetchAccounts();
-    } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Failed to upload statement. Please check the file and password.');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to upload statement. Please check the file and password.'));
     } finally {
       setUploading(false);
     }
@@ -282,9 +267,6 @@ const BankAccounts: React.FC = () => {
           </Button>
         </Box>
       </Box>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} md={4}>
@@ -433,7 +415,6 @@ const BankAccounts: React.FC = () => {
               />
             )}
 
-            {error && <Alert severity="error">{error}</Alert>}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -521,7 +502,6 @@ const BankAccounts: React.FC = () => {
               </Alert>
             )}
 
-            {error && <Alert severity="error">{error}</Alert>}
           </Box>
         </DialogContent>
         <DialogActions>

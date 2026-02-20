@@ -150,13 +150,31 @@ class AINewsService:
                         AssetType.STOCK,
                         AssetType.US_STOCK,
                         AssetType.CRYPTO,
+                        AssetType.EQUITY_MUTUAL_FUND,
+                        AssetType.DEBT_MUTUAL_FUND,
+                        AssetType.COMMODITY,
+                        AssetType.SOVEREIGN_GOLD_BOND,
+                        AssetType.REIT,
+                        AssetType.INVIT,
+                        AssetType.CORPORATE_BOND,
+                        AssetType.RBI_BOND,
+                        AssetType.TAX_SAVING_BOND,
+                        AssetType.PPF,
+                        AssetType.PF,
+                        AssetType.NPS,
+                        AssetType.SSY,
+                        AssetType.NSC,
+                        AssetType.KVP,
+                        AssetType.SCSS,
+                        AssetType.MIS,
+                        AssetType.FIXED_DEPOSIT,
+                        AssetType.RECURRING_DEPOSIT,
+                        AssetType.INSURANCE_POLICY,
+                        AssetType.REAL_ESTATE,
                     ]),
                 )
                 .order_by(Asset.current_value.desc())
             )
-
-            if limit:
-                query = query.limit(limit)
 
             assets = query.all()
 
@@ -235,11 +253,16 @@ class AINewsService:
         Returns a list of news data dictionaries for items with significant news.
         """
         topics = [
-            "Public Provident Fund (PPF) India",
-            "Employee Provident Fund (EPF) India",
-            "Gold investment India",
-            "Silver investment India",
-            "Cryptocurrency regulations India",
+            "Indian stock market outlook — Nifty 50 and Sensex trends",
+            "RBI monetary policy and interest rate outlook for Indian investors",
+            "Indian mutual fund industry — SIP trends and regulatory changes",
+            "Gold and Silver investment outlook for Indian investors",
+            "Indian real estate market — RERA updates and price trends",
+            "NPS (National Pension System) India — returns and regulatory updates",
+            "Indian government bonds and small savings schemes rate changes",
+            "Cryptocurrency regulations and taxation in India",
+            "Indian insurance sector — IRDAI regulatory changes",
+            "Income tax changes affecting Indian investors — capital gains and deductions",
         ]
 
         news_results: List[Dict] = []
@@ -337,8 +360,12 @@ class AINewsService:
                 {
                     "role": "system",
                     "content": (
-                        "You are a financial analyst providing concise, "
-                        "actionable investment insights."
+                        "You are a knowledgeable financial analyst specializing in "
+                        "Indian markets and investments. You ALWAYS provide useful, "
+                        "specific insights about any asset or investment topic. "
+                        "Never say there is nothing to report — every investment "
+                        "has risks, opportunities, or considerations worth highlighting. "
+                        "Respond with valid JSON only, no markdown formatting."
                     ),
                 },
                 {"role": "user", "content": prompt},
@@ -356,6 +383,20 @@ class AINewsService:
                     return response.json()["choices"][0]["message"]["content"]
 
                 if response.status_code == 429:
+                    # Check if this is a permanent quota issue vs temporary rate limit
+                    try:
+                        error_body = response.json()
+                        error_code = error_body.get("error", {}).get("code", "")
+                    except Exception:
+                        error_code = ""
+
+                    if error_code == "insufficient_quota":
+                        logger.error(
+                            f"{provider_name} API quota exhausted. "
+                            f"Please add billing credits or switch AI provider."
+                        )
+                        return None
+
                     if attempt < self.max_retries:
                         wait = self.retry_delay * attempt
                         logger.warning(
@@ -433,60 +474,129 @@ class AINewsService:
             asset_info += f" ({asset.symbol})"
 
         current_price = f"₹{asset.current_price}" if asset.current_price else "N/A"
+        asset_type = asset.asset_type.value
 
-        return f"""You are a financial analyst assistant. Analyse the following asset and report ONLY the most significant, actionable news from the last 7 days.
+        # Market-traded assets get a different focus than fixed-income / govt schemes
+        if asset_type in ("stock", "us_stock", "equity_mutual_fund", "reit", "invit"):
+            focus = """Focus areas:
+1. Key risks, red flags, or concerns investors should be aware of for this specific asset
+2. Known corporate governance issues, debt levels, or sector headwinds
+3. Competitive landscape and market position analysis
+4. Upcoming catalysts: earnings seasons, regulatory decisions, or sector trends
+5. Dividend history and payout sustainability
+6. Any well-known analyst consensus or outlook (bullish/bearish)"""
+        elif asset_type in ("crypto",):
+            focus = """Focus areas:
+1. Regulatory landscape for this cryptocurrency in India and globally
+2. Technology risks, network upgrades, or protocol changes
+3. Market sentiment and adoption trends
+4. Security concerns, exchange risks, or known vulnerabilities
+5. Tax implications for Indian crypto investors"""
+        elif asset_type in ("commodity", "sovereign_gold_bond"):
+            focus = """Focus areas:
+1. Supply-demand dynamics and global price drivers
+2. Indian government policies affecting this commodity (import duties, taxes)
+3. Inflation hedge value and historical performance patterns
+4. Seasonal trends and cyclical factors
+5. Currency impact (USD/INR) on commodity prices in India"""
+        elif asset_type in ("debt_mutual_fund", "corporate_bond", "rbi_bond", "tax_saving_bond"):
+            focus = """Focus areas:
+1. Interest rate outlook and its impact on bond/debt fund returns
+2. Credit risk assessment and rating agency concerns
+3. RBI monetary policy direction and yield curve analysis
+4. Liquidity risk and exit load considerations
+5. Tax efficiency compared to alternatives (FD, govt schemes)"""
+        elif asset_type in ("ppf", "pf", "nps", "ssy", "nsc", "kvp", "scss", "mis"):
+            focus = """Focus areas:
+1. Current and recent interest rate changes for this scheme
+2. Government policy changes or proposed reforms
+3. Tax benefit analysis under current tax regime (old vs new)
+4. Contribution limits, lock-in periods, and withdrawal rules
+5. Comparison with alternative investment options
+6. Any maturity or renewal considerations"""
+        elif asset_type in ("fixed_deposit", "recurring_deposit"):
+            focus = """Focus areas:
+1. Current interest rate environment and RBI rate outlook
+2. Comparison of rates across major banks
+3. Tax implications and TDS rules
+4. Premature withdrawal penalties and liquidity options
+5. Senior citizen rate benefits and special FD schemes"""
+        elif asset_type in ("insurance_policy",):
+            focus = """Focus areas:
+1. Policy type analysis (term, endowment, ULIP) and adequacy
+2. Claim settlement ratio of the insurer
+3. IRDAI regulatory changes affecting policyholders
+4. Tax benefits under Section 80C and 10(10D)
+5. Surrender value considerations and policy review recommendations"""
+        elif asset_type in ("real_estate",):
+            focus = """Focus areas:
+1. Real estate market trends in India — residential and commercial
+2. RERA regulations and buyer protection updates
+3. Home loan interest rate trends
+4. Capital gains tax rules and indexation benefits
+5. Rental yield analysis and vacancy trends"""
+        else:
+            focus = """Focus areas:
+1. Key risks and opportunities for this investment
+2. Regulatory or policy changes that may affect returns
+3. Market conditions and outlook
+4. Tax implications for Indian investors
+5. Actionable recommendations"""
+
+        return f"""You are a financial analyst providing investment insights for an Indian investor's portfolio.
+
+Analyse the following asset and provide ONE important insight, risk alert, or actionable recommendation.
 
 Asset: {asset_info}
-Type: {asset.asset_type.value}
+Type: {asset_type}
 Current Price: {current_price}
 
-Focus areas:
-1. Major announcements (mergers, acquisitions, regulatory actions)
-2. Policy / regulatory changes with direct financial impact
-3. Earnings surprises, dividend announcements
-4. Significant market movements or sector trends
-5. Credit rating changes, fraud alerts, or material risks
+{focus}
 
-Rules:
-- Only report information from the last 7 days.
-- Ignore minor price moves or routine updates.
-- If there is NO significant news respond with {{"has_significant_news": false}}.
+IMPORTANT RULES:
+- You MUST always provide an insight. Every asset has something worth knowing.
+- Provide analysis based on your knowledge of this asset, its sector, and market conditions.
+- Focus on actionable, practical advice the investor can use.
+- Be specific to THIS asset, not generic platitudes.
+- Set has_significant_news to true.
 
 Response format (strict JSON, no markdown):
 {{
     "has_significant_news": true,
     "severity": "info|warning|critical",
-    "title": "<max 100 chars>",
-    "summary": "<max 500 chars>",
-    "impact": "<how this affects the investment>",
-    "suggested_action": "<what the investor should consider>",
-    "source_date": "YYYY-MM-DD",
+    "title": "<concise headline, max 100 chars>",
+    "summary": "<detailed insight with specific data points, max 500 chars>",
+    "impact": "<how this affects the investor's portfolio>",
+    "suggested_action": "<specific action the investor should consider>",
     "category": "news_event|regulatory_change|earnings_report|dividend_announcement|market_volatility"
 }}"""
 
     def _build_generic_topic_prompt(self, topic: str) -> str:
-        return f"""You are a financial analyst assistant. Report the most impactful information about '{topic}' from the last 7 days.
+        return f"""You are a financial analyst providing investment insights for Indian investors.
+
+Provide ONE important insight or update about: '{topic}'
 
 Focus areas:
-1. Policy or regulatory changes with direct investor impact
-2. Interest rate changes (for PPF/EPF)
-3. Significant price movements or market shifts (for Gold/Silver/Crypto)
-4. New rules, compliance requirements, or legal changes
-5. New schemes, benefits, or important updates
+1. Current market conditions, trends, and outlook
+2. Policy or regulatory changes with direct investor impact
+3. Interest rate environment and its implications
+4. Key risks investors should be aware of
+5. Actionable recommendations for portfolio management
 
-Rules:
-- Only report information from the last 7 days.
-- If there is NO significant news respond with {{"has_significant_news": false}}.
+IMPORTANT RULES:
+- You MUST provide an insight. This topic is always relevant to Indian investors.
+- Be specific and data-driven where possible.
+- Focus on practical, actionable advice.
+- Set has_significant_news to true.
 
 Response format (strict JSON, no markdown):
 {{
     "has_significant_news": true,
     "severity": "info|warning|critical",
-    "title": "<max 100 chars>",
-    "summary": "<max 500 chars>",
-    "impact": "<how this affects investors>",
-    "suggested_action": "<what investors should consider>",
-    "source_date": "YYYY-MM-DD",
+    "title": "<concise headline, max 100 chars>",
+    "summary": "<detailed insight, max 500 chars>",
+    "impact": "<how this affects Indian investors>",
+    "suggested_action": "<specific action investors should consider>",
     "category": "regulatory_change|news_event|market_volatility"
 }}"""
 

@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from loguru import logger
 import traceback
 
@@ -42,14 +42,23 @@ async def lifespan(app: FastAPI):
         start_scheduler(_startup_db)
     finally:
         _startup_db.close()
-    news_scheduler.start()
+    try:
+        news_scheduler.start()
+    except Exception as exc:
+        logger.error(f"Failed to start news scheduler: {exc}")
 
     yield
 
     # --- Shutdown ---
     logger.info("Shutting down schedulers…")
-    stop_scheduler()
-    news_scheduler.stop()
+    try:
+        stop_scheduler()
+    except Exception as exc:
+        logger.error(f"Error stopping scheduler: {exc}")
+    try:
+        news_scheduler.stop()
+    except Exception as exc:
+        logger.error(f"Error stopping news scheduler: {exc}")
     logger.info("Shutdown complete.")
 
 
@@ -96,6 +105,11 @@ app.include_router(api_router, prefix="/api/v1")
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
     logger.error(f"Database error on {request.method} {request.url}: {exc}")
+    if isinstance(exc, IntegrityError):
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "This operation conflicts with existing data. The item may already exist."},
+        )
     return JSONResponse(
         status_code=503,
         content={"detail": "A database error occurred. Please try again later."},

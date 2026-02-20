@@ -43,6 +43,8 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface FDAccount {
   id: number;
@@ -91,9 +93,9 @@ const fmt = (v: number) =>
   }).format(v);
 
 const FixedDeposit: React.FC = () => {
+  const { notify } = useNotification();
   const [fds, setFds] = useState<FDAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [txMap, setTxMap] = useState<Record<number, FDTx[]>>({});
   const [txLoading, setTxLoading] = useState(false);
@@ -133,20 +135,20 @@ const FixedDeposit: React.FC = () => {
       for (const fd of autoAccounts) {
         try {
           await api.post(`/fixed-deposits/${fd.id}/generate-interest`);
-        } catch {
-          // silently skip
+        } catch (err) {
+          console.warn(`Auto-update failed for FD ${fd.id}:`, err);
         }
       }
       if (autoAccounts.length > 0) {
         const res2 = await api.get('/fixed-deposits/');
         setFds(res2.data);
       }
-    } catch {
-      setError('Failed to load fixed deposits');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load fixed deposits'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [notify]);
 
   useEffect(() => {
     loadFds();
@@ -158,8 +160,8 @@ const FixedDeposit: React.FC = () => {
     try {
       const res = await api.get(`/fixed-deposits/${fdId}`);
       setTxMap((prev) => ({ ...prev, [fdId]: res.data.transactions || [] }));
-    } catch {
-      setError('Failed to load transactions');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load transactions'));
     } finally {
       setTxLoading(false);
     }
@@ -189,8 +191,8 @@ const FixedDeposit: React.FC = () => {
       setFds(fdRes.data);
       const txRes = await api.get(`/fixed-deposits/${fdId}`);
       setTxMap((prev) => ({ ...prev, [fdId]: txRes.data.transactions || [] }));
-    } catch {
-      setError('Failed to generate interest');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to generate interest'));
     } finally {
       setGenerating(null);
     }
@@ -219,13 +221,15 @@ const FixedDeposit: React.FC = () => {
       };
       if (fdDlg.mode === 'add') {
         await api.post('/fixed-deposits/', payload);
+        notify.success('Fixed deposit added successfully');
       } else {
         await api.put(`/fixed-deposits/${fdDlg.data.id}`, payload);
+        notify.success('Fixed deposit updated successfully');
       }
       closeFdDlg();
       await loadFds();
-    } catch {
-      setError('Failed to save fixed deposit');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save fixed deposit'));
     } finally {
       setSaving(false);
     }
@@ -243,8 +247,9 @@ const FixedDeposit: React.FC = () => {
         return n;
       });
       await loadFds();
-    } catch {
-      setError('Failed to delete fixed deposit');
+      notify.success('Fixed deposit deleted successfully');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete fixed deposit'));
     }
   };
 
@@ -286,16 +291,18 @@ const FixedDeposit: React.FC = () => {
       };
       if (mode === 'add') {
         await api.post(`/fixed-deposits/${fdId}/transactions`, payload);
+        notify.success('Transaction added successfully');
       } else {
         await api.put(`/fixed-deposits/${fdId}/transactions/${data.id}`, payload);
+        notify.success('Transaction updated successfully');
       }
       closeTxDlg();
       const txRes = await api.get(`/fixed-deposits/${fdId}`);
       setTxMap((prev) => ({ ...prev, [fdId]: txRes.data.transactions || [] }));
       const fdRes = await api.get('/fixed-deposits/');
       setFds(fdRes.data);
-    } catch {
-      setError('Failed to save transaction');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save transaction'));
     } finally {
       setSaving(false);
     }
@@ -311,8 +318,9 @@ const FixedDeposit: React.FC = () => {
       setTxMap((prev) => ({ ...prev, [fdId]: txRes.data.transactions || [] }));
       const fdRes = await api.get('/fixed-deposits/');
       setFds(fdRes.data);
-    } catch {
-      setError('Failed to delete transaction');
+      notify.success('Transaction deleted successfully');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete transaction'));
     }
   };
 
@@ -340,11 +348,6 @@ const FixedDeposit: React.FC = () => {
         </Button>
       </Box>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
       {genMessage && (
         <Alert severity="info" sx={{ mb: 2 }} onClose={() => setGenMessage('')}>
           {genMessage}

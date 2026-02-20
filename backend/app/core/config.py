@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     EOD_SNAPSHOT_MINUTE: int = 30
     NEWS_MORNING_HOUR: int = 9          # IST hour for morning news fetch
     NEWS_EVENING_HOUR: int = 18         # IST hour for evening news fetch
-    NEWS_LIMIT_PER_USER: int = 10       # Max assets to process per user per scheduled run
+    NEWS_LIMIT_PER_USER: int = 0        # 0 = no limit; process all assets per user per run
     MONTHLY_CONTRIBUTION_DAY: int = 1   # Day of month for PF/Gratuity job
     MONTHLY_CONTRIBUTION_HOUR: int = 0  # UTC hour (0 UTC = 5:30 AM IST)
     MONTHLY_CONTRIBUTION_MINUTE: int = 30
@@ -126,12 +126,18 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
 
-    # MinIO
+    # MinIO / S3-compatible storage
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "portact-statements"
     MINIO_SECURE: bool = False
+
+    # AWS S3 (used when deploying to AWS; MinIO SDK can talk to S3 directly)
+    AWS_S3_BUCKET: Optional[str] = None
+    AWS_S3_REGION: str = "ap-south-1"
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
 
     class Config:
         env_file = ".env"

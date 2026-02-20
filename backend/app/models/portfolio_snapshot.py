@@ -44,7 +44,7 @@ class AssetSnapshot(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     portfolio_snapshot_id = Column(Integer, ForeignKey("portfolio_snapshots.id"), nullable=False)
-    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)  # Nullable to support bank accounts
+    asset_id = Column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)  # Nullable to support bank accounts
     snapshot_date = Column(Date, nullable=False, index=True)
     
     # Asset identification (stored for historical reference)

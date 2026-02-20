@@ -9,7 +9,7 @@ class MutualFundHolding(Base):
     __tablename__ = "mutual_fund_holdings"
     
     id = Column(Integer, primary_key=True, index=True)
-    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False, index=True)  # Link to mutual fund asset
+    asset_id = Column(Integer, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)  # Link to mutual fund asset
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     # Stock identification

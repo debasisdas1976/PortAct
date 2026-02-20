@@ -16,6 +16,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Add enum values (lowercase) matching Python enum .value
     op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'nsc'")
     op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'kvp'")
     op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'scss'")
@@ -26,6 +27,17 @@ def upgrade() -> None:
     op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'reit'")
     op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'invit'")
     op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'sovereign_gold_bond'")
+    # Add enum names (uppercase) — SQLAlchemy Enum() stores Python enum .name by default
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'NSC'")
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'KVP'")
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'SCSS'")
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'MIS'")
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'CORPORATE_BOND'")
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'RBI_BOND'")
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'TAX_SAVING_BOND'")
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'REIT'")
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'INVIT'")
+    op.execute("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'SOVEREIGN_GOLD_BOND'")
 
 
 def downgrade() -> None:

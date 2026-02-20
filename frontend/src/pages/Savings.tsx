@@ -34,6 +34,8 @@ import {
   VisibilityOff,
 } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface BankAccount {
   id: number;
@@ -60,9 +62,9 @@ const formatBankName = (name: string) =>
   bankNameMap[name] || name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 const Savings: React.FC = () => {
+  const { notify } = useNotification();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   // Upload dialog state
   const [openUploadDialog, setOpenUploadDialog] = useState(false);
@@ -73,7 +75,6 @@ const Savings: React.FC = () => {
   const [autoCategorize, setAutoCategorize] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ imported: number; duplicates: number; categorized: number } | null>(null);
-  const [uploadError, setUploadError] = useState('');
 
   const fetchAccounts = async () => {
     try {
@@ -83,8 +84,8 @@ const Savings: React.FC = () => {
         (a) => a.account_type === 'savings' && a.is_active
       );
       setAccounts(filtered);
-    } catch {
-      setError('Failed to fetch savings accounts');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to fetch savings accounts'));
     } finally {
       setLoading(false);
     }
@@ -106,25 +107,22 @@ const Savings: React.FC = () => {
     setUploadPassword('');
     setAutoCategorize(true);
     setUploadResult(null);
-    setUploadError('');
     setOpenUploadDialog(true);
   };
 
   const handleCloseUpload = () => {
     setOpenUploadDialog(false);
     setUploadResult(null);
-    setUploadError('');
   };
 
   const handleUploadStatement = async () => {
     if (!selectedFile || !uploadAccountId) {
-      setUploadError('Please select an account and a statement file');
+      notify.error('Please select an account and a statement file');
       return;
     }
 
     try {
       setUploading(true);
-      setUploadError('');
 
       const formPayload = new FormData();
       formPayload.append('file', selectedFile);
@@ -147,13 +145,8 @@ const Savings: React.FC = () => {
 
       // Refresh balances
       fetchAccounts();
-    } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setUploadError(
-        typeof detail === 'string'
-          ? detail
-          : 'Failed to upload statement. Please check the file and password.'
-      );
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to upload statement. Please check the file and password.'));
     } finally {
       setUploading(false);
     }
@@ -181,8 +174,6 @@ const Savings: React.FC = () => {
           Upload Statement
         </Button>
       </Box>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={4}>
@@ -346,7 +337,6 @@ const Savings: React.FC = () => {
               </Alert>
             )}
 
-            {uploadError && <Alert severity="error">{uploadError}</Alert>}
           </Box>
         </DialogContent>
         <DialogActions>

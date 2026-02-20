@@ -33,6 +33,8 @@ import PortfolioChart from '../components/charts/PortfolioChart';
 import PerformanceChart from '../components/charts/PerformanceChart';
 import AssetAllocationChart from '../components/charts/AssetAllocationChart';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface BankAccount {
   id: number;
@@ -113,6 +115,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color, 
 const Dashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { summary, loading, error } = useSelector((state: RootState) => state.portfolio);
+  const { notify } = useNotification();
   const { assets } = useSelector((state: RootState) => state.assets);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
@@ -122,9 +125,13 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      await dispatch(fetchPortfolioSummary());
-      await dispatch(fetchAssets());
-      await Promise.all([fetchBankAccounts(), fetchDematAccounts()]);
+      try {
+        await dispatch(fetchPortfolioSummary());
+        await dispatch(fetchAssets());
+        await Promise.all([fetchBankAccounts(), fetchDematAccounts()]);
+      } catch (err) {
+        notify.error(getErrorMessage(err, 'Failed to load dashboard data'));
+      }
     };
     fetchData();
   }, [dispatch]);
@@ -135,7 +142,7 @@ const Dashboard: React.FC = () => {
       const response = await api.get('/bank-accounts/');
       setBankAccounts(response.data);
     } catch (err) {
-      console.error('Failed to fetch bank accounts:', err);
+      notify.error(getErrorMessage(err, 'Failed to load data'));
     } finally {
       setBankAccountsLoading(false);
     }
@@ -147,7 +154,7 @@ const Dashboard: React.FC = () => {
       const response = await api.get('/demat-accounts/');
       setDematAccounts(response.data);
     } catch (err) {
-      console.error('Failed to fetch demat accounts:', err);
+      notify.error(getErrorMessage(err, 'Failed to load data'));
     } finally {
       setDematAccountsLoading(false);
     }

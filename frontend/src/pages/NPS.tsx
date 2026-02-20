@@ -20,7 +20,6 @@ import {
   TextField,
   Typography,
   Chip,
-  Alert,
   Tabs,
   Tab,
   CircularProgress,
@@ -35,6 +34,8 @@ import {
   Visibility as ViewIcon
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface NPSAccount {
   id: number;
@@ -118,9 +119,8 @@ const NPS: React.FC = () => {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPassword, setUploadPassword] = useState('');
   const [uploadAccountId, setUploadAccountId] = useState<number | null>(null);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const { notify } = useNotification();
 
   const fundManagers = [
     'SBI Pension Funds',
@@ -145,8 +145,13 @@ const NPS: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAccounts(response.data);
+      // Auto-select first account to enable Transactions tab
+      if (response.data.length > 0 && !selectedAccount) {
+        setSelectedAccount(response.data[0]);
+        fetchAccountTransactions(response.data[0].id);
+      }
     } catch (err) {
-      setError('Failed to fetch NPS accounts');
+      notify.error(getErrorMessage(err, 'Failed to fetch NPS accounts'));
     }
   };
 
@@ -158,7 +163,7 @@ const NPS: React.FC = () => {
       });
       setSummary(response.data);
     } catch (err) {
-      console.error('Failed to fetch NPS summary');
+      notify.error(getErrorMessage(err, 'Failed to fetch NPS summary'));
     }
   };
 
@@ -170,7 +175,7 @@ const NPS: React.FC = () => {
       });
       setTransactions(response.data.transactions || []);
     } catch (err) {
-      setError('Failed to fetch transactions');
+      notify.error(getErrorMessage(err, 'Failed to fetch transactions'));
     }
   };
 
@@ -220,7 +225,6 @@ const NPS: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingAccount(null);
-    setError('');
   };
 
   const handleSubmit = async () => {
@@ -234,21 +238,21 @@ const NPS: React.FC = () => {
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('NPS account updated successfully');
+        notify.success('Account updated successfully');
       } else {
         await axios.post(
           'http://localhost:8000/api/v1/nps/',
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('NPS account created successfully');
+        notify.success('Account added successfully');
       }
-      
+
       handleCloseDialog();
       fetchAccounts();
       fetchSummary();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to save NPS account');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save NPS account'));
     } finally {
       setLoading(false);
     }
@@ -264,11 +268,11 @@ const NPS: React.FC = () => {
       await axios.delete(`http://localhost:8000/api/v1/nps/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess('NPS account deleted successfully');
+      notify.success('Account deleted successfully');
       fetchAccounts();
       fetchSummary();
     } catch (err) {
-      setError('Failed to delete NPS account');
+      notify.error(getErrorMessage(err, 'Failed to delete NPS account'));
     }
   };
 
@@ -280,7 +284,7 @@ const NPS: React.FC = () => {
 
   const handleOpenTransactionDialog = () => {
     if (!selectedAccount) {
-      setError('Please select an account first');
+      notify.error('Please select an account first');
       return;
     }
     setTransactionFormData({
@@ -298,7 +302,6 @@ const NPS: React.FC = () => {
 
   const handleCloseTransactionDialog = () => {
     setOpenTransactionDialog(false);
-    setError('');
   };
 
   const handleSubmitTransaction = async () => {
@@ -312,13 +315,13 @@ const NPS: React.FC = () => {
         transactionFormData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setSuccess('Transaction added successfully');
+      notify.success('Transaction added successfully');
       handleCloseTransactionDialog();
       fetchAccountTransactions(selectedAccount.id);
       fetchAccounts();
       fetchSummary();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to add transaction');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to add transaction'));
     } finally {
       setLoading(false);
     }
@@ -326,7 +329,7 @@ const NPS: React.FC = () => {
 
   const handleOpenUploadDialog = () => {
     if (accounts.length === 0) {
-      setError('Please create an NPS account first before uploading a statement');
+      notify.error('Please create an NPS account first before uploading a statement');
       return;
     }
     setUploadFile(null);
@@ -337,7 +340,6 @@ const NPS: React.FC = () => {
 
   const handleCloseUploadDialog = () => {
     setOpenUploadDialog(false);
-    setError('');
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -348,12 +350,12 @@ const NPS: React.FC = () => {
 
   const handleUploadStatement = async () => {
     if (!uploadFile) {
-      setError('Please select a file to upload');
+      notify.error('Please select a file to upload');
       return;
     }
 
     if (!uploadAccountId) {
-      setError('Please select an NPS account');
+      notify.error('Please select an NPS account');
       return;
     }
 
@@ -377,7 +379,7 @@ const NPS: React.FC = () => {
         }
       );
 
-      setSuccess('NPS statement uploaded and processed successfully');
+      notify.success('NPS statement uploaded and processed successfully');
       handleCloseUploadDialog();
       await fetchAccounts();
       await fetchSummary();
@@ -397,7 +399,7 @@ const NPS: React.FC = () => {
         console.error('Failed to fetch transactions after upload');
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to upload statement');
+      notify.error(err.response?.data?.detail || 'Failed to upload statement');
     } finally {
       setLoading(false);
     }
@@ -440,18 +442,6 @@ const NPS: React.FC = () => {
           </Button>
         </Box>
       </Box>
-
-      {error && (
-        <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
 
       {/* Summary Cards */}
       {summary && (

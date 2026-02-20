@@ -5,6 +5,7 @@ import { Provider } from 'react-redux';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import App from './App';
 import { store } from './store';
+import { NotificationProvider } from './contexts/NotificationContext';
 
 const theme = createTheme({
   palette: {
@@ -79,6 +80,16 @@ const theme = createTheme({
   },
 });
 
+// Global handlers for uncaught errors and unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+  event.preventDefault();
+});
+
+window.addEventListener('error', (event) => {
+  console.error('Uncaught error:', event.error || event.message);
+});
+
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
@@ -89,7 +100,9 @@ root.render(
       <BrowserRouter>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <App />
+          <NotificationProvider>
+            <App />
+          </NotificationProvider>
         </ThemeProvider>
       </BrowserRouter>
     </Provider>

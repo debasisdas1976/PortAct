@@ -14,10 +14,11 @@ import {
   TableRow,
   Typography,
   Chip,
-  Alert,
 } from '@mui/material';
 import { TrendingUp, TrendingDown } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface MFAsset {
   id: number;
@@ -61,7 +62,7 @@ const EquityMF: React.FC = () => {
   const [funds, setFunds] = useState<MFAsset[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { notify } = useNotification();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -81,8 +82,8 @@ const EquityMF: React.FC = () => {
           labelMap[da.id] = buildDematLabel(da);
         }
         setDematLabelMap(labelMap);
-      } catch {
-        setError('Failed to fetch equity mutual fund holdings');
+      } catch (err) {
+        notify.error(getErrorMessage(err, 'Failed to load data'));
       } finally {
         setLoading(false);
       }
@@ -128,8 +129,6 @@ const EquityMF: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" gutterBottom>Equity Mutual Funds</Typography>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>

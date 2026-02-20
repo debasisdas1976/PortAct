@@ -14,10 +14,11 @@ import {
   TableRow,
   Typography,
   Chip,
-  Alert,
 } from '@mui/material';
 import { TrendingUp, TrendingDown, Language } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface USStockAsset {
   id: number;
@@ -62,7 +63,7 @@ const USStocks: React.FC = () => {
   const [stocks, setStocks] = useState<USStockAsset[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { notify } = useNotification();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -82,8 +83,8 @@ const USStocks: React.FC = () => {
           labelMap[da.id] = buildDematLabel(da);
         }
         setDematLabelMap(labelMap);
-      } catch {
-        setError('Failed to fetch US stock holdings');
+      } catch (err) {
+        notify.error(getErrorMessage(err, 'Failed to load data'));
       } finally {
         setLoading(false);
       }
@@ -135,8 +136,6 @@ const USStocks: React.FC = () => {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Values shown in INR equivalent. Individual prices in USD.
       </Typography>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>

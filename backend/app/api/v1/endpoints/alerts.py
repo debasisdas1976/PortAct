@@ -185,16 +185,15 @@ async def delete_alert(
 @router.post("/fetch-news", status_code=status.HTTP_202_ACCEPTED)
 async def fetch_portfolio_news(
     background_tasks: BackgroundTasks,
-    limit: int = Query(10, ge=1, le=50, description="Max number of assets to process"),
     include_generic: bool = Query(True, description="Include generic India investment news"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """
-    Trigger AI-powered news fetching for the user's portfolio assets.
+    Trigger AI-powered news fetching for ALL assets in the user's portfolio.
 
-    Processes Stocks, US Stocks, and Crypto assets ordered by descending value.
-    Optionally appends generic India investment news (PPF, EPF, Gold, Silver, Crypto).
+    Processes all active asset types ordered by descending value.
+    Optionally appends generic India investment news.
 
     The job runs in the background. Poll ``/alerts/progress/{session_id}`` to
     track progress.
@@ -204,14 +203,8 @@ async def fetch_portfolio_news(
         .filter(
             Asset.user_id == current_user.id,
             Asset.is_active == True,
-            Asset.asset_type.in_([
-                AssetType.STOCK,
-                AssetType.US_STOCK,
-                AssetType.CRYPTO,
-            ]),
         )
         .order_by(Asset.current_value.desc())
-        .limit(limit)
         .all()
     )
 
@@ -222,7 +215,6 @@ async def fetch_portfolio_news(
             assets_processed, alerts_created, _ = await ai_news_service.process_user_portfolio(
                 db=db,
                 user_id=current_user.id,
-                limit=limit,
                 session_id=session_id,
             )
 
@@ -247,7 +239,7 @@ async def fetch_portfolio_news(
     return {
         "message": "News fetching started in background",
         "status": "processing",
-        "max_assets": limit,
+        "total_assets": len(assets),
         "include_generic": include_generic,
         "session_id": session_id,
     }

@@ -11,6 +11,8 @@ interface PortfolioState {
   assetsList: any[];
   loading: boolean;
   error: string | null;
+  performanceLoading: boolean;
+  performanceError: string | null;
 }
 
 const initialState: PortfolioState = {
@@ -23,6 +25,8 @@ const initialState: PortfolioState = {
   assetsList: [],
   loading: false,
   error: null,
+  performanceLoading: false,
+  performanceError: null,
 };
 
 export const fetchPortfolioOverview = createAsyncThunk(
@@ -158,14 +162,35 @@ const portfolioSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       })
+      .addCase(fetchPortfolioPerformance.pending, (state) => {
+        state.performanceLoading = true;
+        state.performanceError = null;
+      })
       .addCase(fetchPortfolioPerformance.fulfilled, (state, action) => {
+        state.performanceLoading = false;
         state.performanceData = action.payload;
       })
+      .addCase(fetchPortfolioPerformance.rejected, (state, action) => {
+        state.performanceLoading = false;
+        state.performanceError = action.payload as string;
+      })
+      .addCase(fetchAssetPerformance.pending, (state) => {
+        state.performanceLoading = true;
+        state.performanceError = null;
+      })
       .addCase(fetchAssetPerformance.fulfilled, (state, action) => {
+        state.performanceLoading = false;
         state.assetPerformanceData = action.payload;
+      })
+      .addCase(fetchAssetPerformance.rejected, (state, action) => {
+        state.performanceLoading = false;
+        state.performanceError = action.payload as string;
       })
       .addCase(fetchAssetsList.fulfilled, (state, action) => {
         state.assetsList = action.payload;
+      })
+      .addCase(fetchAssetsList.rejected, (state, action) => {
+        state.error = action.payload as string;
       });
   },
 });

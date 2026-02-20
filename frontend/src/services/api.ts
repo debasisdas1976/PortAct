@@ -1,9 +1,11 @@
 import axios from 'axios';
+export { getErrorMessage } from '../utils/errorUtils';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -136,29 +138,29 @@ export const dashboardAPI = {
 // Assets API
 export const assetsAPI = {
   getAll: async (params?: any) => {
-    const response = await api.get('/assets', { params });
+    const response = await api.get('/assets/', { params });
     return response.data;
   },
-  
+
   getById: async (id: number) => {
     const response = await api.get(`/assets/${id}`);
     return response.data;
   },
-  
+
   create: async (data: any) => {
-    const response = await api.post('/assets', data);
+    const response = await api.post('/assets/', data);
     return response.data;
   },
-  
+
   update: async (id: number, data: any) => {
     const response = await api.put(`/assets/${id}`, data);
     return response.data;
   },
-  
+
   delete: async (id: number) => {
     await api.delete(`/assets/${id}`);
   },
-  
+
   getSummary: async () => {
     const response = await api.get('/assets/summary');
     return response.data;

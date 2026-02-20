@@ -15,53 +15,47 @@ import {
   Alert as MuiAlert,
   IconButton,
   Button,
-  Snackbar,
 } from '@mui/material';
 import { Delete, CheckCircle, Warning, Error as ErrorIcon, Refresh } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchAlerts, deleteAlert } from '../store/slices/alertsSlice';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 const Alerts: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { alerts, loading, error } = useSelector((state: RootState) => state.alerts);
   const [fetchingNews, setFetchingNews] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' });
+  const { notify } = useNotification();
 
   useEffect(() => {
     dispatch(fetchAlerts());
   }, [dispatch]);
 
-  const handleDelete = (id: number) => {
-    dispatch(deleteAlert(id));
+  const handleDelete = async (id: number) => {
+    try {
+      await dispatch(deleteAlert(id)).unwrap();
+      notify.success('Alert dismissed');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to dismiss alert'));
+    }
   };
 
   const handleFetchNews = async () => {
     setFetchingNews(true);
     try {
-      await api.post('/alerts/fetch-news?limit=10');
-      setSnackbar({
-        open: true,
-        message: 'News fetching started! New alerts will appear shortly.',
-        severity: 'success'
-      });
+      await api.post('/alerts/fetch-news');
+      notify.success('News fetching started! New alerts will appear shortly.');
       // Refresh alerts after a delay
       setTimeout(() => {
         dispatch(fetchAlerts());
       }, 5000);
-    } catch (err: any) {
-      setSnackbar({
-        open: true,
-        message: err.response?.data?.detail || 'Failed to fetch news',
-        severity: 'error'
-      });
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load data'));
     } finally {
       setFetchingNews(false);
     }
-  };
-
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
   };
 
   const getSeverityIcon = (severity: string) => {
@@ -204,17 +198,6 @@ const Alerts: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <MuiAlert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-          {snackbar.message}
-        </MuiAlert>
-      </Snackbar>
     </Box>
   );
 };

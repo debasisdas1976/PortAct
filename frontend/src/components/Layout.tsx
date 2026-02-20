@@ -51,6 +51,7 @@ import {
   Business as BusinessIcon,
   Diamond as DiamondIcon,
   Home as HomeIcon,
+  HelpOutline as HelpIcon,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { logout } from '../store/slices/authSlice';
@@ -77,13 +78,13 @@ const assetGroups: AssetGroup[] = [
     title: 'Demat Holding',
     icon: <ShowChartIcon />,
     items: [
+      { text: 'Demat Accounts', icon: <ShowChartIcon />, path: '/demat-accounts' },
       { text: 'Stocks', icon: <StocksIcon />, path: '/stocks' },
       { text: 'US Stocks', icon: <USStocksIcon />, path: '/us-stocks' },
       { text: 'Equity MF', icon: <PieChartIcon />, path: '/equity-mf' },
       { text: 'Debt Funds', icon: <DebtFundIcon />, path: '/debt-funds' },
       { text: 'Commodities', icon: <CommodityIcon />, path: '/commodities' },
       { text: 'Sovereign Gold Bonds', icon: <DiamondIcon />, path: '/sovereign-gold-bonds' },
-      { text: 'Demat Accounts', icon: <ShowChartIcon />, path: '/demat-accounts' },
     ],
   },
   {
@@ -181,6 +182,10 @@ const adminItems: NavItem[] = [
   { text: 'Application Setup', icon: <SettingsIcon />, path: '/settings' },
 ];
 
+const helpItems: NavItem[] = [
+  { text: 'Help', icon: <HelpIcon />, path: '/help' },
+];
+
 // All leaf items flattened for AppBar title lookup
 const allNavItems: NavItem[] = [
   ...overviewItems,
@@ -188,6 +193,7 @@ const allNavItems: NavItem[] = [
   ...assetGroups.flatMap((g) => g.items),
   ...expenseItems,
   ...adminItems,
+  ...helpItems,
 ];
 
 // Returns the group key that owns a given path
@@ -355,6 +361,13 @@ const Layout: React.FC = () => {
         }
       >
         {adminItems.map((item) => renderNavItem(item))}
+      </List>
+
+      <Divider />
+
+      {/* ── Help ── */}
+      <List>
+        {helpItems.map((item) => renderNavItem(item))}
       </List>
     </Box>
   );

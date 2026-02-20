@@ -15,6 +15,8 @@ import {
   ToggleButtonGroup,
   ToggleButton
 } from '@mui/material';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 import {
   BarChart,
   Bar,
@@ -65,7 +67,7 @@ interface DashboardData {
 const ExpenseDashboard: React.FC = () => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { notify } = useNotification();
   const [viewMode, setViewMode] = useState<'range' | 'single'>('range');
   const [monthsToShow, setMonthsToShow] = useState(6);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -94,9 +96,8 @@ const ExpenseDashboard: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setData(response.data);
-      setError('');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to fetch dashboard data');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load data'));
     } finally {
       setLoading(false);
     }
@@ -212,14 +213,6 @@ const ExpenseDashboard: React.FC = () => {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
         <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Alert severity="error">{error}</Alert>
       </Box>
     );
   }

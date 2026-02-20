@@ -20,7 +20,6 @@ import {
   TextField,
   Typography,
   Chip,
-  Alert,
   Tabs,
   Tab,
   CircularProgress,
@@ -35,6 +34,8 @@ import {
   Visibility as ViewIcon
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface SSYAccount {
   id: number;
@@ -112,9 +113,8 @@ const SSY: React.FC = () => {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPassword, setUploadPassword] = useState('');
   const [uploadAccountId, setUploadAccountId] = useState<number | null>(null);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const { notify } = useNotification();
 
   const bankOptions = [
     'State Bank of India',
@@ -142,8 +142,13 @@ const SSY: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAccounts(response.data);
+      // Auto-select first account to enable Transactions tab
+      if (response.data.length > 0 && !selectedAccount) {
+        setSelectedAccount(response.data[0]);
+        fetchAccountTransactions(response.data[0].id);
+      }
     } catch (err) {
-      setError('Failed to fetch SSY accounts');
+      notify.error(getErrorMessage(err, 'Failed to fetch SSY accounts'));
     }
   };
 
@@ -155,7 +160,7 @@ const SSY: React.FC = () => {
       });
       setSummary(response.data);
     } catch (err) {
-      console.error('Failed to fetch SSY summary');
+      notify.error(getErrorMessage(err, 'Failed to fetch SSY summary'));
     }
   };
 
@@ -167,7 +172,7 @@ const SSY: React.FC = () => {
       });
       setTransactions(response.data.transactions || []);
     } catch (err) {
-      setError('Failed to fetch transactions');
+      notify.error(getErrorMessage(err, 'Failed to fetch transactions'));
     }
   };
 
@@ -217,7 +222,6 @@ const SSY: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingAccount(null);
-    setError('');
   };
 
   const handleSubmit = async () => {
@@ -231,21 +235,21 @@ const SSY: React.FC = () => {
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('SSY account updated successfully');
+        notify.success('Account updated successfully');
       } else {
         await axios.post(
           'http://localhost:8000/api/v1/ssy/',
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('SSY account created successfully');
+        notify.success('Account added successfully');
       }
-      
+
       handleCloseDialog();
       fetchAccounts();
       fetchSummary();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to save SSY account');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save SSY account'));
     } finally {
       setLoading(false);
     }
@@ -261,11 +265,11 @@ const SSY: React.FC = () => {
       await axios.delete(`http://localhost:8000/api/v1/ssy/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess('SSY account deleted successfully');
+      notify.success('Account deleted successfully');
       fetchAccounts();
       fetchSummary();
     } catch (err) {
-      setError('Failed to delete SSY account');
+      notify.error(getErrorMessage(err, 'Failed to delete SSY account'));
     }
   };
 
@@ -277,7 +281,7 @@ const SSY: React.FC = () => {
 
   const handleOpenTransactionDialog = () => {
     if (!selectedAccount) {
-      setError('Please select an account first');
+      notify.error('Please select an account first');
       return;
     }
     setTransactionFormData({
@@ -293,7 +297,6 @@ const SSY: React.FC = () => {
 
   const handleCloseTransactionDialog = () => {
     setOpenTransactionDialog(false);
-    setError('');
   };
 
   const handleSubmitTransaction = async () => {
@@ -307,13 +310,13 @@ const SSY: React.FC = () => {
         transactionFormData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setSuccess('Transaction added successfully');
+      notify.success('Transaction added successfully');
       handleCloseTransactionDialog();
       fetchAccountTransactions(selectedAccount.id);
       fetchAccounts();
       fetchSummary();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to add transaction');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to add transaction'));
     } finally {
       setLoading(false);
     }
@@ -321,7 +324,7 @@ const SSY: React.FC = () => {
 
   const handleOpenUploadDialog = () => {
     if (accounts.length === 0) {
-      setError('Please create an SSY account first before uploading a statement');
+      notify.error('Please create an SSY account first before uploading a statement');
       return;
     }
     setUploadFile(null);
@@ -332,7 +335,6 @@ const SSY: React.FC = () => {
 
   const handleCloseUploadDialog = () => {
     setOpenUploadDialog(false);
-    setError('');
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -343,12 +345,12 @@ const SSY: React.FC = () => {
 
   const handleUploadStatement = async () => {
     if (!uploadFile) {
-      setError('Please select a file to upload');
+      notify.error('Please select a file to upload');
       return;
     }
 
     if (!uploadAccountId) {
-      setError('Please select an SSY account');
+      notify.error('Please select an SSY account');
       return;
     }
 
@@ -372,11 +374,11 @@ const SSY: React.FC = () => {
         }
       );
 
-      setSuccess('SSY statement uploaded and processed successfully');
+      notify.success('Statement uploaded successfully');
       handleCloseUploadDialog();
       await fetchAccounts();
       await fetchSummary();
-      
+
       try {
         const accountResponse = await axios.get(
           `http://localhost:8000/api/v1/ssy/${uploadAccountId}`,
@@ -384,15 +386,15 @@ const SSY: React.FC = () => {
             headers: { Authorization: `Bearer ${token}` }
           }
         );
-        
+
         setSelectedAccount(accountResponse.data);
         setTransactions(accountResponse.data.transactions || []);
         setTabValue(1);
       } catch (err) {
-        console.error('Failed to fetch transactions after upload');
+        notify.error(getErrorMessage(err, 'Failed to fetch transactions after upload'));
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to upload statement');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to upload statement'));
     } finally {
       setLoading(false);
     }
@@ -435,18 +437,6 @@ const SSY: React.FC = () => {
           </Button>
         </Box>
       </Box>
-
-      {error && (
-        <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
 
       {/* Summary Cards */}
       {summary && (

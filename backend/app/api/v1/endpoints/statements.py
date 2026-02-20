@@ -12,7 +12,10 @@ from app.schemas.statement import (
 from app.services.statement_processor import process_statement
 import os
 import shutil
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -105,9 +108,10 @@ async def upload_statement(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
+        logger.error(f"Failed to save uploaded file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save file: {str(e)}"
+            detail="Failed to save the uploaded file. Please try again."
         )
     
     # Create statement record
@@ -131,6 +135,7 @@ async def upload_statement(
     try:
         process_statement(new_statement.id, db)
     except Exception as e:
+        logger.error(f"Error processing statement {new_statement.id}: {e}")
         new_statement.status = StatementStatus.FAILED
         new_statement.error_message = str(e)
         db.commit()

@@ -20,7 +20,6 @@ import {
   TextField,
   Typography,
   Chip,
-  Alert,
   Tabs,
   Tab,
   CircularProgress,
@@ -35,6 +34,8 @@ import {
   Visibility as ViewIcon
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface PPFAccount {
   id: number;
@@ -106,9 +107,8 @@ const PPF: React.FC = () => {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPassword, setUploadPassword] = useState('');
   const [uploadAccountId, setUploadAccountId] = useState<number | null>(null);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const { notify } = useNotification();
 
   const bankOptions = [
     'State Bank of India',
@@ -136,8 +136,13 @@ const PPF: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAccounts(response.data);
+      // Auto-select first account to enable Transactions tab
+      if (response.data.length > 0 && !selectedAccount) {
+        setSelectedAccount(response.data[0]);
+        fetchAccountTransactions(response.data[0].id);
+      }
     } catch (err) {
-      setError('Failed to fetch PPF accounts');
+      notify.error(getErrorMessage(err, 'Failed to fetch PPF accounts'));
     }
   };
 
@@ -149,7 +154,7 @@ const PPF: React.FC = () => {
       });
       setSummary(response.data);
     } catch (err) {
-      console.error('Failed to fetch PPF summary');
+      notify.error(getErrorMessage(err, 'Failed to fetch PPF summary'));
     }
   };
 
@@ -161,7 +166,7 @@ const PPF: React.FC = () => {
       });
       setTransactions(response.data.transactions || []);
     } catch (err) {
-      setError('Failed to fetch transactions');
+      notify.error(getErrorMessage(err, 'Failed to fetch transactions'));
     }
   };
 
@@ -205,7 +210,6 @@ const PPF: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingAccount(null);
-    setError('');
   };
 
   const handleSubmit = async () => {
@@ -219,21 +223,21 @@ const PPF: React.FC = () => {
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('PPF account updated successfully');
+        notify.success('Account updated successfully');
       } else {
         await axios.post(
           'http://localhost:8000/api/v1/ppf/',
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('PPF account created successfully');
+        notify.success('Account added successfully');
       }
-      
+
       handleCloseDialog();
       fetchAccounts();
       fetchSummary();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to save PPF account');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save PPF account'));
     } finally {
       setLoading(false);
     }
@@ -249,11 +253,11 @@ const PPF: React.FC = () => {
       await axios.delete(`http://localhost:8000/api/v1/ppf/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess('PPF account deleted successfully');
+      notify.success('Account deleted successfully');
       fetchAccounts();
       fetchSummary();
     } catch (err) {
-      setError('Failed to delete PPF account');
+      notify.error(getErrorMessage(err, 'Failed to delete PPF account'));
     }
   };
 
@@ -265,7 +269,7 @@ const PPF: React.FC = () => {
 
   const handleOpenTransactionDialog = () => {
     if (!selectedAccount) {
-      setError('Please select an account first');
+      notify.error('Please select an account first');
       return;
     }
     setTransactionFormData({
@@ -281,7 +285,6 @@ const PPF: React.FC = () => {
 
   const handleCloseTransactionDialog = () => {
     setOpenTransactionDialog(false);
-    setError('');
   };
 
   const handleSubmitTransaction = async () => {
@@ -295,13 +298,13 @@ const PPF: React.FC = () => {
         transactionFormData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setSuccess('Transaction added successfully');
+      notify.success('Transaction added successfully');
       handleCloseTransactionDialog();
       fetchAccountTransactions(selectedAccount.id);
       fetchAccounts();
       fetchSummary();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to add transaction');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to add transaction'));
     } finally {
       setLoading(false);
     }
@@ -309,7 +312,7 @@ const PPF: React.FC = () => {
 
   const handleOpenUploadDialog = () => {
     if (accounts.length === 0) {
-      setError('Please create a PPF account first before uploading a statement');
+      notify.error('Please create a PPF account first before uploading a statement');
       return;
     }
     setUploadFile(null);
@@ -320,7 +323,6 @@ const PPF: React.FC = () => {
 
   const handleCloseUploadDialog = () => {
     setOpenUploadDialog(false);
-    setError('');
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -331,12 +333,12 @@ const PPF: React.FC = () => {
 
   const handleUploadStatement = async () => {
     if (!uploadFile) {
-      setError('Please select a file to upload');
+      notify.error('Please select a file to upload');
       return;
     }
 
     if (!uploadAccountId) {
-      setError('Please select a PPF account');
+      notify.error('Please select a PPF account');
       return;
     }
 
@@ -360,13 +362,13 @@ const PPF: React.FC = () => {
         }
       );
 
-      setSuccess('PPF statement uploaded and processed successfully');
+      notify.success('Statement uploaded successfully');
       handleCloseUploadDialog();
-      
+
       // Refresh accounts and summary
       await fetchAccounts();
       await fetchSummary();
-      
+
       // Fetch the uploaded account with transactions
       try {
         const accountResponse = await axios.get(
@@ -375,16 +377,16 @@ const PPF: React.FC = () => {
             headers: { Authorization: `Bearer ${token}` }
           }
         );
-        
+
         // Set the account and transactions
         setSelectedAccount(accountResponse.data);
         setTransactions(accountResponse.data.transactions || []);
         setTabValue(1); // Switch to Transactions tab
       } catch (err) {
-        console.error('Failed to fetch transactions after upload');
+        notify.error(getErrorMessage(err, 'Failed to fetch transactions after upload'));
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to upload statement');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to upload statement'));
     } finally {
       setLoading(false);
     }
@@ -427,18 +429,6 @@ const PPF: React.FC = () => {
           </Button>
         </Box>
       </Box>
-
-      {error && (
-        <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
 
       {/* Summary Cards */}
       {summary && (
@@ -637,16 +627,6 @@ const PPF: React.FC = () => {
           {editingAccount ? 'Edit PPF Account' : 'Add PPF Account'}
         </DialogTitle>
         <DialogContent>
-          {error && openDialog && (
-            <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          {success && openDialog && (
-            <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>
-              {success}
-            </Alert>
-          )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
@@ -788,16 +768,6 @@ const PPF: React.FC = () => {
       <Dialog open={openTransactionDialog} onClose={handleCloseTransactionDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Add Transaction</DialogTitle>
         <DialogContent>
-          {error && openTransactionDialog && (
-            <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          {success && openTransactionDialog && (
-            <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>
-              {success}
-            </Alert>
-          )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
@@ -877,16 +847,6 @@ const PPF: React.FC = () => {
       <Dialog open={openUploadDialog} onClose={handleCloseUploadDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Upload PPF Statement</DialogTitle>
         <DialogContent>
-          {error && openUploadDialog && (
-            <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          {success && openUploadDialog && (
-            <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>
-              {success}
-            </Alert>
-          )}
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" color="textSecondary" gutterBottom>
               Select the PPF account for this statement

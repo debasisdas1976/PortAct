@@ -43,6 +43,11 @@ class AssetUpdate(BaseModel):
     details: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+    # Account information
+    account_id: Optional[str] = None
+    broker_name: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    purchase_date: Optional[datetime] = None
 
 
 class AssetInDB(AssetBase):

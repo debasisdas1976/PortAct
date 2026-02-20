@@ -11,7 +11,6 @@ import {
   TableRow,
   Chip,
   CircularProgress,
-  Alert,
   Grid,
   Card,
   CardContent,
@@ -22,7 +21,6 @@ import {
   DialogActions,
   TextField,
   IconButton,
-  Snackbar,
   MenuItem,
   Select,
   FormControl,
@@ -32,6 +30,8 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete, Shield as InsuranceIcon } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 const POLICY_TYPES = [
   { value: 'term_life', label: 'Term Life' },
@@ -128,23 +128,22 @@ const getFrequencyLabel = (value: string) =>
   PREMIUM_FREQUENCIES.find((f) => f.value === value)?.label || value;
 
 const Insurance: React.FC = () => {
+  const { notify } = useNotification();
   const [summary, setSummary] = useState<InsuranceSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   const fetchData = async () => {
     try {
       setLoading(true);
       const response = await api.get('/insurance/summary');
       setSummary(response.data);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load insurance data');
+    } catch (err) {
+      setLoadError(getErrorMessage(err, 'Failed to load insurance data'));
     } finally {
       setLoading(false);
     }
@@ -194,8 +193,7 @@ const Insurance: React.FC = () => {
   const handleSave = async () => {
     if (!form.nickname || !form.policy_name || !form.policy_number || !form.insurer_name ||
         !form.insured_name || !form.sum_assured || !form.premium_amount || !form.policy_start_date) {
-      setSnackbarMessage('Please fill in all required fields');
-      setSnackbarOpen(true);
+      notify.error('Please fill in all required fields');
       return;
     }
     const payload: any = {
@@ -220,17 +218,15 @@ const Insurance: React.FC = () => {
       setSaving(true);
       if (editingId) {
         await api.put(`/insurance/${editingId}`, payload);
-        setSnackbarMessage('Insurance policy updated successfully');
+        notify.success('Insurance policy updated successfully');
       } else {
         await api.post('/insurance/', payload);
-        setSnackbarMessage('Insurance policy added successfully');
+        notify.success('Insurance policy added successfully');
       }
-      setSnackbarOpen(true);
       handleClose();
       fetchData();
-    } catch (err: any) {
-      setSnackbarMessage(err.response?.data?.detail || 'Failed to save insurance policy');
-      setSnackbarOpen(true);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save insurance policy'));
     } finally {
       setSaving(false);
     }
@@ -240,12 +236,10 @@ const Insurance: React.FC = () => {
     if (!window.confirm(`Delete insurance policy "${name}"? This cannot be undone.`)) return;
     try {
       await api.delete(`/insurance/${id}`);
-      setSnackbarMessage('Insurance policy deleted');
-      setSnackbarOpen(true);
+      notify.success('Insurance policy deleted successfully');
       fetchData();
-    } catch (err: any) {
-      setSnackbarMessage(err.response?.data?.detail || 'Failed to delete insurance policy');
-      setSnackbarOpen(true);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete insurance policy'));
     }
   };
 
@@ -259,8 +253,12 @@ const Insurance: React.FC = () => {
     );
   }
 
-  if (error) {
-    return <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>;
+  if (loadError) {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Typography color="error">{loadError}</Typography>
+      </Box>
+    );
   }
 
   const policies = summary?.policies || [];
@@ -596,12 +594,6 @@ const Insurance: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={4000}
-        onClose={() => setSnackbarOpen(false)}
-        message={snackbarMessage}
-      />
     </Box>
   );
 };

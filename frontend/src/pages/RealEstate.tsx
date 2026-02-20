@@ -22,7 +22,6 @@ import {
   DialogActions,
   TextField,
   IconButton,
-  Snackbar,
   MenuItem,
   Select,
   FormControl,
@@ -32,6 +31,8 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 const AREA_UNITS = [
   { value: 'sqft', label: 'Sq. Ft.' },
@@ -110,23 +111,22 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
     notes: '',
   };
 
+  const { notify } = useNotification();
   const [summary, setSummary] = useState<RealEstateSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [dialogError, setDialogError] = useState('');
 
   const fetchData = async () => {
     try {
       setLoading(true);
       const response = await api.get(`/real-estates/summary?property_type=${propertyType}`);
       setSummary(response.data);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || `Failed to load ${title.toLowerCase()} data`);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load data'));
     } finally {
       setLoading(false);
     }
@@ -180,10 +180,10 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
   const handleSave = async () => {
     if (!form.nickname || !form.location || !form.area || !form.purchase_price ||
         !form.current_market_value || !form.purchase_date) {
-      setSnackbarMessage('Please fill in all required fields');
-      setSnackbarOpen(true);
+      setDialogError('Please fill in all required fields');
       return;
     }
+    setDialogError('');
     const payload: any = {
       nickname: form.nickname,
       property_type: propertyType,
@@ -206,17 +206,15 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
       setSaving(true);
       if (editingId) {
         await api.put(`/real-estates/${editingId}`, payload);
-        setSnackbarMessage(`${title} property updated successfully`);
+        notify.success(`${title} property updated successfully`);
       } else {
         await api.post('/real-estates/', payload);
-        setSnackbarMessage(`${title} property added successfully`);
+        notify.success(`${title} property added successfully`);
       }
-      setSnackbarOpen(true);
       handleClose();
       fetchData();
     } catch (err: any) {
-      setSnackbarMessage(err.response?.data?.detail || `Failed to save ${title.toLowerCase()} property`);
-      setSnackbarOpen(true);
+      setDialogError(err.response?.data?.detail || `Failed to save ${title.toLowerCase()} property. Please try again.`);
     } finally {
       setSaving(false);
     }
@@ -226,12 +224,10 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
     if (!window.confirm(`Delete property "${name}"? This cannot be undone.`)) return;
     try {
       await api.delete(`/real-estates/${id}`);
-      setSnackbarMessage('Property deleted');
-      setSnackbarOpen(true);
+      notify.success('Property deleted');
       fetchData();
     } catch (err: any) {
-      setSnackbarMessage(err.response?.data?.detail || 'Failed to delete property');
-      setSnackbarOpen(true);
+      notify.error(err.response?.data?.detail || 'Failed to delete property');
     }
   };
 
@@ -241,10 +237,6 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
         <CircularProgress />
       </Box>
     );
-  }
-
-  if (error) {
-    return <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>;
   }
 
   const properties = summary?.properties || [];
@@ -370,6 +362,7 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
       <Dialog open={dialogOpen} onClose={handleClose} maxWidth="md" fullWidth>
         <DialogTitle>{editingId ? `Edit ${title} Property` : `Add ${title} Property`}</DialogTitle>
         <DialogContent>
+          {dialogError && <Alert severity="error" sx={{ mb: 2 }}>{dialogError}</Alert>}
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -537,17 +530,6 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={4000}
-        onClose={() => setSnackbarOpen(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert onClose={() => setSnackbarOpen(false)} severity="info" sx={{ width: '100%' }}>
-          {snackbarMessage}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

@@ -11,7 +11,6 @@ import {
   TableRow,
   Chip,
   CircularProgress,
-  Alert,
   Grid,
   Card,
   CardContent,
@@ -22,13 +21,14 @@ import {
   DialogActions,
   TextField,
   IconButton,
-  Snackbar,
   Tooltip,
   Switch,
   FormControlLabel,
 } from '@mui/material';
 import { Add, Edit, Delete, Work as GratuityIcon, InfoOutlined } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface GratuityAccount {
   id: number;
@@ -68,23 +68,22 @@ const emptyForm = {
 };
 
 const Gratuity: React.FC = () => {
+  const { notify } = useNotification();
   const [summary, setSummary] = useState<GratuitySummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   const fetchData = async () => {
     try {
       setLoading(true);
       const response = await api.get('/gratuity/summary');
       setSummary(response.data);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load gratuity data');
+    } catch (err) {
+      setLoadError(getErrorMessage(err, 'Failed to load gratuity data'));
     } finally {
       setLoading(false);
     }
@@ -124,8 +123,7 @@ const Gratuity: React.FC = () => {
 
   const handleSave = async () => {
     if (!form.nickname || !form.employer_name || !form.employee_name || !form.date_of_joining || !form.basic_pay) {
-      setSnackbarMessage('Please fill in all required fields');
-      setSnackbarOpen(true);
+      notify.error('Please fill in all required fields');
       return;
     }
     const payload = {
@@ -141,17 +139,15 @@ const Gratuity: React.FC = () => {
       setSaving(true);
       if (editingId) {
         await api.put(`/gratuity/${editingId}`, payload);
-        setSnackbarMessage('Gratuity account updated successfully');
+        notify.success('Gratuity account updated successfully');
       } else {
         await api.post('/gratuity/', payload);
-        setSnackbarMessage('Gratuity account added successfully');
+        notify.success('Gratuity account added successfully');
       }
-      setSnackbarOpen(true);
       handleClose();
       fetchData();
-    } catch (err: any) {
-      setSnackbarMessage(err.response?.data?.detail || 'Failed to save gratuity account');
-      setSnackbarOpen(true);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save gratuity account'));
     } finally {
       setSaving(false);
     }
@@ -161,12 +157,10 @@ const Gratuity: React.FC = () => {
     if (!window.confirm(`Delete gratuity account "${name}"? This cannot be undone.`)) return;
     try {
       await api.delete(`/gratuity/${id}`);
-      setSnackbarMessage('Gratuity account deleted');
-      setSnackbarOpen(true);
+      notify.success('Gratuity account deleted successfully');
       fetchData();
-    } catch (err: any) {
-      setSnackbarMessage(err.response?.data?.detail || 'Failed to delete gratuity account');
-      setSnackbarOpen(true);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete gratuity account'));
     }
   };
 
@@ -178,8 +172,12 @@ const Gratuity: React.FC = () => {
     );
   }
 
-  if (error) {
-    return <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>;
+  if (loadError) {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Typography color="error">{loadError}</Typography>
+      </Box>
+    );
   }
 
   const accounts = summary?.accounts || [];
@@ -389,12 +387,6 @@ const Gratuity: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={4000}
-        onClose={() => setSnackbarOpen(false)}
-        message={snackbarMessage}
-      />
     </Box>
   );
 };

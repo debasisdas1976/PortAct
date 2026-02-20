@@ -15,6 +15,10 @@ from app.schemas.asset import (
 )
 from app.services.price_updater import update_asset_price
 from app.services.currency_converter import convert_usd_to_inr
+from app.models.alert import Alert
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.mutual_fund_holding import MutualFundHolding
+from app.models.transaction import Transaction
 
 router = APIRouter()
 
@@ -207,16 +211,30 @@ async def delete_asset(
         Asset.id == asset_id,
         Asset.user_id == current_user.id
     ).first()
-    
+
     if not asset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Asset not found"
         )
-    
+
+    # Clear FK references that lack ON DELETE CASCADE
+    db.query(Alert).filter(Alert.asset_id == asset_id).update(
+        {Alert.asset_id: None}, synchronize_session=False
+    )
+    db.query(AssetSnapshot).filter(AssetSnapshot.asset_id == asset_id).update(
+        {AssetSnapshot.asset_id: None}, synchronize_session=False
+    )
+    db.query(MutualFundHolding).filter(MutualFundHolding.asset_id == asset_id).delete(
+        synchronize_session=False
+    )
+    db.query(Transaction).filter(Transaction.asset_id == asset_id).delete(
+        synchronize_session=False
+    )
+
     db.delete(asset)
     db.commit()
-    
+
     return None
 
 

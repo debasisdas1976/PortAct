@@ -6,10 +6,13 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import re
+import logging
 import pandas as pd
 import PyPDF2
 from io import BytesIO
 from app.models.expense import ExpenseType, PaymentMethod
+
+logger = logging.getLogger(__name__)
 
 
 class BankStatementParser(ABC):
@@ -263,10 +266,12 @@ class ICICICreditCardParser(BankStatementParser):
         # Some .xls files are actually .xlsx format
         try:
             df = pd.read_excel(self.file_path, sheet_name='CCLastStatement', engine='openpyxl', header=None)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Excel engine fallback: openpyxl failed, trying xlrd: {e}")
             try:
                 df = pd.read_excel(self.file_path, sheet_name='CCLastStatement', engine='xlrd', header=None)
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Excel engine fallback: xlrd failed, using auto-detect: {e}")
                 # Fallback: let pandas auto-detect
                 df = pd.read_excel(self.file_path, sheet_name='CCLastStatement', header=None)
         

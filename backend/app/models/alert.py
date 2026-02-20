@@ -30,7 +30,7 @@ class Alert(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)  # Optional, for asset-specific alerts
+    asset_id = Column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)  # Optional, for asset-specific alerts
     
     # Alert details
     alert_type = Column(Enum(AlertType), nullable=False, index=True)

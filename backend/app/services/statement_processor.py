@@ -163,6 +163,10 @@ def process_statement(statement_id: int, db: Session):
                 elif is_icici_direct_mf_format(data):
                     print("Detected ICICI Direct Mutual Fund CSV format")
                     assets, transactions = parse_icici_direct_mf_csv(data, statement)
+                # Check if it's Groww format
+                elif is_groww_format(data):
+                    print("Detected Groww Stock Holdings format")
+                    assets, transactions = parse_groww_holdings(data, statement)
                 # Check if it's Zerodha format
                 elif is_zerodha_format(data, statement):
                     assets, transactions = parse_zerodha_holdings(data, statement, None, {})
@@ -175,17 +179,22 @@ def process_statement(statement_id: int, db: Session):
                         assets, transactions = parse_mutual_fund_statement(text, statement)
                     else:
                         assets, transactions = parse_generic_statement(text, statement)
-            # Check if it's a multi-sheet Zerodha file
+            # Check if it's a multi-sheet file
             elif isinstance(data, list):
                 print(f"Processing {len(data)} sheets")
                 for item in data:
                     sheet_name, df, account_info = item
                     print(f"\nProcessing sheet: {sheet_name}")
-                    if is_zerodha_format(df, statement):
+                    if is_groww_format(df, account_info):
+                        print(f"Detected Groww format in sheet '{sheet_name}'")
+                        sheet_assets, sheet_transactions = parse_groww_holdings(df, statement, account_info)
+                        assets.extend(sheet_assets)
+                        transactions.extend(sheet_transactions)
+                    elif is_zerodha_format(df, statement):
                         sheet_assets, sheet_transactions = parse_zerodha_holdings(df, statement, sheet_name, account_info)
                         assets.extend(sheet_assets)
                         transactions.extend(sheet_transactions)
-            # Check if it's a single DataFrame Zerodha file with account info
+            # Check if it's a single DataFrame file with account info
             elif isinstance(data, tuple) and len(data) == 2:
                 df, account_info = data
                 if isinstance(df, pd.DataFrame):
@@ -196,6 +205,9 @@ def process_statement(statement_id: int, db: Session):
                     elif is_icici_direct_mf_format(df):
                         print("Detected ICICI Direct Mutual Fund CSV format")
                         assets, transactions = parse_icici_direct_mf_csv(df, statement, account_info)
+                    elif is_groww_format(df, account_info):
+                        print("Detected Groww Stock Holdings format")
+                        assets, transactions = parse_groww_holdings(df, statement, account_info)
                     elif is_zerodha_format(df, statement):
                         assets, transactions = parse_zerodha_holdings(df, statement, None, account_info)
             # Parse based on statement type
@@ -796,7 +808,7 @@ def is_icici_direct_stock_format(df: pd.DataFrame) -> bool:
         required_columns = ['Stock Symbol', 'Company Name', 'ISIN Code', 'Qty']
         df_columns = [col.strip() for col in df.columns]
         return all(col in df_columns for col in required_columns)
-    except:
+    except Exception:
         return False
 
 
@@ -806,7 +818,7 @@ def is_icici_direct_mf_format(df: pd.DataFrame) -> bool:
         required_columns = ['Fund', 'Scheme', 'Folio', 'Units']
         df_columns = [col.strip() for col in df.columns]
         return all(col in df_columns for col in required_columns)
-    except:
+    except Exception:
         return False
 
 
@@ -1046,24 +1058,50 @@ def parse_icici_direct_mf_csv(df: pd.DataFrame, statement: Statement, account_in
 
 def extract_account_info_from_excel(file_path: str) -> dict:
     """
-    Extract account information from Zerodha Excel file header
-    Returns dict with account_id, account_holder_name, etc.
+    Extract account information from broker Excel file header
+    Returns dict with account_id, account_holder_name, broker_name
     """
     account_info = {
         'account_id': None,
         'account_holder_name': None,
         'broker_name': 'Zerodha'  # Default for Zerodha files
     }
-    
+
     try:
         # Read first few rows to extract account info
         df_header = pd.read_excel(file_path, sheet_name=0, header=None, nrows=20, engine='openpyxl')
-        
-        # Look for account ID and name in first rows
+
+        # Check for Groww format first (specific structure)
+        # Row 0: "Name" | <name>
+        # Row 1: "Unique Client Code" | <code>
+        # Row 3: "Holdings statement for stocks as on ..."
+        is_groww = False
+        for i in range(min(5, len(df_header))):
+            row_vals = [str(val).strip() for val in df_header.iloc[i].values if pd.notna(val)]
+            row_str = ' '.join(row_vals).lower()
+            if 'unique client code' in row_str or 'holdings statement for stocks' in row_str:
+                is_groww = True
+                break
+
+        if is_groww:
+            account_info['broker_name'] = 'Groww'
+            for i in range(min(5, len(df_header))):
+                row_vals = [str(val).strip() for val in df_header.iloc[i].values if pd.notna(val)]
+                if len(row_vals) >= 2:
+                    label = row_vals[0].lower()
+                    value = row_vals[1]
+                    if label == 'name':
+                        account_info['account_holder_name'] = value
+                    elif 'unique client code' in label or 'client code' in label:
+                        account_info['account_id'] = value
+            print(f"Detected Groww statement. Account info: {account_info}")
+            return account_info
+
+        # Generic extraction for other brokers (Zerodha etc.)
         for i in range(min(20, len(df_header))):
             row_str = ' '.join([str(val) for val in df_header.iloc[i].values if pd.notna(val)])
             row_str_lower = row_str.lower()
-            
+
             # Look for client ID / Account ID
             if 'client' in row_str_lower or 'account' in row_str_lower or 'id' in row_str_lower:
                 # Try to extract ID (usually alphanumeric)
@@ -1071,7 +1109,7 @@ def extract_account_info_from_excel(file_path: str) -> dict:
                 id_match = re.search(r'[A-Z0-9]{6,}', row_str)
                 if id_match and not account_info['account_id']:
                     account_info['account_id'] = id_match.group()
-            
+
             # Look for name
             if 'name' in row_str_lower and not account_info['account_holder_name']:
                 # Extract name after 'name:' or similar
@@ -1080,11 +1118,11 @@ def extract_account_info_from_excel(file_path: str) -> dict:
                     name = parts[1].strip()
                     if name and len(name) > 2:
                         account_info['account_holder_name'] = name
-        
+
         print(f"Extracted account info: {account_info}")
     except Exception as e:
         print(f"Could not extract account info: {str(e)}")
-    
+
     return account_info
 
 
@@ -1117,10 +1155,10 @@ def extract_text_from_excel(file_path: str):
                 header_row = None
                 for i in range(min(30, len(df_raw))):
                     row_values = df_raw.iloc[i].values
-                    if any(str(val).strip().lower() == 'symbol' for val in row_values if pd.notna(val)):
+                    if any(str(val).strip().lower() in ('symbol', 'stock name') for val in row_values if pd.notna(val)):
                         header_row = i
                         break
-                
+
                 if header_row is not None:
                     # Extract column names
                     headers = []
@@ -1129,11 +1167,11 @@ def extract_text_from_excel(file_path: str):
                             headers.append(str(val).strip())
                         else:
                             headers.append(f'Unnamed_{len(headers)}')
-                    
+
                     # Create dataframe
                     df = pd.DataFrame(df_raw.iloc[header_row + 1:].values, columns=headers)
                     df = df.loc[:, (df != '').any(axis=0)]
-                    
+
                     print(f"Sheet '{sheet_name}': Extracted {len(df)} rows")
                     sheets_data.append((sheet_name, df, account_info))
             
@@ -1145,10 +1183,10 @@ def extract_text_from_excel(file_path: str):
             header_row = None
             for i in range(min(30, len(df_raw))):
                 row_values = df_raw.iloc[i].values
-                if any(str(val).strip().lower() == 'symbol' for val in row_values if pd.notna(val)):
+                if any(str(val).strip().lower() in ('symbol', 'stock name') for val in row_values if pd.notna(val)):
                     header_row = i
                     break
-            
+
             if header_row is not None:
                 headers = []
                 for val in df_raw.iloc[header_row].values:
@@ -1156,10 +1194,10 @@ def extract_text_from_excel(file_path: str):
                         headers.append(str(val).strip())
                     else:
                         headers.append(f'Unnamed_{len(headers)}')
-                
+
                 df = pd.DataFrame(df_raw.iloc[header_row + 1:].values, columns=headers)
                 df = df.loc[:, (df != '').any(axis=0)]
-                
+
                 print(f"Extracted {len(df)} rows with columns: {list(df.columns)}")
                 return (df, account_info)
             else:
@@ -1414,6 +1452,176 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
     print(f"Parsed {len(assets)} assets and {len(transactions)} transactions")  # Debug
     return assets, transactions
 
+
+def is_groww_format(df: pd.DataFrame, account_info: dict = None) -> bool:
+    """
+    Check if the DataFrame is in Groww stock holdings format.
+    Groww headers: Stock Name, ISIN, Quantity, Average buy price, Buy value,
+                   Closing price, Closing value, Unrealised P&L
+    """
+    try:
+        df_columns_lower = [col.lower().strip() for col in df.columns]
+        groww_columns = ['stock name', 'isin', 'quantity', 'average buy price', 'closing price']
+        matches = sum(1 for col in groww_columns if col in df_columns_lower)
+        # Also check account_info broker_name
+        if account_info and account_info.get('broker_name', '').lower() == 'groww':
+            return matches >= 2
+        return matches >= 3
+    except Exception:
+        return False
+
+
+def parse_groww_holdings(df: pd.DataFrame, statement: Statement, account_info: dict = None) -> tuple:
+    """
+    Parse Groww stock holdings Excel file.
+    Columns: Stock Name, ISIN, Quantity, Average buy price, Buy value,
+             Closing price, Closing value, Unrealised P&L
+    """
+    assets = []
+    transactions = []
+
+    if account_info is None:
+        account_info = {}
+
+    print(f"\n=== Parsing Groww Holdings ===")
+    print(f"Account Info: {account_info}")
+    print(f"DataFrame shape: {df.shape}")
+
+    # Clean column names
+    df.columns = df.columns.str.strip()
+
+    # Drop empty rows
+    df = df.dropna(how='all')
+
+    # Normalize column lookup (case-insensitive)
+    col_map = {col.lower(): col for col in df.columns}
+
+    def get_col(name):
+        return col_map.get(name.lower())
+
+    stock_name_col = get_col('Stock Name')
+    isin_col = get_col('ISIN')
+    qty_col = get_col('Quantity')
+    avg_price_col = get_col('Average buy price')
+    buy_value_col = get_col('Buy value')
+    closing_price_col = get_col('Closing price')
+    closing_value_col = get_col('Closing value')
+    pnl_col = get_col('Unrealised P&L')
+
+    if not stock_name_col or not qty_col:
+        print("Required columns not found in Groww statement")
+        return assets, transactions
+
+    print(f"Columns mapped: {list(df.columns)}")
+
+    for index, row in df.iterrows():
+        try:
+            name = row.get(stock_name_col, '') if stock_name_col else ''
+            if pd.isna(name) or not str(name).strip():
+                continue
+            name = str(name).strip()
+
+            # Skip summary/total rows
+            if name.lower() in ('total', 'grand total', ''):
+                continue
+
+            isin = str(row.get(isin_col, '')).strip() if isin_col else ''
+            if pd.isna(isin) or isin == 'nan':
+                isin = ''
+
+            # Quantity
+            qty = row.get(qty_col, 0) if qty_col else 0
+            if pd.isna(qty):
+                qty = 0
+            qty = float(str(qty).replace(',', ''))
+            if qty <= 0:
+                print(f"Skipping {name} - zero quantity")
+                continue
+
+            # Average buy price
+            avg_price = row.get(avg_price_col, 0) if avg_price_col else 0
+            if pd.isna(avg_price):
+                avg_price = 0
+            avg_price = float(str(avg_price).replace(',', ''))
+
+            # Buy value (total invested)
+            buy_value = row.get(buy_value_col, qty * avg_price) if buy_value_col else qty * avg_price
+            if pd.isna(buy_value):
+                buy_value = qty * avg_price
+            else:
+                buy_value = float(str(buy_value).replace(',', ''))
+
+            # Closing price
+            closing_price = row.get(closing_price_col, avg_price) if closing_price_col else avg_price
+            if pd.isna(closing_price):
+                closing_price = avg_price
+            closing_price = float(str(closing_price).replace(',', ''))
+
+            # Closing value (current value)
+            closing_value = row.get(closing_value_col, qty * closing_price) if closing_value_col else qty * closing_price
+            if pd.isna(closing_value):
+                closing_value = qty * closing_price
+            else:
+                closing_value = float(str(closing_value).replace(',', ''))
+
+            # Derive symbol from name (uppercase, first word or abbreviation)
+            # Use ISIN as fallback symbol if available
+            symbol = name.upper().replace(' LIMITED', '').replace(' LTD', '').strip()
+            # Truncate long names to a reasonable symbol
+            if len(symbol) > 20:
+                symbol = symbol.split()[0]
+
+            # Determine asset type
+            asset_type = AssetType.STOCK
+            name_upper = name.upper()
+            if any(kw in name_upper for kw in ['GOLD', 'SILVER', 'GOLDBEES', 'SILVERBEES']):
+                asset_type = AssetType.COMMODITY
+
+            print(f"Processing: {name} ({symbol}) - {qty} units @ avg {avg_price}, closing {closing_price}")
+
+            asset_data = {
+                'asset_type': asset_type,
+                'name': name[:100],
+                'symbol': symbol,
+                'isin': isin if isin else None,
+                'quantity': qty,
+                'purchase_price': avg_price,
+                'current_price': closing_price,
+                'total_invested': buy_value,
+                'current_value': closing_value,
+                'account_id': account_info.get('account_id', f'GROWW_{statement.user_id}'),
+                'broker_name': 'Groww',
+                'account_holder_name': account_info.get('account_holder_name'),
+                'statement_id': statement.id,
+                'details': {
+                    'source': 'groww_import',
+                    'broker': 'groww',
+                    'isin': isin,
+                    'import_date': datetime.utcnow().isoformat()
+                }
+            }
+            assets.append(asset_data)
+
+            # Create transaction record
+            transaction_data = {
+                'asset_symbol': symbol,
+                'transaction_type': TransactionType.BUY,
+                'transaction_date': statement.uploaded_at,
+                'quantity': qty,
+                'price_per_unit': avg_price,
+                'total_amount': buy_value,
+                'description': f'Imported from Groww holdings - {statement.filename}'
+            }
+            transactions.append(transaction_data)
+
+        except Exception as e:
+            print(f"Error processing row {index}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            continue
+
+    print(f"Parsed {len(assets)} assets and {len(transactions)} transactions from Groww")
+    return assets, transactions
 
 
 def process_vested_statement(statement: Statement) -> tuple:

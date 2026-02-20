@@ -20,7 +20,6 @@ import {
   TextField,
   Typography,
   Chip,
-  Alert,
   Tabs,
   Tab,
   CircularProgress,
@@ -37,6 +36,8 @@ import {
   Visibility as ViewIcon
 } from '@mui/icons-material';
 import api from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 
 // Helper function to get user-friendly transaction type label
 const getTransactionTypeLabel = (type: string): string => {
@@ -134,10 +135,7 @@ const PF: React.FC = () => {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPassword, setUploadPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [dialogError, setDialogError] = useState('');
-  const [dialogSuccess, setDialogSuccess] = useState('');
+  const { notify } = useNotification();
 
   useEffect(() => {
     fetchAccounts();
@@ -149,9 +147,13 @@ const PF: React.FC = () => {
       setLoading(true);
       const response = await api.get('/pf/');
       setAccounts(response.data);
-      setError('');
+      // Auto-select first account to enable Transactions tab
+      if (response.data.length > 0 && !selectedAccount) {
+        setSelectedAccount(response.data[0]);
+        fetchAccountTransactions(response.data[0].id);
+      }
     } catch (err) {
-      setError('Failed to fetch PF accounts');
+      notify.error(getErrorMessage(err, 'Failed to fetch PF accounts'));
     } finally {
       setLoading(false);
     }
@@ -162,7 +164,7 @@ const PF: React.FC = () => {
       const response = await api.get('/pf/summary');
       setSummary(response.data);
     } catch (err) {
-      console.error('Failed to fetch PF summary');
+      notify.error(getErrorMessage(err, 'Failed to fetch PF summary'));
     }
   };
 
@@ -171,7 +173,7 @@ const PF: React.FC = () => {
       const response = await api.get(`/pf/${accountId}`);
       setTransactions(response.data.transactions || []);
     } catch (err) {
-      setError('Failed to fetch transactions');
+      notify.error(getErrorMessage(err, 'Failed to fetch transactions'));
     }
   };
 
@@ -215,38 +217,31 @@ const PF: React.FC = () => {
         notes: ''
       });
     }
-    setDialogError('');
-    setDialogSuccess('');
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingAccount(null);
-    setDialogError('');
-    setDialogSuccess('');
   };
 
   const handleSubmit = async () => {
     try {
       setLoading(true);
-      setDialogError('');
-      
+
       if (editingAccount) {
         await api.put(`/pf/${editingAccount.id}`, formData);
-        setDialogSuccess('PF account updated successfully');
+        notify.success('Account updated successfully');
       } else {
         await api.post('/pf/', formData);
-        setDialogSuccess('PF account created successfully');
+        notify.success('Account added successfully');
       }
-      
-      setTimeout(() => {
-        handleCloseDialog();
-        fetchAccounts();
-        fetchSummary();
-      }, 1500);
-    } catch (err: any) {
-      setDialogError(err.response?.data?.detail || 'Failed to save PF account');
+
+      handleCloseDialog();
+      fetchAccounts();
+      fetchSummary();
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save PF account'));
     } finally {
       setLoading(false);
     }
@@ -259,11 +254,11 @@ const PF: React.FC = () => {
 
     try {
       await api.delete(`/pf/${id}`);
-      setSuccess('PF account deleted successfully');
+      notify.success('Account deleted successfully');
       fetchAccounts();
       fetchSummary();
     } catch (err) {
-      setError('Failed to delete PF account');
+      notify.error(getErrorMessage(err, 'Failed to delete PF account'));
     }
   };
 
@@ -275,7 +270,7 @@ const PF: React.FC = () => {
 
   const handleOpenTransactionDialog = () => {
     if (!selectedAccount) {
-      setError('Please select an account first');
+      notify.error('Please select an account first');
       return;
     }
     setTransactionFormData({
@@ -287,15 +282,11 @@ const PF: React.FC = () => {
       description: '',
       financial_year: ''
     });
-    setDialogError('');
-    setDialogSuccess('');
     setOpenTransactionDialog(true);
   };
 
   const handleCloseTransactionDialog = () => {
     setOpenTransactionDialog(false);
-    setDialogError('');
-    setDialogSuccess('');
   };
 
   const handleSubmitTransaction = async () => {
@@ -303,17 +294,14 @@ const PF: React.FC = () => {
 
     try {
       setLoading(true);
-      setDialogError('');
       await api.post(`/pf/${selectedAccount.id}/transactions`, transactionFormData);
-      setDialogSuccess('Transaction added successfully');
-      setTimeout(() => {
-        handleCloseTransactionDialog();
-        fetchAccountTransactions(selectedAccount.id);
-        fetchAccounts();
-        fetchSummary();
-      }, 1500);
-    } catch (err: any) {
-      setDialogError(err.response?.data?.detail || 'Failed to add transaction');
+      notify.success('Transaction added successfully');
+      handleCloseTransactionDialog();
+      fetchAccountTransactions(selectedAccount.id);
+      fetchAccounts();
+      fetchSummary();
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to add transaction'));
     } finally {
       setLoading(false);
     }
@@ -322,8 +310,6 @@ const PF: React.FC = () => {
   const handleOpenUploadDialog = () => {
     setUploadFile(null);
     setUploadPassword('');
-    setDialogError('');
-    setDialogSuccess('');
     setOpenUploadDialog(true);
   };
 
@@ -331,8 +317,6 @@ const PF: React.FC = () => {
     setOpenUploadDialog(false);
     setUploadFile(null);
     setUploadPassword('');
-    setDialogError('');
-    setDialogSuccess('');
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -343,13 +327,12 @@ const PF: React.FC = () => {
 
   const handleUploadStatement = async () => {
     if (!uploadFile) {
-      setDialogError('Please select a file');
+      notify.error('Please select a file');
       return;
     }
 
     try {
       setLoading(true);
-      setDialogError('');
       const formData = new FormData();
       formData.append('file', uploadFile);
       if (uploadPassword) {
@@ -361,14 +344,12 @@ const PF: React.FC = () => {
           'Content-Type': 'multipart/form-data'
         }
       });
-      setDialogSuccess('Statement uploaded and processed successfully');
-      setTimeout(() => {
-        handleCloseUploadDialog();
-        fetchAccounts();
-        fetchSummary();
-      }, 1500);
-    } catch (err: any) {
-      setDialogError(err.response?.data?.detail || 'Failed to upload statement');
+      notify.success('Statement uploaded successfully');
+      handleCloseUploadDialog();
+      fetchAccounts();
+      fetchSummary();
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to upload statement'));
     } finally {
       setLoading(false);
     }
@@ -414,18 +395,6 @@ const PF: React.FC = () => {
           </Button>
         </Box>
       </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>
-          {success}
-        </Alert>
-      )}
 
       {/* Summary Cards */}
       {summary && (
@@ -663,16 +632,6 @@ const PF: React.FC = () => {
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogTitle>{editingAccount ? 'Edit PF Account' : 'Add PF Account'}</DialogTitle>
         <DialogContent>
-          {dialogError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDialogError('')}>
-              {dialogError}
-            </Alert>
-          )}
-          {dialogSuccess && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {dialogSuccess}
-            </Alert>
-          )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
@@ -839,16 +798,6 @@ const PF: React.FC = () => {
       <Dialog open={openTransactionDialog} onClose={handleCloseTransactionDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Add Transaction</DialogTitle>
         <DialogContent>
-          {dialogError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDialogError('')}>
-              {dialogError}
-            </Alert>
-          )}
-          {dialogSuccess && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {dialogSuccess}
-            </Alert>
-          )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
@@ -944,16 +893,6 @@ const PF: React.FC = () => {
       <Dialog open={openUploadDialog} onClose={handleCloseUploadDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Upload PF Statement</DialogTitle>
         <DialogContent>
-          {dialogError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDialogError('')}>
-              {dialogError}
-            </Alert>
-          )}
-          {dialogSuccess && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {dialogSuccess}
-            </Alert>
-          )}
           <Box sx={{ mt: 2 }}>
             <Button
               variant="outlined"

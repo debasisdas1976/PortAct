@@ -15,28 +15,67 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def get_stock_price_nse(symbol: str) -> float:
+def get_stock_price_yfinance(symbol: str) -> float:
     """
-    Get stock price from NSE India (free API)
+    Get stock price using yfinance library.
+    Handles NSE session management internally.
+    Appends '.NS' for Indian stocks if not already suffixed.
     """
     try:
-        # NSE India API endpoint
+        import yfinance as yf
+
+        # Add NSE suffix if not already present
+        yf_symbol = symbol if ('.' in symbol) else f"{symbol}.NS"
+        ticker = yf.Ticker(yf_symbol)
+        info = ticker.fast_info
+        price = getattr(info, 'last_price', None)
+        if price and price > 0:
+            logger.info(f"yfinance price for {yf_symbol}: ₹{price:.2f}")
+            return float(price)
+    except Exception as e:
+        logger.warning(f"yfinance failed for {symbol}: {e}")
+    return None
+
+
+def get_stock_price_nse(symbol: str) -> float:
+    """
+    Get stock price from NSE India.
+    Primary: yfinance (handles session cookies).
+    Fallback: direct NSE API.
+    """
+    # Primary — yfinance (reliable, handles NSE sessions)
+    price = get_stock_price_yfinance(symbol)
+    if price:
+        return price
+
+    # Fallback — direct NSE API (often blocked without cookies)
+    try:
+        session = requests.Session()
+        # Visit homepage first to get cookies
+        session.get(
+            "https://www.nseindia.com",
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html',
+            },
+            timeout=settings.API_TIMEOUT,
+        )
         url = f"{settings.NSE_API_BASE}/quote-equity?symbol={symbol}"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
             'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.nseindia.com',
         }
-        
-        response = requests.get(url, headers=headers, timeout=settings.API_TIMEOUT)
+        response = session.get(url, headers=headers, timeout=settings.API_TIMEOUT)
         if response.status_code == 200:
             data = response.json()
             price = data.get('priceInfo', {}).get('lastPrice')
             if price:
                 return float(price)
     except Exception as e:
-        logger.error(f"Error fetching NSE price for {symbol}: {str(e)}")
-    
+        logger.error(f"NSE fallback failed for {symbol}: {e}")
+
     return None
 
 
@@ -159,27 +198,25 @@ def get_mutual_fund_price(identifier: str) -> tuple:
 
 def get_gold_price() -> float:
     """
-    Get gold price in INR per gram from free API
+    Get gold price in INR per gram from free API.
     """
     try:
-        # Gold price API (returns price in USD per ounce)
         url = settings.GOLD_PRICE_API
         response = requests.get(url, timeout=settings.API_TIMEOUT)
-        
+
         if response.status_code == 200:
             data = response.json()
             price_usd_per_oz = data[0].get('price')
-            
+
             if price_usd_per_oz:
-                # Convert to INR per gram
-                # 1 ounce = 31.1035 grams
-                # Assuming 1 USD = 83 INR (approximate)
-                usd_to_inr = 83
+                # 1 troy ounce = 31.1035 grams
+                usd_to_inr = get_usd_to_inr_rate()
                 price_inr_per_gram = (float(price_usd_per_oz) * usd_to_inr) / 31.1035
                 return price_inr_per_gram
     except Exception as e:
-        logger.error(f"Error fetching gold price: {str(e)}")
-    
+        logger.error(f"Error fetching gold price: {e}")
+
+    return None
 
 
 def get_us_stock_price(symbol: str) -> float:
@@ -216,8 +253,6 @@ def get_us_stock_price(symbol: str) -> float:
                 
     except Exception as e:
         logger.error(f"Error fetching US stock price for {symbol}: {str(e)}")
-    
-    return None
 
     return None
 
@@ -337,24 +372,30 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
             coin_id = None
             if asset.details and 'coin_id' in asset.details:
                 coin_id = asset.details['coin_id']
-            
+
             crypto_price_usd = get_crypto_price(lookup_symbol, coin_id)
             if crypto_price_usd:
                 # Convert USD to INR
                 usd_to_inr = get_usd_to_inr_rate()
                 new_price = crypto_price_usd * usd_to_inr
-                
+
                 # Update the details JSON with USD price and exchange rate
                 if asset.details is None:
                     asset.details = {}
                 asset.details['price_usd'] = crypto_price_usd
                 asset.details['usd_to_inr_rate'] = usd_to_inr
                 asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
-                
+
                 logger.info(f"Updated crypto {asset.symbol}: ${crypto_price_usd} (₹{new_price:.2f} at rate {usd_to_inr})")
             else:
                 error_message = f"Failed to fetch crypto price for {lookup_symbol}"
-        
+
+        elif asset.asset_type in [AssetType.REIT, AssetType.INVIT, AssetType.SOVEREIGN_GOLD_BOND]:
+            # REITs, InvITs, and SGBs are listed on NSE — fetch like stocks
+            new_price = get_stock_price_nse(lookup_symbol)
+            if not new_price:
+                error_message = f"Failed to fetch price for {lookup_symbol} ({asset.asset_type.value})"
+
         if new_price and new_price > 0:
             asset.current_price = new_price
             asset.current_value = asset.quantity * new_price
@@ -387,22 +428,42 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
             asset.price_update_failed = True
             asset.price_update_error = error_msg
             db.commit()
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to persist price update error for {lookup_symbol}: {e}")
             db.rollback()
         
         return False
 
 
+# Asset types that have market prices to fetch
+PRICE_UPDATABLE_TYPES = [
+    AssetType.STOCK,
+    AssetType.US_STOCK,
+    AssetType.EQUITY_MUTUAL_FUND,
+    AssetType.DEBT_MUTUAL_FUND,
+    AssetType.COMMODITY,
+    AssetType.CRYPTO,
+    AssetType.CASH,
+    AssetType.REIT,
+    AssetType.INVIT,
+    AssetType.SOVEREIGN_GOLD_BOND,
+]
+
+
 def update_all_prices():
     """
-    Update prices for all active assets
+    Update prices for all active market-priced assets.
+    Skips non-market assets (PPF, PF, NPS, FD, RD, Insurance, etc.).
     """
     db = SessionLocal()
     try:
-        logger.info("Starting price update for all assets...")
-        
-        # Get all active assets
-        assets = db.query(Asset).filter(Asset.is_active == True).all()
+        logger.info("Starting price update for market-priced assets...")
+
+        # Only fetch assets that have market price sources
+        assets = db.query(Asset).filter(
+            Asset.is_active == True,
+            Asset.asset_type.in_(PRICE_UPDATABLE_TYPES),
+        ).all()
         
         updated_count = 0
         failed_count = 0
