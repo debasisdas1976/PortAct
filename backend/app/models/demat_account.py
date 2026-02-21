@@ -5,33 +5,22 @@ import enum
 from app.core.database import Base
 
 
-class BrokerName(str, enum.Enum):
-    """Enum for supported brokers"""
-    ZERODHA = "zerodha"
-    GROWW = "groww"
-    UPSTOX = "upstox"
-    ANGEL_ONE = "angel_one"
-    ICICI_DIRECT = "icici_direct"
-    HDFC_SECURITIES = "hdfc_securities"
-    KOTAK_SECURITIES = "kotak_securities"
-    AXIS_DIRECT = "axis_direct"
-    SHAREKHAN = "sharekhan"
-    MOTILAL_OSWAL = "motilal_oswal"
-    IIFL_SECURITIES = "iifl_securities"
-    INDMONEY = "indmoney"
-    VESTED = "vested"
-    OTHER = "other"
+class AccountMarket(str, enum.Enum):
+    """Whether the demat account trades domestic (INR) or international stocks"""
+    DOMESTIC = "domestic"
+    INTERNATIONAL = "international"
 
 
 class DematAccount(Base):
     """Demat/Trading account model for tracking stock trading accounts"""
     __tablename__ = "demat_accounts"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
+
     # Account details
-    broker_name = Column(Enum(BrokerName), nullable=False, index=True)
+    broker_name = Column(String(50), nullable=False, index=True)  # References brokers.name
+    account_market = Column(Enum(AccountMarket), nullable=False, default=AccountMarket.DOMESTIC, server_default='DOMESTIC')
     account_id = Column(String, nullable=False)  # Client ID / Account Number
     account_holder_name = Column(String)
     demat_account_number = Column(String)  # DP ID + Client ID

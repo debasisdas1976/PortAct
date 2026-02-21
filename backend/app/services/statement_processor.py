@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.statement import Statement, StatementStatus, StatementType
 from app.models.asset import Asset, AssetType
 from app.models.transaction import Transaction, TransactionType
-from app.models.demat_account import DematAccount, BrokerName
+from app.models.demat_account import DematAccount
 from datetime import datetime
 import PyPDF2
 import pandas as pd
@@ -40,31 +40,31 @@ def get_or_create_demat_account(
     """
     from app.services.currency_converter import get_usd_to_inr_rate
     
-    # Map broker names to BrokerName enum
+    # Map broker display names to master table name keys
     broker_mapping = {
-        'zerodha': BrokerName.ZERODHA,
-        'groww': BrokerName.GROWW,
-        'upstox': BrokerName.UPSTOX,
-        'angel one': BrokerName.ANGEL_ONE,
-        'angel': BrokerName.ANGEL_ONE,
-        'icici direct': BrokerName.ICICI_DIRECT,
-        'icici': BrokerName.ICICI_DIRECT,
-        'hdfc securities': BrokerName.HDFC_SECURITIES,
-        'hdfc': BrokerName.HDFC_SECURITIES,
-        'kotak securities': BrokerName.KOTAK_SECURITIES,
-        'kotak': BrokerName.KOTAK_SECURITIES,
-        'axis direct': BrokerName.AXIS_DIRECT,
-        'axis': BrokerName.AXIS_DIRECT,
-        'sharekhan': BrokerName.SHAREKHAN,
-        'motilal oswal': BrokerName.MOTILAL_OSWAL,
-        'iifl securities': BrokerName.IIFL_SECURITIES,
-        'iifl': BrokerName.IIFL_SECURITIES,
-        'indmoney': BrokerName.INDMONEY,
-        'vested': BrokerName.VESTED,
+        'zerodha': 'zerodha',
+        'groww': 'groww',
+        'upstox': 'upstox',
+        'angel one': 'angel_one',
+        'angel': 'angel_one',
+        'icici direct': 'icici_direct',
+        'icici': 'icici_direct',
+        'hdfc securities': 'hdfc_securities',
+        'hdfc': 'hdfc_securities',
+        'kotak securities': 'kotak_securities',
+        'kotak': 'kotak_securities',
+        'axis direct': 'axis_direct',
+        'axis': 'axis_direct',
+        'sharekhan': 'sharekhan',
+        'motilal oswal': 'motilal_oswal',
+        'iifl securities': 'iifl_securities',
+        'iifl': 'iifl_securities',
+        'indmoney': 'indmoney',
+        'vested': 'vested',
     }
-    
+
     broker_name_lower = broker_name.lower() if broker_name else ''
-    broker_enum = broker_mapping.get(broker_name_lower, BrokerName.OTHER)
+    broker_enum = broker_mapping.get(broker_name_lower, 'other')
     
     if not account_id:
         return None
@@ -77,7 +77,7 @@ def get_or_create_demat_account(
     ).first()
     
     # Determine currency based on broker
-    is_us_broker = broker_enum in [BrokerName.VESTED, BrokerName.INDMONEY]
+    is_us_broker = broker_enum in ['vested', 'indmoney']
     currency = 'USD' if is_us_broker else 'INR'
     
     if not demat_account:

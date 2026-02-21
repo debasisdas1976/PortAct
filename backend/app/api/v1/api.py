@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
     auth, users, assets, transactions, statements, alerts, dashboard, prices,
-    bank_accounts, demat_accounts, crypto_accounts, expense_categories, expenses, bank_statements, ppf, pf, mutual_fund_holdings, ssy, nps,
+    bank_accounts, demat_accounts, crypto_accounts, crypto_exchanges, banks, brokers, expense_categories, expenses, bank_statements, ppf, pf, mutual_fund_holdings, ssy, nps,
     gratuity, insurance, fixed_deposit, recurring_deposit, portfolio_admin, settings, real_estate
 )
 
@@ -19,6 +19,9 @@ api_router.include_router(prices.router, prefix="/prices", tags=["Prices"])
 api_router.include_router(bank_accounts.router, prefix="/bank-accounts", tags=["Bank Accounts"])
 api_router.include_router(demat_accounts.router, prefix="/demat-accounts", tags=["Demat Accounts"])
 api_router.include_router(crypto_accounts.router, prefix="/crypto-accounts", tags=["Crypto Accounts"])
+api_router.include_router(crypto_exchanges.router, prefix="/crypto-exchanges", tags=["Crypto Exchanges"])
+api_router.include_router(banks.router, prefix="/banks", tags=["Banks"])
+api_router.include_router(brokers.router, prefix="/brokers", tags=["Brokers"])
 api_router.include_router(expense_categories.router, prefix="/expense-categories", tags=["Expense Categories"])
 api_router.include_router(expenses.router, prefix="/expenses", tags=["Expenses"])
 api_router.include_router(bank_statements.router, prefix="/bank-statements", tags=["Bank Statements"])

@@ -1,12 +1,12 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
-from app.models.bank_account import BankType, BankName
+from app.models.bank_account import BankType
 
 
 class BankAccountBase(BaseModel):
     """Base bank account schema"""
-    bank_name: BankName
+    bank_name: str
     account_type: BankType
     account_number: str = Field(..., min_length=1, max_length=50)
     account_holder_name: Optional[str] = Field(None, max_length=200)
@@ -28,7 +28,7 @@ class BankAccountCreate(BankAccountBase):
 
 class BankAccountUpdate(BaseModel):
     """Schema for updating a bank account"""
-    bank_name: Optional[BankName] = None
+    bank_name: Optional[str] = None
     account_type: Optional[BankType] = None
     account_holder_name: Optional[str] = Field(None, max_length=200)
     ifsc_code: Optional[str] = Field(None, max_length=20)

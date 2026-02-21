@@ -28,12 +28,9 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Select,
-  FormControl,
-  InputLabel,
   Tooltip,
 } from '@mui/material';
-import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, Add, AccountBalance, Refresh, Delete, Warning, Edit, CheckCircle, CameraAlt, Error as ErrorIcon } from '@mui/icons-material';
+import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, AccountBalance, Refresh, Delete, Warning, Edit, CheckCircle, CameraAlt, Error as ErrorIcon } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchAssets } from '../store/slices/assetsSlice';
 import api, { assetsAPI } from '../services/api';
@@ -153,17 +150,6 @@ const Assets: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedAsset, setSelectedAsset] = useState<GroupedAsset | null>(null);
   const [updating, setUpdating] = useState(false);
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [newAsset, setNewAsset] = useState({
-    asset_type: 'stock',
-    name: '',
-    symbol: '',
-    quantity: '',
-    purchase_price: '',
-    current_price: '',
-    broker_name: '',
-    account_id: '',
-  });
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
   const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
@@ -428,67 +414,6 @@ const Assets: React.FC = () => {
       notify.success('Asset deleted successfully');
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to delete asset'));
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleAddAssetClick = () => {
-    setAddDialogOpen(true);
-  };
-
-  const handleAddDialogClose = () => {
-    setAddDialogOpen(false);
-    setNewAsset({
-      asset_type: 'stock',
-      name: '',
-      symbol: '',
-      quantity: '',
-      purchase_price: '',
-      current_price: '',
-      broker_name: '',
-      account_id: '',
-    });
-  };
-
-  const handleNewAssetChange = (field: string, value: string) => {
-    setNewAsset(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleAddAssetSubmit = async () => {
-    try {
-      setUpdating(true);
-      
-      const quantity = parseFloat(newAsset.quantity);
-      const purchasePrice = parseFloat(newAsset.purchase_price);
-      const currentPrice = parseFloat(newAsset.current_price || newAsset.purchase_price);
-      
-      if (!newAsset.name || !newAsset.symbol || isNaN(quantity) || isNaN(purchasePrice)) {
-        notify.error('Please fill in all required fields with valid values');
-        setUpdating(false);
-        return;
-      }
-
-      const assetData = {
-        asset_type: newAsset.asset_type,
-        name: newAsset.name,
-        symbol: newAsset.symbol,
-        quantity: quantity,
-        purchase_price: purchasePrice,
-        current_price: currentPrice,
-        total_invested: quantity * purchasePrice,
-        current_value: quantity * currentPrice,
-        broker_name: newAsset.broker_name || 'Manual Entry',
-        account_id: newAsset.account_id || 'MANUAL',
-      };
-
-      await assetsAPI.create(assetData);
-      await dispatch(fetchAssets());
-
-      notify.success('Asset created successfully');
-      handleAddDialogClose();
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to add asset'));
     } finally {
       setUpdating(false);
     }
@@ -1069,13 +994,6 @@ const Assets: React.FC = () => {
               {refreshingPrices ? 'Refreshing...' : 'Refresh Prices'}
             </Button>
           </Box>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={handleAddAssetClick}
-          >
-            Add Asset
-          </Button>
         </Box>
       </Box>
 
@@ -1205,104 +1123,6 @@ const Assets: React.FC = () => {
           </MenuItem>
         ))}
       </Menu>
-
-      {/* Add Asset Dialog */}
-      <Dialog open={addDialogOpen} onClose={handleAddDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Add New Asset</DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth>
-              <InputLabel>Asset Type</InputLabel>
-              <Select
-                value={newAsset.asset_type}
-                label="Asset Type"
-                onChange={(e) => handleNewAssetChange('asset_type', e.target.value)}
-              >
-                {ASSET_TYPES.map((type) => (
-                  <MenuItem key={type.value} value={type.value}>
-                    {type.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <TextField
-              fullWidth
-              label="Asset Name"
-              value={newAsset.name}
-              onChange={(e) => handleNewAssetChange('name', e.target.value)}
-              required
-              helperText="e.g., Reliance Industries Ltd, ICICI Prudential Bluechip Fund"
-            />
-
-            <TextField
-              fullWidth
-              label="Symbol/Ticker"
-              value={newAsset.symbol}
-              onChange={(e) => handleNewAssetChange('symbol', e.target.value)}
-              required
-              helperText="e.g., RELIANCE, ICICIPRUBLU"
-            />
-
-            <TextField
-              fullWidth
-              label="Quantity"
-              type="number"
-              value={newAsset.quantity}
-              onChange={(e) => handleNewAssetChange('quantity', e.target.value)}
-              required
-              inputProps={{ step: '0.01', min: '0' }}
-            />
-
-            <TextField
-              fullWidth
-              label="Purchase Price"
-              type="number"
-              value={newAsset.purchase_price}
-              onChange={(e) => handleNewAssetChange('purchase_price', e.target.value)}
-              required
-              inputProps={{ step: '0.01', min: '0' }}
-              helperText="Price per unit at purchase"
-            />
-
-            <TextField
-              fullWidth
-              label="Current Price (Optional)"
-              type="number"
-              value={newAsset.current_price}
-              onChange={(e) => handleNewAssetChange('current_price', e.target.value)}
-              inputProps={{ step: '0.01', min: '0' }}
-              helperText="Leave empty to use purchase price"
-            />
-
-            <TextField
-              fullWidth
-              label="Broker Name (Optional)"
-              value={newAsset.broker_name}
-              onChange={(e) => handleNewAssetChange('broker_name', e.target.value)}
-              helperText="e.g., Zerodha, ICICI Direct"
-            />
-
-            <TextField
-              fullWidth
-              label="Account ID (Optional)"
-              value={newAsset.account_id}
-              onChange={(e) => handleNewAssetChange('account_id', e.target.value)}
-              helperText="Your account number or ID"
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleAddDialogClose}>Cancel</Button>
-          <Button
-            onClick={handleAddAssetSubmit}
-            variant="contained"
-            disabled={updating}
-          >
-            {updating ? <CircularProgress size={24} /> : 'Add Asset'}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Edit Asset Dialog */}
       <Dialog open={editDialogOpen} onClose={handleEditDialogClose} maxWidth="sm" fullWidth>

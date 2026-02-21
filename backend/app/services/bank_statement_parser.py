@@ -953,6 +953,207 @@ class SBIBankParser(BankStatementParser):
         return transactions
 
 
+class KotakBankParser(BankStatementParser):
+    """Parser for Kotak Mahindra Bank statements (PDF)"""
+
+    def parse(self) -> List[Dict[str, Any]]:
+        """Parse Kotak Mahindra Bank statement"""
+        if self.file_path.lower().endswith('.pdf'):
+            return self._parse_pdf()
+        else:
+            raise ValueError("Unsupported file format for Kotak Mahindra Bank. Only PDF files are supported.")
+
+    def _extract_account_info(self, first_page_text: str) -> Dict[str, str]:
+        """Extract account details from the first page header."""
+        info: Dict[str, str] = {}
+
+        # Account number — appears as "Account No. 9411675197"
+        m = re.search(r'Account\s*No\.?\s*(\d+)', first_page_text)
+        if m:
+            info['account_number'] = m.group(1)
+
+        # Account holder name — first text line after "Account Statement" date line
+        m = re.search(r'\d{2}\s+\w{3}\s+\d{4}\s*-\s*\d{2}\s+\w{3}\s+\d{4}\s*\n(.+?)(?:\s+Account\s*No)', first_page_text)
+        if m:
+            info['account_holder'] = m.group(1).strip()
+
+        # IFSC code
+        m = re.search(r'IFSC\s*Code\s*(\w+)', first_page_text)
+        if m:
+            info['ifsc_code'] = m.group(1)
+
+        # Branch
+        m = re.search(r'Branch\s+(\S.+)', first_page_text)
+        if m:
+            info['branch'] = m.group(1).strip()
+
+        # Statement period
+        m = re.search(r'(\d{2}\s+\w{3}\s+\d{4})\s*-\s*(\d{2}\s+\w{3}\s+\d{4})', first_page_text)
+        if m:
+            info['period_from'] = m.group(1)
+            info['period_to'] = m.group(2)
+
+        return info
+
+    def _parse_pdf(self) -> List[Dict[str, Any]]:
+        """Parse Kotak Mahindra Bank PDF statement using pdfplumber for table extraction."""
+        import pdfplumber
+
+        transactions: List[Dict[str, Any]] = []
+        self.opening_balance: Optional[float] = None
+
+        # Kotak date formats: "02 Jan 2026", "2 Jan 2026", "02-Jan-2026"
+        date_formats = ['%d %b %Y', '%d-%b-%Y', '%d/%m/%Y', '%d-%m-%Y']
+
+        with pdfplumber.open(self.file_path) as pdf:
+            for page in pdf.pages:
+                tables = page.extract_tables()
+
+                for table in tables:
+                    if not table or len(table) < 2:
+                        continue
+
+                    # Identify the transaction table by looking for the header row
+                    # Kotak header: ['#', 'Date', 'Description', 'Chq/Ref. No.', 'Withdrawal (Dr.)', 'Deposit (Cr.)', 'Balance']
+                    header_row_idx = None
+                    for idx, row in enumerate(table):
+                        row_text = ' '.join(str(cell or '') for cell in row).lower()
+                        if 'date' in row_text and ('withdrawal' in row_text or 'deposit' in row_text) and 'balance' in row_text:
+                            header_row_idx = idx
+                            break
+
+                    if header_row_idx is None:
+                        continue
+
+                    # Process data rows after the header
+                    for row in table[header_row_idx + 1:]:
+                        try:
+                            if len(row) < 7:
+                                continue
+
+                            serial_no = str(row[0] or '').strip()
+                            date_str = str(row[1] or '').strip()
+                            description = str(row[2] or '').strip()
+                            ref_no = str(row[3] or '').strip()
+                            withdrawal_str = str(row[4] or '').strip()
+                            deposit_str = str(row[5] or '').strip()
+                            balance_str = str(row[6] or '').strip()
+
+                            # Capture the opening balance, then skip this row
+                            if 'opening balance' in description.lower():
+                                if balance_str and balance_str != '-':
+                                    self.opening_balance = self._clean_amount(balance_str)
+                                continue
+
+                            # Skip empty/summary rows
+                            if not date_str or date_str == '-':
+                                continue
+
+                            # Parse date
+                            transaction_date = self._parse_date(date_str, date_formats)
+                            if not transaction_date:
+                                continue
+
+                            # Parse amounts
+                            debit = self._clean_amount(withdrawal_str) if withdrawal_str and withdrawal_str != '-' else 0.0
+                            credit = self._clean_amount(deposit_str) if deposit_str and deposit_str != '-' else 0.0
+                            balance = self._clean_amount(balance_str) if balance_str and balance_str != '-' else 0.0
+
+                            if debit == 0.0 and credit == 0.0:
+                                continue
+
+                            # Clean reference number
+                            clean_ref = ref_no if ref_no and ref_no != '-' and ref_no.lower() != 'none' else None
+
+                            transactions.append({
+                                'transaction_date': transaction_date,
+                                'description': description,
+                                'amount': debit if debit > 0 else credit,
+                                'transaction_type': self._detect_transaction_type(description, debit, credit),
+                                'payment_method': self._detect_payment_method(description),
+                                'merchant_name': self._extract_merchant_name(description),
+                                'reference_number': clean_ref,
+                                'balance_after': balance,
+                            })
+                        except Exception:
+                            continue
+
+        # If pdfplumber table extraction found nothing, fall back to text-based parsing
+        if not transactions:
+            transactions = self._parse_pdf_text_fallback()
+
+        return transactions
+
+    def _parse_pdf_text_fallback(self) -> List[Dict[str, Any]]:
+        """Fallback text-based parsing for Kotak statements when table extraction fails."""
+        transactions: List[Dict[str, Any]] = []
+
+        date_formats = ['%d %b %Y', '%d-%b-%Y', '%d/%m/%Y']
+
+        with open(self.file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+
+            for page in pdf_reader.pages:
+                text = page.extract_text()
+                if not text:
+                    continue
+                lines = text.split('\n')
+
+                for line in lines:
+                    # Kotak text line pattern:
+                    # <serial> <DD Mon YYYY> <description> <ref_no> <withdrawal> <deposit> <balance>
+                    # Example: 1 02 Jan 2026 UPI-MERCHANT-REF123 REF456 500.00 - 13,937.04
+                    # Also handle lines without serial number
+
+                    # Pattern: number + date (DD Mon YYYY) + description + amounts at end
+                    match = re.match(
+                        r'(?:\d+\s+)?'                           # optional serial number
+                        r'(\d{1,2}\s+\w{3}\s+\d{4})\s+'         # date: DD Mon YYYY
+                        r'(.+?)\s+'                              # description (non-greedy)
+                        r'([\d,]+\.\d{2})?\s*'                   # withdrawal (optional)
+                        r'([\d,]+\.\d{2})?\s*'                   # deposit (optional)
+                        r'([\d,]+\.\d{2})\s*$',                  # balance (required)
+                        line.strip()
+                    )
+
+                    if not match:
+                        continue
+
+                    date_str, description, withdrawal_str, deposit_str, balance_str = match.groups()
+
+                    # Skip opening balance
+                    if 'opening balance' in description.lower():
+                        continue
+
+                    transaction_date = self._parse_date(date_str, date_formats)
+                    if not transaction_date:
+                        continue
+
+                    debit = self._clean_amount(withdrawal_str) if withdrawal_str else 0.0
+                    credit = self._clean_amount(deposit_str) if deposit_str else 0.0
+                    balance = self._clean_amount(balance_str) if balance_str else 0.0
+
+                    if debit == 0.0 and credit == 0.0:
+                        continue
+
+                    # Try to extract ref number from description
+                    ref_match = re.search(r'(?:Ref\.?\s*No\.?\s*|Chq\.?\s*No\.?\s*)(\S+)', description)
+                    ref_no = ref_match.group(1) if ref_match else None
+
+                    transactions.append({
+                        'transaction_date': transaction_date,
+                        'description': description.strip(),
+                        'amount': debit if debit > 0 else credit,
+                        'transaction_type': self._detect_transaction_type(description, debit, credit),
+                        'payment_method': self._detect_payment_method(description),
+                        'merchant_name': self._extract_merchant_name(description),
+                        'reference_number': ref_no,
+                        'balance_after': balance,
+                    })
+
+        return transactions
+
+
 def get_parser(bank_name: str, file_path: str, password: str = None) -> BankStatementParser:
     """Factory function to get appropriate parser based on bank name"""
     parsers = {
@@ -963,6 +1164,7 @@ def get_parser(bank_name: str, file_path: str, password: str = None) -> BankStat
         'IDFC_FIRST': IDFCFirstBankParser,
         'IDFC_FIRST_CC': IDFCFirstCreditCardParser,
         'SBI': SBIBankParser,
+        'KOTAK': KotakBankParser,
     }
 
     parser_class = parsers.get(bank_name.upper())

@@ -5,7 +5,8 @@ from sqlalchemy import func
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
-from app.models.crypto_account import CryptoAccount, CryptoExchange
+from app.models.crypto_account import CryptoAccount
+from app.models.crypto_exchange import CryptoExchangeMaster
 from app.models.asset import Asset, AssetType
 from app.schemas.crypto_account import (
     CryptoAccount as CryptoAccountSchema,
@@ -20,7 +21,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[CryptoAccountWithAssets])
 async def get_crypto_accounts(
-    exchange_name: Optional[CryptoExchange] = None,
+    exchange_name: Optional[str] = None,
     is_active: Optional[bool] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -100,7 +101,7 @@ async def get_crypto_accounts_summary(
     
     accounts_by_exchange = {}
     for account in accounts:
-        exchange_key = account.exchange_name.value
+        exchange_key = account.exchange_name
         accounts_by_exchange[exchange_key] = accounts_by_exchange.get(exchange_key, 0) + 1
     
     return CryptoAccountSummary(
@@ -171,6 +172,17 @@ async def create_crypto_account(
     """
     Create a new crypto account
     """
+    # Validate exchange exists in master table
+    exchange = db.query(CryptoExchangeMaster).filter(
+        CryptoExchangeMaster.name == account_data.exchange_name,
+        CryptoExchangeMaster.is_active == True
+    ).first()
+    if not exchange:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown or inactive exchange: {account_data.exchange_name}"
+        )
+
     # Check if account already exists
     existing = db.query(CryptoAccount).filter(
         CryptoAccount.user_id == current_user.id,
@@ -233,7 +245,19 @@ async def update_crypto_account(
     
     # Update fields
     update_data = account_data.model_dump(exclude_unset=True)
-    
+
+    # Validate exchange if being changed
+    if "exchange_name" in update_data and update_data["exchange_name"]:
+        exchange = db.query(CryptoExchangeMaster).filter(
+            CryptoExchangeMaster.name == update_data["exchange_name"],
+            CryptoExchangeMaster.is_active == True
+        ).first()
+        if not exchange:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown or inactive exchange: {update_data['exchange_name']}"
+            )
+
     for field, value in update_data.items():
         setattr(account, field, value)
     

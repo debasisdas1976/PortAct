@@ -1,12 +1,11 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
-from app.models.crypto_account import CryptoExchange
 
 
 class CryptoAccountBase(BaseModel):
     """Base crypto account schema"""
-    exchange_name: CryptoExchange
+    exchange_name: str = Field(..., min_length=1, max_length=50)
     account_id: str = Field(..., min_length=1, max_length=200)
     account_holder_name: Optional[str] = Field(None, max_length=200)
     wallet_address: Optional[str] = Field(None, max_length=200)
@@ -25,7 +24,7 @@ class CryptoAccountCreate(CryptoAccountBase):
 
 class CryptoAccountUpdate(BaseModel):
     """Schema for updating a crypto account"""
-    exchange_name: Optional[CryptoExchange] = None
+    exchange_name: Optional[str] = Field(None, min_length=1, max_length=50)
     account_holder_name: Optional[str] = Field(None, max_length=200)
     wallet_address: Optional[str] = Field(None, max_length=200)
     cash_balance_usd: Optional[float] = None
@@ -44,7 +43,7 @@ class CryptoAccountInDB(CryptoAccountBase):
     last_sync_date: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -70,8 +69,6 @@ class CryptoAccountSummary(BaseModel):
     total_current_value_usd: float
     total_profit_loss_usd: float
     accounts_by_exchange: dict
-    
+
     class Config:
         from_attributes = True
-
-# Made with Bob

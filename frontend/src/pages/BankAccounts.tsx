@@ -33,14 +33,13 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  AccountBalance as BankIcon,
-  CreditCard as CardIcon,
   CloudUpload as UploadIcon,
   Visibility,
   VisibilityOff,
 } from '@mui/icons-material';
 import axios from 'axios';
-import api from '../services/api';
+import api, { banksAPI } from '../services/api';
+import CompanyIcon from '../components/CompanyIcon';
 
 interface BankAccount {
   id: number;
@@ -81,16 +80,7 @@ const BankAccounts: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ imported: number; duplicates: number; categorized: number } | null>(null);
 
-  const bankNames = [
-    { value: 'icici_bank', label: 'ICICI Bank' },
-    { value: 'hdfc_bank', label: 'HDFC Bank' },
-    { value: 'idfc_first_bank', label: 'IDFC First Bank' },
-    { value: 'state_bank_of_india', label: 'State Bank of India' },
-    { value: 'axis_bank', label: 'Axis Bank' },
-    { value: 'kotak_mahindra_bank', label: 'Kotak Mahindra Bank' },
-    { value: 'yes_bank', label: 'Yes Bank' },
-    { value: 'other', label: 'Other' },
-  ];
+  const [bankNames, setBankNames] = useState<{ value: string; label: string; website?: string }[]>([]);
 
   const accountTypes = [
     { value: 'savings', label: 'Savings' },
@@ -102,6 +92,7 @@ const BankAccounts: React.FC = () => {
 
   useEffect(() => {
     fetchAccounts();
+    fetchBankNames();
   }, []);
 
   const fetchAccounts = async () => {
@@ -113,6 +104,19 @@ const BankAccounts: React.FC = () => {
       setAccounts(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to fetch bank accounts'));
+    }
+  };
+
+  const fetchBankNames = async () => {
+    try {
+      const data = await banksAPI.getAll({ is_active: true });
+      setBankNames(
+        Array.isArray(data)
+          ? data.map((b: any) => ({ value: b.name, label: b.display_label, website: b.website }))
+          : []
+      );
+    } catch (err) {
+      console.error('Failed to fetch banks:', err);
     }
   };
 
@@ -244,8 +248,7 @@ const BankAccounts: React.FC = () => {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 
-  const getAccountTypeIcon = (type: string) =>
-    type === 'credit_card' ? <CardIcon /> : <BankIcon />;
+  const getBankInfo = (bankName: string) => bankNames.find((b) => b.value === bankName);
 
   const totalBalance = accounts.reduce((sum, acc) => sum + acc.current_balance, 0);
 
@@ -313,8 +316,11 @@ const BankAccounts: React.FC = () => {
               <TableRow key={account.id}>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {getAccountTypeIcon(account.account_type)}
-                    {account.bank_name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                    <CompanyIcon
+                      website={getBankInfo(account.bank_name)?.website}
+                      name={getBankInfo(account.bank_name)?.label || account.bank_name}
+                    />
+                    {getBankInfo(account.bank_name)?.label || account.bank_name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                   </Box>
                 </TableCell>
                 <TableCell>{account.account_type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</TableCell>
@@ -442,7 +448,7 @@ const BankAccounts: React.FC = () => {
             >
               {accounts.map((acc) => (
                 <MenuItem key={acc.id} value={acc.id}>
-                  {acc.bank_name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                  {bankNames.find((b) => b.value === acc.bank_name)?.label || acc.bank_name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                   {acc.nickname ? ` · ${acc.nickname}` : ''} (****{acc.account_number.slice(-4)})
                 </MenuItem>
               ))}

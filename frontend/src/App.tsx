@@ -24,6 +24,8 @@ import AlertsWithProgress from './pages/AlertsWithProgress';
 import BankAccounts from './pages/BankAccounts';
 import DematAccounts from './pages/DematAccounts';
 import CryptoAccounts from './pages/CryptoAccounts';
+import CryptoAssets from './pages/CryptoAssets';
+import CryptoExchanges from './pages/CryptoExchanges';
 import Expenses from './pages/Expenses';
 import ExpenseDashboard from './pages/ExpenseDashboard';
 import Categories from './pages/Categories';
@@ -54,6 +56,8 @@ import REITs from './pages/REITs';
 import InvITs from './pages/InvITs';
 import SovereignGoldBond from './pages/SovereignGoldBond';
 import RealEstate from './pages/RealEstate';
+import BanksMaster from './pages/BanksMaster';
+import BrokersMaster from './pages/BrokersMaster';
 import Settings from './pages/Settings';
 import Help from './pages/Help';
 
@@ -121,6 +125,8 @@ window.location.href = '/login?session_expired=true';
           <Route path="bank-accounts" element={<BankAccounts />} />
           <Route path="demat-accounts" element={<DematAccounts />} />
           <Route path="crypto-accounts" element={<CryptoAccounts />} />
+          <Route path="crypto-assets" element={<CryptoAssets />} />
+          <Route path="crypto-exchanges" element={<CryptoExchanges />} />
           <Route path="expenses" element={<Expenses />} />
           <Route path="expense-dashboard" element={<ExpenseDashboard />} />
           <Route path="categories" element={<Categories />} />
@@ -139,6 +145,8 @@ window.location.href = '/login?session_expired=true';
           <Route path="debt-funds" element={<DebtFunds />} />
           <Route path="commodities" element={<Commodities />} />
           <Route path="portfolio-admin" element={<PortfolioAdmin />} />
+          <Route path="banks-master" element={<BanksMaster />} />
+          <Route path="brokers-master" element={<BrokersMaster />} />
           <Route path="nsc" element={<NSC />} />
           <Route path="kvp" element={<KVP />} />
           <Route path="scss" element={<SCSS />} />

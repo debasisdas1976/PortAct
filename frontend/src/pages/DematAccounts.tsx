@@ -28,20 +28,21 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  ShowChart as StockIcon,
   CloudUpload as UploadIcon,
   Visibility,
   VisibilityOff
 } from '@mui/icons-material';
 import axios from 'axios';
-import api from '../services/api';
+import api, { brokersAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import CompanyIcon from '../components/CompanyIcon';
 
 interface DematAccount {
   id: number;
   broker_name: string;
   account_id: string;
+  account_market: string;
   account_holder_name?: string;
   demat_account_number?: string;
   cash_balance: number;
@@ -63,6 +64,7 @@ const DematAccounts: React.FC = () => {
   const [editingAccount, setEditingAccount] = useState<DematAccount | null>(null);
   const [formData, setFormData] = useState({
     broker_name: 'zerodha',
+    account_market: 'DOMESTIC',
     account_id: '',
     account_holder_name: '',
     demat_account_number: '',
@@ -86,25 +88,11 @@ const DematAccounts: React.FC = () => {
     { value: 'indmoney_statement', label: 'INDmoney Statement' }
   ];
 
-  const brokerNames = [
-    { value: 'zerodha', label: 'Zerodha' },
-    { value: 'groww', label: 'Groww' },
-    { value: 'upstox', label: 'Upstox' },
-    { value: 'angel_one', label: 'Angel One' },
-    { value: 'icici_direct', label: 'ICICI Direct' },
-    { value: 'hdfc_securities', label: 'HDFC Securities' },
-    { value: 'kotak_securities', label: 'Kotak Securities' },
-    { value: 'axis_direct', label: 'Axis Direct' },
-    { value: 'sharekhan', label: 'Sharekhan' },
-    { value: 'motilal_oswal', label: 'Motilal Oswal' },
-    { value: 'iifl_securities', label: 'IIFL Securities' },
-    { value: 'indmoney', label: 'INDmoney' },
-    { value: 'vested', label: 'Vested' },
-    { value: 'other', label: 'Other' }
-  ];
+  const [brokerNames, setBrokerNames] = useState<{ value: string; label: string; website?: string }[]>([]);
 
   useEffect(() => {
     fetchAccounts();
+    fetchBrokerNames();
   }, []);
 
   const fetchAccounts = async () => {
@@ -119,11 +107,25 @@ const DematAccounts: React.FC = () => {
     }
   };
 
+  const fetchBrokerNames = async () => {
+    try {
+      const data = await brokersAPI.getAll({ is_active: true });
+      setBrokerNames(
+        Array.isArray(data)
+          ? data.map((b: any) => ({ value: b.name, label: b.display_label, website: b.website }))
+          : []
+      );
+    } catch (err) {
+      console.error('Failed to fetch brokers:', err);
+    }
+  };
+
   const handleOpenDialog = (account?: DematAccount) => {
     if (account) {
       setEditingAccount(account);
       setFormData({
         broker_name: account.broker_name,
+        account_market: account.account_market || 'DOMESTIC',
         account_id: account.account_id,
         account_holder_name: account.account_holder_name || '',
         demat_account_number: account.demat_account_number || '',
@@ -136,6 +138,7 @@ const DematAccounts: React.FC = () => {
       setEditingAccount(null);
       setFormData({
         broker_name: 'zerodha',
+        account_market: 'DOMESTIC',
         account_id: '',
         account_holder_name: '',
         demat_account_number: '',
@@ -157,11 +160,11 @@ const DematAccounts: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       
-      // Prepare data based on broker type
-      const isUsBroker = formData.broker_name === 'vested' || formData.broker_name === 'indmoney';
-      const submitData = isUsBroker
+      // Prepare data based on account market type
+      const isInternational = formData.account_market === 'INTERNATIONAL';
+      const submitData = isInternational
         ? { ...formData, cash_balance: 0 } // Backend will calculate INR from USD
-        : { ...formData, cash_balance_usd: 0 }; // INR brokers don't need USD
+        : { ...formData, cash_balance_usd: 0 }; // Domestic accounts don't need USD
       
       if (editingAccount) {
         await axios.put(
@@ -343,15 +346,18 @@ const DematAccounts: React.FC = () => {
               <TableRow key={account.id}>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <StockIcon />
-                    {account.broker_name.replace('_', ' ')}
+                    <CompanyIcon
+                      website={brokerNames.find((b) => b.value === account.broker_name)?.website}
+                      name={brokerNames.find((b) => b.value === account.broker_name)?.label || account.broker_name}
+                    />
+                    {brokerNames.find((b) => b.value === account.broker_name)?.label || account.broker_name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                   </Box>
                 </TableCell>
                 <TableCell>{account.account_id}</TableCell>
                 <TableCell>{account.account_holder_name || '-'}</TableCell>
                 <TableCell>{account.nickname || '-'}</TableCell>
                 <TableCell align="right">
-                  {account.currency === 'USD' && account.cash_balance_usd ? (
+                  {account.account_market === 'INTERNATIONAL' && account.cash_balance_usd ? (
                     <Box>
                       <Typography variant="body2">${account.cash_balance_usd.toFixed(2)}</Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -529,6 +535,18 @@ const DematAccounts: React.FC = () => {
             </TextField>
 
             <TextField
+              select
+              label="Account Market"
+              value={formData.account_market}
+              onChange={(e) => setFormData({ ...formData, account_market: e.target.value })}
+              fullWidth
+              helperText="Domestic for INR-based trading, International for foreign stock trading (USD)"
+            >
+              <MenuItem value="DOMESTIC">Domestic (INR)</MenuItem>
+              <MenuItem value="INTERNATIONAL">International (USD)</MenuItem>
+            </TextField>
+
+            <TextField
               label="Account ID / Client ID"
               value={formData.account_id}
               onChange={(e) => setFormData({ ...formData, account_id: e.target.value })}
@@ -559,16 +577,16 @@ const DematAccounts: React.FC = () => {
             />
 
             <TextField
-              label={formData.broker_name === 'vested' || formData.broker_name === 'indmoney' ? 'Cash Balance (USD)' : 'Cash Balance (INR)'}
+              label={formData.account_market === 'INTERNATIONAL' ? 'Cash Balance (USD)' : 'Cash Balance (INR)'}
               type="number"
               value={
-                formData.broker_name === 'vested' || formData.broker_name === 'indmoney'
+                formData.account_market === 'INTERNATIONAL'
                   ? formData.cash_balance_usd
                   : formData.cash_balance
               }
               onChange={(e) => {
                 const value = parseFloat(e.target.value) || 0;
-                if (formData.broker_name === 'vested' || formData.broker_name === 'indmoney') {
+                if (formData.account_market === 'INTERNATIONAL') {
                   setFormData({ ...formData, cash_balance_usd: value, cash_balance: 0 });
                 } else {
                   setFormData({ ...formData, cash_balance: value, cash_balance_usd: 0 });
@@ -576,14 +594,14 @@ const DematAccounts: React.FC = () => {
               }}
               fullWidth
               helperText={
-                formData.broker_name === 'vested' || formData.broker_name === 'indmoney'
+                formData.account_market === 'INTERNATIONAL'
                   ? 'Enter amount in USD (will be converted to INR automatically)'
                   : 'Available cash in trading account'
               }
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    {formData.broker_name === 'vested' || formData.broker_name === 'indmoney' ? '$' : '₹'}
+                    {formData.account_market === 'INTERNATIONAL' ? '$' : '₹'}
                   </InputAdornment>
                 ),
               }}

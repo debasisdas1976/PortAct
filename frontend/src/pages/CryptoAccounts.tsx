@@ -29,11 +29,11 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  CurrencyBitcoin as CryptoIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
+import api, { cryptoExchangesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import CompanyIcon from '../components/CompanyIcon';
 
 interface CryptoAccount {
   id: number;
@@ -51,6 +51,16 @@ interface CryptoAccount {
   total_profit_loss_usd?: number;
 }
 
+interface CryptoExchange {
+  id: number;
+  name: string;
+  display_label: string;
+  exchange_type: string;
+  website?: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
 interface CryptoSearchResult {
   id: string;
   symbol: string;
@@ -60,12 +70,13 @@ interface CryptoSearchResult {
 const CryptoAccounts: React.FC = () => {
   const { notify } = useNotification();
   const [accounts, setAccounts] = useState<CryptoAccount[]>([]);
+  const [exchanges, setExchanges] = useState<CryptoExchange[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [openAssetDialog, setOpenAssetDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState<CryptoAccount | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<number | null>(null);
   const [formData, setFormData] = useState({
-    exchange_name: 'binance',
+    exchange_name: '',
     account_id: '',
     account_holder_name: '',
     wallet_address: '',
@@ -73,7 +84,7 @@ const CryptoAccounts: React.FC = () => {
     nickname: '',
     is_active: true
   });
-  
+
   const [assetForm, setAssetForm] = useState({
     name: '',
     symbol: '',
@@ -86,54 +97,37 @@ const CryptoAccounts: React.FC = () => {
   const [cryptoOptions, setCryptoOptions] = useState<CryptoSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
-  
-  const exchangeNames = [
-    { value: 'binance', label: 'Binance' },
-    { value: 'coinbase', label: 'Coinbase' },
-    { value: 'kraken', label: 'Kraken' },
-    { value: 'wazirx', label: 'WazirX' },
-    { value: 'coindcx', label: 'CoinDCX' },
-    { value: 'zebpay', label: 'ZebPay' },
-    { value: 'coinswitch', label: 'CoinSwitch' },
-    { value: 'kucoin', label: 'KuCoin' },
-    { value: 'bybit', label: 'Bybit' },
-    { value: 'okx', label: 'OKX' },
-    { value: 'metamask', label: 'MetaMask' },
-    { value: 'trust_wallet', label: 'Trust Wallet' },
-    { value: 'ledger', label: 'Ledger' },
-    { value: 'trezor', label: 'Trezor' },
-    { value: 'tangem', label: 'Tangem' },
-    { value: 'getbit', label: 'Getbit' },
-    { value: 'other', label: 'Other' }
-  ];
 
   useEffect(() => {
-    fetchAccounts();
+    fetchData();
   }, []);
 
-  const fetchAccounts = async () => {
+  const fetchData = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/crypto-accounts/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setAccounts(response.data);
+      const [accountsRes, exchangesData] = await Promise.all([
+        api.get('/crypto-accounts/'),
+        cryptoExchangesAPI.getAll({ is_active: true }),
+      ]);
+      setAccounts(accountsRes.data);
+      setExchanges(exchangesData);
     } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to fetch crypto accounts'));
+      notify.error(getErrorMessage(err, 'Failed to fetch data'));
     }
   };
+
+  const getExchange = (name: string) => exchanges.find(e => e.name === name);
+  const getExchangeLabel = (name: string) => getExchange(name)?.display_label || name;
 
   const searchCrypto = async (query: string) => {
     if (!query || query.length < 2) {
       setCryptoOptions([]);
       return;
     }
-    
+
     setSearchLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:8000/api/v1/prices/crypto/search?query=${query}&limit=10`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await api.get('/prices/crypto/search', {
+        params: { query, limit: 10 }
       });
       setCryptoOptions(response.data.results || []);
     } catch (err) {
@@ -145,10 +139,7 @@ const CryptoAccounts: React.FC = () => {
 
   const fetchCryptoPrice = async (symbol: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:8000/api/v1/prices/crypto/${symbol}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get(`/prices/crypto/${symbol}`);
       setCurrentPrice(response.data.price);
       return response.data.price;
     } catch (err) {
@@ -172,7 +163,7 @@ const CryptoAccounts: React.FC = () => {
     } else {
       setEditingAccount(null);
       setFormData({
-        exchange_name: 'binance',
+        exchange_name: exchanges.length > 0 ? exchanges[0].name : '',
         account_id: '',
         account_holder_name: '',
         wallet_address: '',
@@ -212,25 +203,15 @@ const CryptoAccounts: React.FC = () => {
 
   const handleSubmit = async () => {
     try {
-      const token = localStorage.getItem('token');
-      
       if (editingAccount) {
-        await axios.put(
-          `http://localhost:8000/api/v1/crypto-accounts/${editingAccount.id}`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.put(`/crypto-accounts/${editingAccount.id}`, formData);
         notify.success('Crypto account updated successfully');
       } else {
-        await axios.post(
-          'http://localhost:8000/api/v1/crypto-accounts/',
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.post('/crypto-accounts/', formData);
         notify.success('Crypto account added successfully');
       }
       handleCloseDialog();
-      fetchAccounts();
+      fetchData();
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to save crypto account'));
     }
@@ -238,9 +219,8 @@ const CryptoAccounts: React.FC = () => {
 
   const handleSubmitAsset = async () => {
     if (!selectedAccount) return;
-    
+
     try {
-      const token = localStorage.getItem('token');
       const assetData = {
         asset_type: 'crypto',
         name: assetForm.name,
@@ -255,13 +235,11 @@ const CryptoAccounts: React.FC = () => {
           coin_id: assetForm.coin_id
         }
       };
-      
-      await axios.post('http://localhost:8000/api/v1/assets/', assetData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+
+      await api.post('/assets/', assetData);
       notify.success('Crypto asset added successfully');
       handleCloseAssetDialog();
-      fetchAccounts();
+      fetchData();
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to add crypto asset'));
     }
@@ -269,14 +247,11 @@ const CryptoAccounts: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this crypto account? This will also delete all associated assets.')) return;
-    
+
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:8000/api/v1/crypto-accounts/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/crypto-accounts/${id}`);
       notify.success('Crypto account deleted successfully');
-      fetchAccounts();
+      fetchData();
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to delete crypto account'));
     }
@@ -344,8 +319,8 @@ const CryptoAccounts: React.FC = () => {
               <Typography color="textSecondary" gutterBottom>
                 Total P&L
               </Typography>
-              <Typography 
-                variant="h4" 
+              <Typography
+                variant="h4"
                 color={totalProfitLoss >= 0 ? 'success.main' : 'error.main'}
               >
                 {formatCurrency(totalProfitLoss)}
@@ -374,8 +349,11 @@ const CryptoAccounts: React.FC = () => {
               <TableRow key={account.id}>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <CryptoIcon />
-                    {exchangeNames.find(e => e.value === account.exchange_name)?.label || account.exchange_name}
+                    <CompanyIcon
+                      website={getExchange(account.exchange_name)?.website}
+                      name={getExchangeLabel(account.exchange_name)}
+                    />
+                    {getExchangeLabel(account.exchange_name)}
                   </Box>
                 </TableCell>
                 <TableCell>{account.account_id}</TableCell>
@@ -434,9 +412,9 @@ const CryptoAccounts: React.FC = () => {
               onChange={(e) => setFormData({ ...formData, exchange_name: e.target.value })}
               fullWidth
             >
-              {exchangeNames.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
+              {exchanges.map((exchange) => (
+                <MenuItem key={exchange.name} value={exchange.name}>
+                  {exchange.display_label}
                 </MenuItem>
               ))}
             </TextField>
@@ -582,8 +560,8 @@ const CryptoAccounts: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseAssetDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSubmitAsset} 
+          <Button
+            onClick={handleSubmitAsset}
             variant="contained"
             disabled={!assetForm.symbol || !assetForm.quantity}
           >
@@ -596,5 +574,3 @@ const CryptoAccounts: React.FC = () => {
 };
 
 export default CryptoAccounts;
-
-// Made with Bob

@@ -116,6 +116,7 @@ const assetGroups: AssetGroup[] = [
     icon: <CryptoIcon />,
     items: [
       { text: 'Crypto Accounts', icon: <CryptoIcon />, path: '/crypto-accounts' },
+      { text: 'Crypto Assets', icon: <CryptoIcon />, path: '/crypto-assets' },
     ],
   },
   {
@@ -179,6 +180,9 @@ const expenseItems: NavItem[] = [
 
 const adminItems: NavItem[] = [
   { text: 'Portfolio Admin', icon: <AdminIcon />, path: '/portfolio-admin' },
+  { text: 'Banks', icon: <AccountBalanceIcon />, path: '/banks-master' },
+  { text: 'Brokers', icon: <ShowChartIcon />, path: '/brokers-master' },
+  { text: 'Crypto Exchanges', icon: <CryptoIcon />, path: '/crypto-exchanges' },
   { text: 'Application Setup', icon: <SettingsIcon />, path: '/settings' },
 ];
 
@@ -286,9 +290,12 @@ const Layout: React.FC = () => {
   const drawer = (
     <Box sx={{ overflowY: 'auto' }}>
       <Toolbar>
-        <Typography variant="h6" noWrap component="div">
-          PortAct
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <img src="/logo.svg" alt="PortAct" width={32} height={32} style={{ borderRadius: 6 }} />
+          <Typography variant="h6" noWrap component="div" fontWeight={700}>
+            PortAct
+          </Typography>
+        </Box>
       </Toolbar>
 
       <Divider />

@@ -12,6 +12,7 @@ from app.api.v1.api import api_router
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.news_scheduler import news_scheduler
 import app.models.app_settings as _app_settings_model  # noqa: F401 – register for create_all
+import app.models.crypto_exchange as _crypto_exchange_model  # noqa: F401 – register for create_all
 
 
 @asynccontextmanager
@@ -39,6 +40,35 @@ async def lifespan(app: FastAPI):
                 _startup_db.add(AppSettings(**item))
             _startup_db.commit()
             logger.info(f"Seeded {len(new_items)} new app_settings rows.")
+        # Seed default crypto exchanges
+        from app.models.crypto_exchange import CryptoExchangeMaster
+        existing_exchanges = {r.name for r in _startup_db.query(CryptoExchangeMaster.name).all()}
+        DEFAULT_CRYPTO_EXCHANGES = [
+            {"name": "binance", "display_label": "Binance", "exchange_type": "exchange", "sort_order": 1},
+            {"name": "coinbase", "display_label": "Coinbase", "exchange_type": "exchange", "sort_order": 2},
+            {"name": "kraken", "display_label": "Kraken", "exchange_type": "exchange", "sort_order": 3},
+            {"name": "wazirx", "display_label": "WazirX", "exchange_type": "exchange", "sort_order": 4},
+            {"name": "coindcx", "display_label": "CoinDCX", "exchange_type": "exchange", "sort_order": 5},
+            {"name": "zebpay", "display_label": "ZebPay", "exchange_type": "exchange", "sort_order": 6},
+            {"name": "coinswitch", "display_label": "CoinSwitch", "exchange_type": "exchange", "sort_order": 7},
+            {"name": "kucoin", "display_label": "KuCoin", "exchange_type": "exchange", "sort_order": 8},
+            {"name": "bybit", "display_label": "Bybit", "exchange_type": "exchange", "sort_order": 9},
+            {"name": "okx", "display_label": "OKX", "exchange_type": "exchange", "sort_order": 10},
+            {"name": "metamask", "display_label": "MetaMask", "exchange_type": "wallet", "sort_order": 11},
+            {"name": "trust_wallet", "display_label": "Trust Wallet", "exchange_type": "wallet", "sort_order": 12},
+            {"name": "ledger", "display_label": "Ledger", "exchange_type": "wallet", "sort_order": 13},
+            {"name": "trezor", "display_label": "Trezor", "exchange_type": "wallet", "sort_order": 14},
+            {"name": "tangem", "display_label": "Tangem", "exchange_type": "wallet", "sort_order": 15},
+            {"name": "getbit", "display_label": "Getbit", "exchange_type": "exchange", "sort_order": 16},
+            {"name": "other", "display_label": "Other", "exchange_type": "exchange", "sort_order": 99},
+        ]
+        new_exchanges = [e for e in DEFAULT_CRYPTO_EXCHANGES if e["name"] not in existing_exchanges]
+        if new_exchanges:
+            for ex in new_exchanges:
+                _startup_db.add(CryptoExchangeMaster(**ex))
+            _startup_db.commit()
+            logger.info(f"Seeded {len(new_exchanges)} new crypto exchanges.")
+
         start_scheduler(_startup_db)
     finally:
         _startup_db.close()

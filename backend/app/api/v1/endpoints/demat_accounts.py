@@ -5,7 +5,7 @@ from sqlalchemy import func
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
-from app.models.demat_account import DematAccount, BrokerName
+from app.models.demat_account import DematAccount, AccountMarket
 from app.models.asset import Asset, AssetType
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import AssetSnapshot
@@ -24,7 +24,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[DematAccountWithAssets])
 async def get_demat_accounts(
-    broker_name: Optional[BrokerName] = None,
+    broker_name: Optional[str] = None,
     is_active: Optional[bool] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -102,7 +102,7 @@ async def get_demat_accounts_summary(
     
     accounts_by_broker = {}
     for account in accounts:
-        broker_key = account.broker_name.value
+        broker_key = account.broker_name
         accounts_by_broker[broker_key] = accounts_by_broker.get(broker_key, 0) + 1
     
     return DematAccountSummary(
@@ -195,15 +195,15 @@ async def create_demat_account(
     
     account_dict = account_data.model_dump()
     
-    # Handle USD to INR conversion for US brokers
-    if account_data.broker_name in [BrokerName.VESTED, BrokerName.INDMONEY]:
+    # Handle USD to INR conversion for international accounts
+    if account_data.account_market == AccountMarket.INTERNATIONAL:
         account_dict['currency'] = 'USD'
         if account_data.cash_balance_usd is not None:
             # User provided USD amount, convert to INR
             usd_to_inr = get_usd_to_inr_rate()
             account_dict['cash_balance'] = account_data.cash_balance_usd * usd_to_inr
         elif account_data.cash_balance > 0:
-            # User provided INR amount (shouldn't happen with proper UI), treat as USD
+            # User provided INR amount, calculate USD equivalent
             usd_to_inr = get_usd_to_inr_rate()
             account_dict['cash_balance_usd'] = account_data.cash_balance / usd_to_inr
     else:
@@ -254,14 +254,15 @@ async def update_demat_account(
     # Update fields
     update_data = account_data.model_dump(exclude_unset=True)
     
-    # Handle USD to INR conversion for US brokers
-    if account.broker_name in [BrokerName.VESTED, BrokerName.INDMONEY]:
+    # Handle USD to INR conversion for international accounts
+    effective_market = update_data.get('account_market', account.account_market)
+    if effective_market == AccountMarket.INTERNATIONAL or (isinstance(effective_market, str) and effective_market == 'INTERNATIONAL'):
         if 'cash_balance_usd' in update_data and update_data['cash_balance_usd'] is not None:
             # User updated USD amount, convert to INR
             usd_to_inr = get_usd_to_inr_rate()
             update_data['cash_balance'] = update_data['cash_balance_usd'] * usd_to_inr
         elif 'cash_balance' in update_data and update_data['cash_balance'] is not None:
-            # User updated INR amount (shouldn't happen with proper UI), calculate USD
+            # User updated INR amount, calculate USD
             usd_to_inr = get_usd_to_inr_rate()
             update_data['cash_balance_usd'] = update_data['cash_balance'] / usd_to_inr
     

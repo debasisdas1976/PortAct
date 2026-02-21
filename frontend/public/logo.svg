@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1565C0"/>
+      <stop offset="100%" style="stop-color:#0D47A1"/>
+    </linearGradient>
+    <linearGradient id="barGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#4FC3F7"/>
+      <stop offset="100%" style="stop-color:#81D4FA"/>
+    </linearGradient>
+    <linearGradient id="arrowGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#69F0AE"/>
+      <stop offset="100%" style="stop-color:#00E676"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+  <!-- Bar chart: 3 bars representing portfolio growth -->
+  <rect x="112" y="296" width="56" height="120" rx="8" fill="url(#barGrad)" opacity="0.7"/>
+  <rect x="200" y="232" width="56" height="184" rx="8" fill="url(#barGrad)" opacity="0.85"/>
+  <rect x="288" y="184" width="56" height="232" rx="8" fill="url(#barGrad)"/>
+  <!-- Upward trend arrow -->
+  <polyline points="128,320 228,248 316,200 400,128" fill="none" stroke="url(#arrowGrad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Arrow head -->
+  <polygon points="400,128 368,136 392,160" fill="#00E676"/>
+  <!-- "PA" lettermark -->
+  <text x="256" y="464" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-weight="700" font-size="56" fill="rgba(255,255,255,0.35)" letter-spacing="6">PORTACT</text>
+</svg>

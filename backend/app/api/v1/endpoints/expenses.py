@@ -128,7 +128,7 @@ async def get_expenses(
         # Get bank account name
         if expense.bank_account_id:
             bank_account = db.query(BankAccount).filter(BankAccount.id == expense.bank_account_id).first()
-            expense_dict['bank_account_name'] = bank_account.nickname or f"{bank_account.bank_name.value} - {bank_account.account_number[-4:]}" if bank_account else None
+            expense_dict['bank_account_name'] = bank_account.nickname or f"{bank_account.bank_name} - {bank_account.account_number[-4:]}" if bank_account else None
         
         # Get category name
         if expense.category_id:
@@ -620,7 +620,7 @@ async def get_expense(
     # Get bank account name
     if expense.bank_account_id:
         bank_account = db.query(BankAccount).filter(BankAccount.id == expense.bank_account_id).first()
-        expense_dict['bank_account_name'] = bank_account.nickname or f"{bank_account.bank_name.value} - {bank_account.account_number[-4:]}" if bank_account else None
+        expense_dict['bank_account_name'] = bank_account.nickname or f"{bank_account.bank_name} - {bank_account.account_number[-4:]}" if bank_account else None
     
     # Get category name
     if expense.category_id:

@@ -22,6 +22,7 @@ from app.models.asset import Asset
 from app.models.bank_account import BankAccount
 from app.models.demat_account import DematAccount
 from app.models.crypto_account import CryptoAccount
+from app.models.crypto_exchange import CryptoExchangeMaster
 from app.models.expense import Expense
 from app.models.expense_category import ExpenseCategory
 from app.models.transaction import Transaction
@@ -244,6 +245,25 @@ async def restore_portfolio(
             stats["demat_accounts"]["imported"] += 1
 
     # ── 3. Crypto accounts ───────────────────────────────────────────────────
+    # Auto-create missing crypto exchanges so restore doesn't fail
+    exchange_names_in_backup = {
+        r.get("exchange_name", "").lower()
+        for r in data.get("crypto_accounts", [])
+        if r.get("exchange_name")
+    }
+    if exchange_names_in_backup:
+        existing_exchanges = {
+            row.name for row in db.query(CryptoExchangeMaster.name).all()
+        }
+        for ename in exchange_names_in_backup - existing_exchanges:
+            db.add(CryptoExchangeMaster(
+                name=ename,
+                display_label=ename.replace("_", " ").title(),
+                exchange_type="exchange",
+                sort_order=50,
+            ))
+        db.flush()
+
     for r in data.get("crypto_accounts", []):
         old_id = r.get("id")
         existing = (
@@ -882,7 +902,7 @@ async def generate_pdf_statement(
         story.append(Paragraph("Bank Accounts", section_style))
         ba_rows = [["Bank", "Type", "Account No.", "Nickname", "Balance"]]
         for b in bank_accounts:
-            bname = b.bank_name.value if hasattr(b.bank_name, "value") else str(b.bank_name)
+            bname = str(b.bank_name)
             btype = b.account_type.value if hasattr(b.account_type, "value") else str(b.account_type)
             masked = f"xxxx{b.account_number[-4:]}" if b.account_number else "—"
             ba_rows.append([
@@ -902,7 +922,7 @@ async def generate_pdf_statement(
         story.append(Paragraph("Demat / Trading Accounts", section_style))
         da_rows = [["Broker", "Account ID", "Currency", "Nickname", "Cash Balance"]]
         for d in demat_accounts:
-            broker = d.broker_name.value if hasattr(d.broker_name, "value") else str(d.broker_name)
+            broker = str(d.broker_name)
             da_rows.append([
                 broker.replace("_", " ").title(),
                 d.account_id or "—",

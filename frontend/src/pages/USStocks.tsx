@@ -1,10 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box,
+  Button,
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Grid,
+  IconButton,
+  MenuItem,
   Paper,
   Table,
   TableBody,
@@ -12,10 +19,20 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
   Chip,
 } from '@mui/material';
-import { TrendingUp, TrendingDown, Language } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  TrendingUp,
+  TrendingDown,
+  Language,
+  KeyboardArrowDown,
+  KeyboardArrowRight,
+} from '@mui/icons-material';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -43,6 +60,7 @@ interface DematAccount {
   id: number;
   broker_name: string;
   account_id: string;
+  account_market?: string;
   account_holder_name?: string;
   nickname?: string;
 }
@@ -61,43 +79,132 @@ const buildDematLabel = (da: DematAccount) => {
 
 const USStocks: React.FC = () => {
   const [stocks, setStocks] = useState<USStockAsset[]>([]);
+  const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [assetsRes, dematRes] = await Promise.all([
-          api.get('/assets/'),
-          api.get('/demat-accounts/'),
-        ]);
-        const filtered = (assetsRes.data as USStockAsset[]).filter(
-          (a) => a.asset_type?.toLowerCase() === 'us_stock'
-        );
-        setStocks(filtered);
+  // Add/Edit dialog
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<USStockAsset | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    symbol: '',
+    quantity: 0,
+    purchase_price: 0,
+    total_invested: 0,
+    current_price: 0,
+    demat_account_id: '' as number | '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
-        const labelMap: Record<number, string> = {};
-        for (const da of dematRes.data as DematAccount[]) {
-          labelMap[da.id] = buildDematLabel(da);
-        }
-        setDematLabelMap(labelMap);
-      } catch (err) {
-        notify.error(getErrorMessage(err, 'Failed to load data'));
-      } finally {
-        setLoading(false);
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [assetsRes, dematRes] = await Promise.all([
+        api.get('/assets/'),
+        api.get('/demat-accounts/'),
+      ]);
+      const filtered = (assetsRes.data as USStockAsset[]).filter(
+        (a) => a.asset_type?.toLowerCase() === 'us_stock'
+      );
+      setStocks(filtered);
+
+      const dematList = dematRes.data as DematAccount[];
+      setDematAccounts(dematList);
+      const labelMap: Record<number, string> = {};
+      for (const da of dematList) {
+        labelMap[da.id] = buildDematLabel(da);
       }
-    };
-    fetchData();
-  }, []);
+      setDematLabelMap(labelMap);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load data'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  // ── Add / Edit ──────────────────────────────────────────────────────────
+  const handleOpenDialog = (asset?: USStockAsset) => {
+    if (asset) {
+      setEditingAsset(asset);
+      setFormData({
+        name: asset.name,
+        symbol: asset.symbol || '',
+        quantity: asset.quantity,
+        purchase_price: asset.purchase_price,
+        total_invested: asset.total_invested,
+        current_price: asset.current_price,
+        demat_account_id: asset.demat_account_id || '',
+      });
+    } else {
+      setEditingAsset(null);
+      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, demat_account_id: '' });
+    }
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => { setOpenDialog(false); setEditingAsset(null); };
+
+  const handleSubmit = async () => {
+    if (!formData.name.trim()) { notify.error('Stock name is required'); return; }
+    try {
+      setSubmitting(true);
+      const payload: Record<string, unknown> = {
+        asset_type: 'us_stock',
+        name: formData.name.trim(),
+        symbol: formData.symbol.trim() || undefined,
+        quantity: formData.quantity,
+        purchase_price: formData.purchase_price,
+        total_invested: formData.total_invested || formData.quantity * formData.purchase_price,
+        current_price: formData.current_price,
+        demat_account_id: formData.demat_account_id || undefined,
+      };
+      if (editingAsset) {
+        await api.put(`/assets/${editingAsset.id}`, payload);
+        notify.success('US stock updated');
+      } else {
+        await api.post('/assets/', payload);
+        notify.success('US stock added');
+      }
+      handleCloseDialog();
+      fetchData();
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to save US stock'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Delete ──────────────────────────────────────────────────────────────
+  const handleDelete = async (asset: USStockAsset) => {
+    if (!window.confirm(`Delete ${asset.symbol || asset.name}?`)) return;
+    try {
+      await api.delete(`/assets/${asset.id}`);
+      notify.success('US stock deleted');
+      fetchData();
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete US stock'));
+    }
+  };
 
   const totalInvested = stocks.reduce((s, a) => s + (a.total_invested || 0), 0);
   const totalValue = stocks.reduce((s, a) => s + (a.current_value || 0), 0);
   const totalPnL = totalValue - totalInvested;
   const totalPnLPct = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
 
-  // Group by demat_account_id (falls back to broker_name|account_id for unlinked assets)
   const groups: Record<string, USStockAsset[]> = {};
   for (const stock of stocks) {
     const key = stock.demat_account_id != null
@@ -129,9 +236,14 @@ const USStocks: React.FC = () => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <Language color="primary" />
-        <Typography variant="h4">US Stocks</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Language color="primary" />
+          <Typography variant="h4">US Stocks</Typography>
+        </Box>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
+          Add US Stock
+        </Button>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Values shown in INR equivalent. Individual prices in USD.
@@ -139,41 +251,33 @@ const USStocks: React.FC = () => {
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="text.secondary" variant="body2">Holdings</Typography>
-              <Typography variant="h4">{stocks.length}</Typography>
-            </CardContent>
-          </Card>
+          <Card><CardContent>
+            <Typography color="text.secondary" variant="body2">Holdings</Typography>
+            <Typography variant="h4">{stocks.length}</Typography>
+          </CardContent></Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="text.secondary" variant="body2">Current Value (INR)</Typography>
-              <Typography variant="h5">{formatINR(totalValue)}</Typography>
-            </CardContent>
-          </Card>
+          <Card><CardContent>
+            <Typography color="text.secondary" variant="body2">Current Value (INR)</Typography>
+            <Typography variant="h5">{formatINR(totalValue)}</Typography>
+          </CardContent></Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="text.secondary" variant="body2">Total Invested (INR)</Typography>
-              <Typography variant="h5">{formatINR(totalInvested)}</Typography>
-            </CardContent>
-          </Card>
+          <Card><CardContent>
+            <Typography color="text.secondary" variant="body2">Total Invested (INR)</Typography>
+            <Typography variant="h5">{formatINR(totalInvested)}</Typography>
+          </CardContent></Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="text.secondary" variant="body2">Total P&L</Typography>
-              <Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
-                {formatINR(totalPnL)}
-              </Typography>
-              <Typography variant="body2" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
-                {totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%
-              </Typography>
-            </CardContent>
-          </Card>
+          <Card><CardContent>
+            <Typography color="text.secondary" variant="body2">Total P&L</Typography>
+            <Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
+              {formatINR(totalPnL)}
+            </Typography>
+            <Typography variant="body2" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
+              {totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%
+            </Typography>
+          </CardContent></Card>
         </Grid>
       </Grid>
 
@@ -189,12 +293,13 @@ const USStocks: React.FC = () => {
               <TableCell align="right"><strong>Current Value (INR)</strong></TableCell>
               <TableCell align="right"><strong>P&L</strong></TableCell>
               <TableCell align="right"><strong>P&L %</strong></TableCell>
+              <TableCell align="center"><strong>Actions</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {stocks.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={9} align="center">
                   <Typography color="text.secondary">No US stock holdings found.</Typography>
                 </TableCell>
               </TableRow>
@@ -205,15 +310,17 @@ const USStocks: React.FC = () => {
                 const gPnL = gValue - gInvested;
                 return (
                   <React.Fragment key={key}>
-                    {/* Account group header */}
-                    <TableRow sx={{ bgcolor: 'action.hover' }}>
+                    <TableRow sx={{ bgcolor: 'action.hover', cursor: 'pointer' }} onClick={() => toggleGroup(key)}>
                       <TableCell colSpan={4}>
-                        <Typography variant="subtitle2" fontWeight="bold">
-                          {groupLabel(groupStocks)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {groupStocks.length} holding{groupStocks.length !== 1 ? 's' : ''}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          {collapsedGroups.has(key) ? <KeyboardArrowRight fontSize="small" /> : <KeyboardArrowDown fontSize="small" />}
+                          <Box>
+                            <Typography variant="subtitle2" fontWeight="bold">{groupLabel(groupStocks)}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {groupStocks.length} holding{groupStocks.length !== 1 ? 's' : ''}
+                            </Typography>
+                          </Box>
+                        </Box>
                       </TableCell>
                       <TableCell align="right">
                         <Typography variant="caption" color="text.secondary">Invested</Typography>
@@ -229,9 +336,9 @@ const USStocks: React.FC = () => {
                           {formatINR(gPnL)}
                         </Typography>
                       </TableCell>
+                      <TableCell />
                     </TableRow>
-                    {/* Asset rows */}
-                    {groupStocks.map((stock) => (
+                    {!collapsedGroups.has(key) && groupStocks.map((stock) => (
                       <TableRow key={stock.id} hover>
                         <TableCell>
                           <Typography variant="body2" fontWeight="medium">{stock.symbol}</Typography>
@@ -242,10 +349,7 @@ const USStocks: React.FC = () => {
                         <TableCell align="right">{formatUSD(stock.current_price)}</TableCell>
                         <TableCell align="right">{formatINR(stock.total_invested)}</TableCell>
                         <TableCell align="right">{formatINR(stock.current_value)}</TableCell>
-                        <TableCell
-                          align="right"
-                          sx={{ color: stock.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}
-                        >
+                        <TableCell align="right" sx={{ color: stock.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>
                           {formatINR(stock.profit_loss)}
                         </TableCell>
                         <TableCell align="right">
@@ -256,6 +360,14 @@ const USStocks: React.FC = () => {
                             icon={stock.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
                           />
                         </TableCell>
+                        <TableCell align="center">
+                          <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(stock)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(stock)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </React.Fragment>
@@ -265,6 +377,42 @@ const USStocks: React.FC = () => {
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* ── Add / Edit Dialog ──────────────────────────────────────────────── */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingAsset ? 'Edit US Stock' : 'Add US Stock'}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField label="Stock Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} fullWidth required />
+            <TextField label="Symbol (e.g. AAPL)" value={formData.symbol} onChange={(e) => setFormData({ ...formData, symbol: e.target.value })} fullWidth />
+            <TextField label="Quantity" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })} fullWidth />
+            <TextField label="Average Buy Price (USD)" type="number" value={formData.purchase_price} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} fullWidth />
+            <TextField label="Total Invested (USD)" type="number" value={formData.total_invested} onChange={(e) => setFormData({ ...formData, total_invested: parseFloat(e.target.value) || 0 })} fullWidth helperText="Leave 0 to auto-calculate (Qty x Avg Price)" />
+            <TextField label="Current Price (USD)" type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Will be auto-updated by price scheduler" />
+            <TextField
+              select
+              label="Demat Account (Optional)"
+              value={formData.demat_account_id}
+              onChange={(e) => setFormData({ ...formData, demat_account_id: e.target.value ? Number(e.target.value) : '' })}
+              fullWidth
+            >
+              <MenuItem value="">None</MenuItem>
+              {dematAccounts
+                .filter((da) => da.account_market === 'INTERNATIONAL')
+                .map((da) => (
+                  <MenuItem key={da.id} value={da.id}>{buildDematLabel(da)}</MenuItem>
+                ))}
+            </TextField>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button onClick={handleSubmit} variant="contained" disabled={submitting || !formData.name.trim()}
+            startIcon={submitting ? <CircularProgress size={18} /> : editingAsset ? <EditIcon /> : <AddIcon />}>
+            {submitting ? 'Saving…' : editingAsset ? 'Update' : 'Add US Stock'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

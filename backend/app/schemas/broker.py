@@ -1,0 +1,40 @@
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
+
+
+class BrokerBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    display_label: str = Field(..., min_length=1, max_length=100)
+    broker_type: str = Field(default="discount")
+    supported_markets: str = Field(default="domestic")
+    website: Optional[str] = Field(None, max_length=200)
+    is_active: bool = Field(default=True)
+    sort_order: int = Field(default=0)
+
+
+class BrokerCreate(BrokerBase):
+    pass
+
+
+class BrokerUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=50)
+    display_label: Optional[str] = Field(None, min_length=1, max_length=100)
+    broker_type: Optional[str] = None
+    supported_markets: Optional[str] = None
+    website: Optional[str] = Field(None, max_length=200)
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class BrokerInDB(BrokerBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class BrokerResponse(BrokerInDB):
+    pass

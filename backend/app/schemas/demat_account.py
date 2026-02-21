@@ -1,12 +1,13 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
-from app.models.demat_account import BrokerName
+from app.models.demat_account import AccountMarket
 
 
 class DematAccountBase(BaseModel):
     """Base demat account schema"""
-    broker_name: BrokerName
+    broker_name: str
+    account_market: AccountMarket = Field(default=AccountMarket.DOMESTIC)
     account_id: str = Field(..., min_length=1, max_length=50)
     account_holder_name: Optional[str] = Field(None, max_length=200)
     demat_account_number: Optional[str] = Field(None, max_length=50)
@@ -26,7 +27,8 @@ class DematAccountCreate(DematAccountBase):
 
 class DematAccountUpdate(BaseModel):
     """Schema for updating a demat account"""
-    broker_name: Optional[BrokerName] = None
+    broker_name: Optional[str] = None
+    account_market: Optional[AccountMarket] = None
     account_id: Optional[str] = Field(None, min_length=1, max_length=50)
     account_holder_name: Optional[str] = Field(None, max_length=200)
     demat_account_number: Optional[str] = Field(None, max_length=50)

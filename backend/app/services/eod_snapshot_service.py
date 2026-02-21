@@ -119,7 +119,7 @@ class EODSnapshotService:
                 asset_id=None,  # Bank accounts don't have asset_id
                 snapshot_date=snapshot_date,
                 asset_type='bank_account',
-                asset_name=f"{bank_account.bank_name.value} - {bank_account.account_type.value}",
+                asset_name=f"{bank_account.bank_name} - {bank_account.account_type.value}",
                 asset_symbol=bank_account.account_number[-4:] if bank_account.account_number else 'N/A',
                 quantity=1.0,
                 purchase_price=bank_account.current_balance,
@@ -145,7 +145,7 @@ class EODSnapshotService:
                 asset_id=None,
                 snapshot_date=snapshot_date,
                 asset_type='demat_cash',
-                asset_name=f"{demat_account.broker_name.value} - Cash",
+                asset_name=f"{demat_account.broker_name} - Cash",
                 asset_symbol=demat_account.account_id[-4:] if demat_account.account_id else 'N/A',
                 quantity=1.0,
                 purchase_price=demat_account.cash_balance,

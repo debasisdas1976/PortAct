@@ -22,6 +22,9 @@ class AssetBase(BaseModel):
     account_id: Optional[str] = None
     broker_name: Optional[str] = None
     account_holder_name: Optional[str] = None
+    # Foreign keys
+    demat_account_id: Optional[int] = None
+    crypto_account_id: Optional[int] = None
 
 
 class AssetCreate(AssetBase):
@@ -48,6 +51,9 @@ class AssetUpdate(BaseModel):
     broker_name: Optional[str] = None
     account_holder_name: Optional[str] = None
     purchase_date: Optional[datetime] = None
+    # Foreign keys
+    demat_account_id: Optional[int] = None
+    crypto_account_id: Optional[int] = None
 
 
 class AssetInDB(AssetBase):
@@ -55,7 +61,6 @@ class AssetInDB(AssetBase):
     id: int
     user_id: int
     statement_id: Optional[int] = None
-    demat_account_id: Optional[int] = None
     current_value: float
     profit_loss: float
     profit_loss_percentage: float

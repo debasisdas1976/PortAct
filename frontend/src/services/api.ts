@@ -224,6 +224,87 @@ export const statementsAPI = {
   },
 };
 
+// Crypto Exchanges API
+export const cryptoExchangesAPI = {
+  getAll: async (params?: { is_active?: boolean; exchange_type?: string }) => {
+    const response = await api.get('/crypto-exchanges/', { params });
+    return response.data;
+  },
+
+  getById: async (id: number) => {
+    const response = await api.get(`/crypto-exchanges/${id}`);
+    return response.data;
+  },
+
+  create: async (data: { name?: string; display_label: string; exchange_type?: string; website?: string | null; sort_order?: number }) => {
+    const response = await api.post('/crypto-exchanges/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: Record<string, any>) => {
+    const response = await api.put(`/crypto-exchanges/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/crypto-exchanges/${id}`);
+  },
+};
+
+// Banks API
+export const banksAPI = {
+  getAll: async (params?: { is_active?: boolean; bank_type?: string }) => {
+    const response = await api.get('/banks/', { params });
+    return response.data;
+  },
+
+  getById: async (id: number) => {
+    const response = await api.get(`/banks/${id}`);
+    return response.data;
+  },
+
+  create: async (data: { name?: string; display_label: string; bank_type?: string; website?: string | null; sort_order?: number }) => {
+    const response = await api.post('/banks/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: Record<string, any>) => {
+    const response = await api.put(`/banks/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/banks/${id}`);
+  },
+};
+
+// Brokers API
+export const brokersAPI = {
+  getAll: async (params?: { is_active?: boolean; broker_type?: string }) => {
+    const response = await api.get('/brokers/', { params });
+    return response.data;
+  },
+
+  getById: async (id: number) => {
+    const response = await api.get(`/brokers/${id}`);
+    return response.data;
+  },
+
+  create: async (data: { name?: string; display_label: string; broker_type?: string; supported_markets?: string; website?: string | null; sort_order?: number }) => {
+    const response = await api.post('/brokers/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: Record<string, any>) => {
+    const response = await api.put(`/brokers/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/brokers/${id}`);
+  },
+};
+
 // Application Settings API
 export const settingsAPI = {
   getAll: async () => {

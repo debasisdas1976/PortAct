@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
-from app.models.bank_account import BankAccount, BankName
+from app.models.bank_account import BankAccount
 from app.models.expense import Expense
 from app.services.bank_statement_parser import get_parser
 from app.services.expense_categorizer import ExpenseCategorizer
@@ -89,14 +89,14 @@ async def upload_bank_statement(
         if bank_account.account_type == BankType.CREDIT_CARD:
             # Credit card specific parsers
             bank_name_map = {
-                BankName.ICICI_BANK: 'ICICI_CC',
-                BankName.SCAPIA: 'SCAPIA_CC',
-                BankName.IDFC_FIRST_BANK: 'IDFC_FIRST_CC',
+                'icici_bank': 'ICICI_CC',
+                'scapia': 'SCAPIA_CC',
+                'idfc_first_bank': 'IDFC_FIRST_CC',
                 # Add more credit card parsers as needed
             }
-            
+
             # For "OTHER" credit cards, try to detect from file content
-            if bank_account.bank_name == BankName.OTHER:
+            if bank_account.bank_name == 'other':
                 # Try to detect bank from PDF content
                 if file_extension == '.pdf':
                     try:
@@ -134,18 +134,19 @@ async def upload_bank_statement(
         else:
             # Regular bank account parsers
             bank_name_map = {
-                BankName.ICICI_BANK: 'ICICI',
-                BankName.HDFC_BANK: 'HDFC',
-                BankName.IDFC_FIRST_BANK: 'IDFC_FIRST',
-                BankName.STATE_BANK_OF_INDIA: 'SBI'
+                'icici_bank': 'ICICI',
+                'hdfc_bank': 'HDFC',
+                'idfc_first_bank': 'IDFC_FIRST',
+                'state_bank_of_india': 'SBI',
+                'kotak_mahindra_bank': 'KOTAK',
             }
             parser_bank_name = bank_name_map.get(bank_account.bank_name)
-        
+
         if not parser_bank_name:
             account_type_str = "credit card" if bank_account.account_type == BankType.CREDIT_CARD else "bank account"
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"{account_type_str.capitalize()} statement parsing not supported for {bank_account.bank_name.value}"
+                detail=f"{account_type_str.capitalize()} statement parsing not supported for {bank_account.bank_name}"
             )
         
         # Parse the statement (pass password for encrypted files, e.g. SBI)
@@ -153,11 +154,32 @@ async def upload_bank_statement(
         transactions = parser.parse()
         
         if not transactions:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No transactions found in the statement. Please check the file format."
-            )
-        
+            # Update balance from opening balance if the parser extracted one
+            opening_balance = getattr(parser, 'opening_balance', None)
+            if opening_balance is not None:
+                bank_account.current_balance = opening_balance
+                db.commit()
+
+            return {
+                "success": True,
+                "message": "Statement processed — no transactions found in the selected period",
+                "summary": {
+                    "total_transactions": 0,
+                    "imported": 0,
+                    "duplicates": 0,
+                    "errors": 0,
+                    "categorized": 0,
+                    "uncategorized": 0
+                },
+                "file_path": file_path,
+                "bank_account": {
+                    "id": bank_account.id,
+                    "bank_name": bank_account.bank_name,
+                    "account_number": bank_account.account_number,
+                    "updated_balance": bank_account.current_balance
+                }
+            }
+
         # Auto-categorize if enabled
         if auto_categorize:
             categorizer = ExpenseCategorizer(db, user_id=current_user.id)
@@ -230,12 +252,14 @@ async def upload_bank_statement(
             "file_path": file_path,
             "bank_account": {
                 "id": bank_account.id,
-                "bank_name": bank_account.bank_name.value,
+                "bank_name": bank_account.bank_name,
                 "account_number": bank_account.account_number,
                 "updated_balance": bank_account.current_balance
             }
         }
         
+    except HTTPException:
+        raise
     except ValueError as e:
         # Parser error
         logger.error(f"Invalid statement format: {e}")
@@ -321,17 +345,18 @@ async def reprocess_statement(
     try:
         # Get parser
         bank_name_map = {
-            BankName.ICICI_BANK: 'ICICI',
-            BankName.HDFC_BANK: 'HDFC',
-            BankName.IDFC_FIRST_BANK: 'IDFC_FIRST',
-            BankName.STATE_BANK_OF_INDIA: 'SBI'
+            'icici_bank': 'ICICI',
+            'hdfc_bank': 'HDFC',
+            'idfc_first_bank': 'IDFC_FIRST',
+            'state_bank_of_india': 'SBI',
+            'kotak_mahindra_bank': 'KOTAK',
         }
-        
+
         parser_bank_name = bank_name_map.get(bank_account.bank_name)
         if not parser_bank_name:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Bank statement parsing not supported for {bank_account.bank_name.value}"
+                detail=f"Bank statement parsing not supported for {bank_account.bank_name}"
             )
         
         # Parse

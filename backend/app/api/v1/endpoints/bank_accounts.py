@@ -5,7 +5,7 @@ from sqlalchemy import func
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
-from app.models.bank_account import BankAccount, BankType, BankName
+from app.models.bank_account import BankAccount, BankType
 from app.models.expense import Expense, ExpenseType
 from app.schemas.bank_account import (
     BankAccount as BankAccountSchema,
@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[BankAccountSchema])
 async def get_bank_accounts(
-    bank_name: Optional[BankName] = None,
+    bank_name: Optional[str] = None,
     account_type: Optional[BankType] = None,
     is_active: Optional[bool] = None,
     skip: int = Query(0, ge=0),
@@ -71,7 +71,7 @@ async def get_bank_accounts_summary(
         accounts_by_type[type_key] = accounts_by_type.get(type_key, 0) + 1
         
         # By bank
-        bank_key = account.bank_name.value
+        bank_key = account.bank_name
         accounts_by_bank[bank_key] = accounts_by_bank.get(bank_key, 0) + 1
     
     return BankAccountSummary(

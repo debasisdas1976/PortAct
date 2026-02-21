@@ -14,28 +14,15 @@ class BankType(str, enum.Enum):
     RECURRING_DEPOSIT = "recurring_deposit"
 
 
-class BankName(str, enum.Enum):
-    """Enum for supported banks"""
-    ICICI_BANK = "icici_bank"
-    HDFC_BANK = "hdfc_bank"
-    IDFC_FIRST_BANK = "idfc_first_bank"
-    STATE_BANK_OF_INDIA = "state_bank_of_india"
-    AXIS_BANK = "axis_bank"
-    KOTAK_MAHINDRA_BANK = "kotak_mahindra_bank"
-    YES_BANK = "yes_bank"
-    SCAPIA = "scapia"
-    OTHER = "other"
-
-
 class BankAccount(Base):
     """Bank account model for tracking bank accounts and balances"""
     __tablename__ = "bank_accounts"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
+
     # Account details
-    bank_name = Column(Enum(BankName), nullable=False, index=True)
+    bank_name = Column(String(50), nullable=False, index=True)  # References banks.name
     account_type = Column(Enum(BankType), nullable=False, index=True)
     account_number = Column(String, nullable=False)  # Masked or full account number
     account_holder_name = Column(String)

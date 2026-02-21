@@ -32,11 +32,11 @@ import {
   KeyboardArrowDown,
   KeyboardArrowRight,
 } from '@mui/icons-material';
-import api from '../services/api';
+import api, { cryptoExchangesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 
-interface MFAsset {
+interface CryptoAsset {
   id: number;
   name: string;
   symbol: string;
@@ -48,42 +48,46 @@ interface MFAsset {
   profit_loss: number;
   profit_loss_percentage: number;
   asset_type: string;
-  demat_account_id?: number;
+  crypto_account_id?: number;
   broker_name?: string;
   account_id?: string;
   account_holder_name?: string;
 }
 
-interface DematAccount {
+interface CryptoAccount {
   id: number;
-  broker_name: string;
+  exchange_name: string;
   account_id: string;
   account_holder_name?: string;
   nickname?: string;
 }
 
+interface CryptoExchangeItem {
+  id: number;
+  name: string;
+  display_label: string;
+}
+
 const formatCurrency = (value: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
 
-const formatNav = (value: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 4 }).format(value);
-
-const buildDematLabel = (da: DematAccount) => {
-  const parts: string[] = [String(da.broker_name), `(${da.account_id})`];
-  if (da.account_holder_name) parts.push(`— ${da.account_holder_name}`);
+const buildCryptoLabel = (ca: CryptoAccount, exchangeMap: Record<string, string>) => {
+  const exchangeLabel = exchangeMap[ca.exchange_name] || ca.exchange_name;
+  const parts: string[] = [exchangeLabel, `(${ca.account_id})`];
+  if (ca.account_holder_name) parts.push(`— ${ca.account_holder_name}`);
   return parts.join(' ');
 };
 
-const DebtFunds: React.FC = () => {
-  const [funds, setFunds] = useState<MFAsset[]>([]);
-  const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
-  const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
+const CryptoAssets: React.FC = () => {
+  const [assets, setAssets] = useState<CryptoAsset[]>([]);
+  const [cryptoAccounts, setCryptoAccounts] = useState<CryptoAccount[]>([]);
+  const [cryptoLabelMap, setCryptoLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
 
   // Add/Edit dialog
   const [openDialog, setOpenDialog] = useState(false);
-  const [editingAsset, setEditingAsset] = useState<MFAsset | null>(null);
+  const [editingAsset, setEditingAsset] = useState<CryptoAsset | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     symbol: '',
@@ -91,7 +95,7 @@ const DebtFunds: React.FC = () => {
     purchase_price: 0,
     total_invested: 0,
     current_price: 0,
-    demat_account_id: '' as number | '',
+    crypto_account_id: '' as number | '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -108,22 +112,29 @@ const DebtFunds: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [assetsRes, dematRes] = await Promise.all([
+      const [assetsRes, cryptoRes, exchangesData] = await Promise.all([
         api.get('/assets/'),
-        api.get('/demat-accounts/'),
+        api.get('/crypto-accounts/'),
+        cryptoExchangesAPI.getAll(),
       ]);
-      const filtered = (assetsRes.data as MFAsset[]).filter(
-        (a) => a.asset_type?.toLowerCase() === 'debt_mutual_fund'
+      const filtered = (assetsRes.data as CryptoAsset[]).filter(
+        (a) => a.asset_type?.toLowerCase() === 'crypto'
       );
-      setFunds(filtered);
+      setAssets(filtered);
 
-      const dematList = dematRes.data as DematAccount[];
-      setDematAccounts(dematList);
-      const labelMap: Record<number, string> = {};
-      for (const da of dematList) {
-        labelMap[da.id] = buildDematLabel(da);
+      // Build exchange name → display_label map
+      const exchangeMap: Record<string, string> = {};
+      for (const ex of exchangesData as CryptoExchangeItem[]) {
+        exchangeMap[ex.name] = ex.display_label;
       }
-      setDematLabelMap(labelMap);
+
+      const cryptoList = cryptoRes.data as CryptoAccount[];
+      setCryptoAccounts(cryptoList);
+      const labelMap: Record<number, string> = {};
+      for (const ca of cryptoList) {
+        labelMap[ca.id] = buildCryptoLabel(ca, exchangeMap);
+      }
+      setCryptoLabelMap(labelMap);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load data'));
     } finally {
@@ -134,7 +145,7 @@ const DebtFunds: React.FC = () => {
   useEffect(() => { fetchData(); }, []);
 
   // ── Add / Edit ──────────────────────────────────────────────────────────
-  const handleOpenDialog = (asset?: MFAsset) => {
+  const handleOpenDialog = (asset?: CryptoAsset) => {
     if (asset) {
       setEditingAsset(asset);
       setFormData({
@@ -144,11 +155,11 @@ const DebtFunds: React.FC = () => {
         purchase_price: asset.purchase_price,
         total_invested: asset.total_invested,
         current_price: asset.current_price,
-        demat_account_id: asset.demat_account_id || '',
+        crypto_account_id: asset.crypto_account_id || '',
       });
     } else {
       setEditingAsset(null);
-      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, demat_account_id: '' });
+      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, crypto_account_id: '' });
     }
     setOpenDialog(true);
   };
@@ -156,65 +167,66 @@ const DebtFunds: React.FC = () => {
   const handleCloseDialog = () => { setOpenDialog(false); setEditingAsset(null); };
 
   const handleSubmit = async () => {
-    if (!formData.name.trim()) { notify.error('Fund name is required'); return; }
+    if (!formData.name.trim()) { notify.error('Crypto name is required'); return; }
     try {
       setSubmitting(true);
       const payload: Record<string, unknown> = {
-        asset_type: 'debt_mutual_fund',
+        asset_type: 'crypto',
         name: formData.name.trim(),
         symbol: formData.symbol.trim() || undefined,
         quantity: formData.quantity,
         purchase_price: formData.purchase_price,
         total_invested: formData.total_invested || formData.quantity * formData.purchase_price,
         current_price: formData.current_price,
-        demat_account_id: formData.demat_account_id || undefined,
+        crypto_account_id: formData.crypto_account_id || undefined,
       };
       if (editingAsset) {
         await api.put(`/assets/${editingAsset.id}`, payload);
-        notify.success('Fund updated');
+        notify.success('Crypto asset updated');
       } else {
         await api.post('/assets/', payload);
-        notify.success('Fund added');
+        notify.success('Crypto asset added');
       }
       handleCloseDialog();
       fetchData();
     } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to save fund'));
+      notify.error(getErrorMessage(err, 'Failed to save crypto asset'));
     } finally {
       setSubmitting(false);
     }
   };
 
   // ── Delete ──────────────────────────────────────────────────────────────
-  const handleDelete = async (asset: MFAsset) => {
-    if (!window.confirm(`Delete ${asset.name}?`)) return;
+  const handleDelete = async (asset: CryptoAsset) => {
+    if (!window.confirm(`Delete ${asset.symbol || asset.name}?`)) return;
     try {
       await api.delete(`/assets/${asset.id}`);
-      notify.success('Fund deleted');
+      notify.success('Crypto asset deleted');
       fetchData();
     } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to delete fund'));
+      notify.error(getErrorMessage(err, 'Failed to delete crypto asset'));
     }
   };
 
-  const totalInvested = funds.reduce((s, a) => s + (a.total_invested || 0), 0);
-  const totalValue = funds.reduce((s, a) => s + (a.current_value || 0), 0);
+  const totalInvested = assets.reduce((s, a) => s + (a.total_invested || 0), 0);
+  const totalValue = assets.reduce((s, a) => s + (a.current_value || 0), 0);
   const totalPnL = totalValue - totalInvested;
   const totalPnLPct = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
 
-  const groups: Record<string, MFAsset[]> = {};
-  for (const fund of funds) {
-    const key = fund.demat_account_id != null
-      ? String(fund.demat_account_id)
-      : ([fund.broker_name, fund.account_id].filter(Boolean).join('|') || 'unlinked');
+  // Group by crypto_account_id
+  const groups: Record<string, CryptoAsset[]> = {};
+  for (const asset of assets) {
+    const key = asset.crypto_account_id != null
+      ? String(asset.crypto_account_id)
+      : ([asset.broker_name, asset.account_id].filter(Boolean).join('|') || 'unlinked');
     if (!groups[key]) groups[key] = [];
-    groups[key].push(fund);
+    groups[key].push(asset);
   }
 
-  const groupLabel = (groupAssets: MFAsset[]) => {
+  const groupLabel = (groupAssets: CryptoAsset[]) => {
     const first = groupAssets[0];
-    if (first.demat_account_id != null && dematLabelMap[first.demat_account_id]) {
-      return dematLabelMap[first.demat_account_id];
+    if (first.crypto_account_id != null && cryptoLabelMap[first.crypto_account_id]) {
+      return cryptoLabelMap[first.crypto_account_id];
     }
     const parts: string[] = [];
     if (first.broker_name) parts.push(first.broker_name);
@@ -234,34 +246,34 @@ const DebtFunds: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4">Debt Mutual Funds</Typography>
+        <Typography variant="h4">Crypto Assets</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
-          Add Fund
+          Add Crypto Asset
         </Button>
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card><CardContent>
-            <Typography color="text.secondary" variant="body2">Funds</Typography>
-            <Typography variant="h4">{funds.length}</Typography>
+            <Typography color="text.secondary" variant="body2">Holdings</Typography>
+            <Typography variant="h4">{assets.length}</Typography>
           </CardContent></Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <Card><CardContent>
-            <Typography color="text.secondary" variant="body2">Current Value</Typography>
+            <Typography color="text.secondary" variant="body2">Current Value (USD)</Typography>
             <Typography variant="h5">{formatCurrency(totalValue)}</Typography>
           </CardContent></Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <Card><CardContent>
-            <Typography color="text.secondary" variant="body2">Total Invested</Typography>
+            <Typography color="text.secondary" variant="body2">Total Invested (USD)</Typography>
             <Typography variant="h5">{formatCurrency(totalInvested)}</Typography>
           </CardContent></Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <Card><CardContent>
-            <Typography color="text.secondary" variant="body2">Total P&L</Typography>
+            <Typography color="text.secondary" variant="body2">Total P&L (USD)</Typography>
             <Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
               {formatCurrency(totalPnL)}
             </Typography>
@@ -276,28 +288,28 @@ const DebtFunds: React.FC = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell><strong>Fund</strong></TableCell>
-              <TableCell align="right"><strong>Units</strong></TableCell>
-              <TableCell align="right"><strong>Avg NAV</strong></TableCell>
-              <TableCell align="right"><strong>Current NAV</strong></TableCell>
-              <TableCell align="right"><strong>Invested</strong></TableCell>
-              <TableCell align="right"><strong>Current Value</strong></TableCell>
-              <TableCell align="right"><strong>P&L</strong></TableCell>
+              <TableCell><strong>Crypto</strong></TableCell>
+              <TableCell align="right"><strong>Qty</strong></TableCell>
+              <TableCell align="right"><strong>Avg Buy Price (USD)</strong></TableCell>
+              <TableCell align="right"><strong>Current Price (USD)</strong></TableCell>
+              <TableCell align="right"><strong>Invested (USD)</strong></TableCell>
+              <TableCell align="right"><strong>Current Value (USD)</strong></TableCell>
+              <TableCell align="right"><strong>P&L (USD)</strong></TableCell>
               <TableCell align="right"><strong>P&L %</strong></TableCell>
               <TableCell align="center"><strong>Actions</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {funds.length === 0 ? (
+            {assets.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} align="center">
-                  <Typography color="text.secondary">No debt mutual fund holdings found.</Typography>
+                  <Typography color="text.secondary">No crypto holdings found.</Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              Object.entries(groups).map(([key, groupFunds]) => {
-                const gInvested = groupFunds.reduce((s, a) => s + (a.total_invested || 0), 0);
-                const gValue = groupFunds.reduce((s, a) => s + (a.current_value || 0), 0);
+              Object.entries(groups).map(([key, groupAssets]) => {
+                const gInvested = groupAssets.reduce((s, a) => s + (a.total_invested || 0), 0);
+                const gValue = groupAssets.reduce((s, a) => s + (a.current_value || 0), 0);
                 const gPnL = gValue - gInvested;
                 return (
                   <React.Fragment key={key}>
@@ -306,9 +318,9 @@ const DebtFunds: React.FC = () => {
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           {collapsedGroups.has(key) ? <KeyboardArrowRight fontSize="small" /> : <KeyboardArrowDown fontSize="small" />}
                           <Box>
-                            <Typography variant="subtitle2" fontWeight="bold">{groupLabel(groupFunds)}</Typography>
+                            <Typography variant="subtitle2" fontWeight="bold">{groupLabel(groupAssets)}</Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {groupFunds.length} fund{groupFunds.length !== 1 ? 's' : ''}
+                              {groupAssets.length} holding{groupAssets.length !== 1 ? 's' : ''}
                             </Typography>
                           </Box>
                         </Box>
@@ -329,33 +341,33 @@ const DebtFunds: React.FC = () => {
                       </TableCell>
                       <TableCell />
                     </TableRow>
-                    {!collapsedGroups.has(key) && groupFunds.map((fund) => (
-                      <TableRow key={fund.id} hover>
+                    {!collapsedGroups.has(key) && groupAssets.map((asset) => (
+                      <TableRow key={asset.id} hover>
                         <TableCell>
-                          <Typography variant="body2" fontWeight="medium">{fund.name}</Typography>
-                          {fund.symbol && <Typography variant="caption" color="text.secondary">{fund.symbol}</Typography>}
+                          <Typography variant="body2" fontWeight="medium">{asset.symbol}</Typography>
+                          <Typography variant="caption" color="text.secondary">{asset.name}</Typography>
                         </TableCell>
-                        <TableCell align="right">{fund.quantity?.toFixed(4)}</TableCell>
-                        <TableCell align="right">{formatNav(fund.purchase_price)}</TableCell>
-                        <TableCell align="right">{formatNav(fund.current_price)}</TableCell>
-                        <TableCell align="right">{formatCurrency(fund.total_invested)}</TableCell>
-                        <TableCell align="right">{formatCurrency(fund.current_value)}</TableCell>
-                        <TableCell align="right" sx={{ color: fund.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>
-                          {formatCurrency(fund.profit_loss)}
+                        <TableCell align="right">{asset.quantity?.toFixed(6)}</TableCell>
+                        <TableCell align="right">{formatCurrency(asset.purchase_price)}</TableCell>
+                        <TableCell align="right">{formatCurrency(asset.current_price)}</TableCell>
+                        <TableCell align="right">{formatCurrency(asset.total_invested)}</TableCell>
+                        <TableCell align="right">{formatCurrency(asset.current_value)}</TableCell>
+                        <TableCell align="right" sx={{ color: asset.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>
+                          {formatCurrency(asset.profit_loss)}
                         </TableCell>
                         <TableCell align="right">
                           <Chip
-                            label={`${fund.profit_loss_percentage >= 0 ? '+' : ''}${fund.profit_loss_percentage?.toFixed(2)}%`}
-                            color={fund.profit_loss_percentage >= 0 ? 'success' : 'error'}
+                            label={`${asset.profit_loss_percentage >= 0 ? '+' : ''}${asset.profit_loss_percentage?.toFixed(2)}%`}
+                            color={asset.profit_loss_percentage >= 0 ? 'success' : 'error'}
                             size="small"
-                            icon={fund.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
+                            icon={asset.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
                           />
                         </TableCell>
                         <TableCell align="center">
-                          <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(fund)}>
+                          <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(asset)}>
                             <EditIcon fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(fund)}>
+                          <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(asset)}>
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </TableCell>
@@ -371,25 +383,25 @@ const DebtFunds: React.FC = () => {
 
       {/* ── Add / Edit Dialog ──────────────────────────────────────────────── */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingAsset ? 'Edit Debt Fund' : 'Add Debt Fund'}</DialogTitle>
+        <DialogTitle>{editingAsset ? 'Edit Crypto Asset' : 'Add Crypto Asset'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            <TextField label="Fund Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} fullWidth required />
-            <TextField label="Symbol / AMFI Code" value={formData.symbol} onChange={(e) => setFormData({ ...formData, symbol: e.target.value })} fullWidth />
-            <TextField label="Units" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })} fullWidth />
-            <TextField label="Average NAV (Buy)" type="number" value={formData.purchase_price} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} fullWidth />
-            <TextField label="Total Invested" type="number" value={formData.total_invested} onChange={(e) => setFormData({ ...formData, total_invested: parseFloat(e.target.value) || 0 })} fullWidth helperText="Leave 0 to auto-calculate (Units x Avg NAV)" />
-            <TextField label="Current NAV" type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Will be auto-updated by price scheduler" />
+            <TextField label="Crypto Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} fullWidth required />
+            <TextField label="Symbol (e.g. BTC)" value={formData.symbol} onChange={(e) => setFormData({ ...formData, symbol: e.target.value })} fullWidth />
+            <TextField label="Quantity" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })} fullWidth inputProps={{ step: '0.000001' }} />
+            <TextField label="Average Buy Price (USD)" type="number" value={formData.purchase_price} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} fullWidth />
+            <TextField label="Total Invested (USD)" type="number" value={formData.total_invested} onChange={(e) => setFormData({ ...formData, total_invested: parseFloat(e.target.value) || 0 })} fullWidth helperText="Leave 0 to auto-calculate (Qty x Avg Price)" />
+            <TextField label="Current Price (USD)" type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Will be auto-updated by price scheduler" />
             <TextField
               select
-              label="Demat Account (Optional)"
-              value={formData.demat_account_id}
-              onChange={(e) => setFormData({ ...formData, demat_account_id: e.target.value ? Number(e.target.value) : '' })}
+              label="Crypto Account (Optional)"
+              value={formData.crypto_account_id}
+              onChange={(e) => setFormData({ ...formData, crypto_account_id: e.target.value ? Number(e.target.value) : '' })}
               fullWidth
             >
               <MenuItem value="">None</MenuItem>
-              {dematAccounts.map((da) => (
-                <MenuItem key={da.id} value={da.id}>{buildDematLabel(da)}</MenuItem>
+              {cryptoAccounts.map((ca) => (
+                <MenuItem key={ca.id} value={ca.id}>{cryptoLabelMap[ca.id] || `${ca.exchange_name} (${ca.account_id})`}</MenuItem>
               ))}
             </TextField>
           </Box>
@@ -398,7 +410,7 @@ const DebtFunds: React.FC = () => {
           <Button onClick={handleCloseDialog}>Cancel</Button>
           <Button onClick={handleSubmit} variant="contained" disabled={submitting || !formData.name.trim()}
             startIcon={submitting ? <CircularProgress size={18} /> : editingAsset ? <EditIcon /> : <AddIcon />}>
-            {submitting ? 'Saving…' : editingAsset ? 'Update' : 'Add Fund'}
+            {submitting ? 'Saving…' : editingAsset ? 'Update' : 'Add Crypto Asset'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -406,6 +418,4 @@ const DebtFunds: React.FC = () => {
   );
 };
 
-export default DebtFunds;
-
-// Made with Bob
+export default CryptoAssets;

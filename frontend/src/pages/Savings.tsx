@@ -29,13 +29,17 @@ import {
 } from '@mui/material';
 import {
   AccountBalance,
+  Add as AddIcon,
   CloudUpload as UploadIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
   Visibility,
   VisibilityOff,
 } from '@mui/icons-material';
-import api from '../services/api';
+import api, { banksAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import CompanyIcon from '../components/CompanyIcon';
 
 interface BankAccount {
   id: number;
@@ -47,28 +51,35 @@ interface BankAccount {
   is_active: boolean;
 }
 
-const bankNameMap: Record<string, string> = {
-  icici_bank: 'ICICI Bank',
-  hdfc_bank: 'HDFC Bank',
-  idfc_first_bank: 'IDFC First Bank',
-  state_bank_of_india: 'State Bank of India',
-  axis_bank: 'Axis Bank',
-  kotak_mahindra_bank: 'Kotak Mahindra Bank',
-  yes_bank: 'Yes Bank',
-  other: 'Other',
-};
-
-const formatBankName = (name: string) =>
-  bankNameMap[name] || name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+const formatBankNameFallback = (name: string) =>
+  name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 const Savings: React.FC = () => {
   const { notify } = useNotification();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Add/Edit account dialog state
+  const [openAccountDialog, setOpenAccountDialog] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
+  const [accountFormData, setAccountFormData] = useState({
+    bank_name: 'icici_bank',
+    account_type: 'savings',
+    account_number: '',
+    nickname: '',
+    current_balance: 0,
+    available_balance: 0,
+    is_active: true,
+  });
+  const [accountSubmitting, setAccountSubmitting] = useState(false);
+
+  const [bankNames, setBankNames] = useState<{ value: string; label: string; website?: string }[]>([]);
+
   // Upload dialog state
   const [openUploadDialog, setOpenUploadDialog] = useState(false);
-  const [uploadAccountId, setUploadAccountId] = useState<number | ''>('');
+  const [uploadAccountId, setUploadAccountId] = useState<number | '' | 'new'>('');
+  const [newAccountBank, setNewAccountBank] = useState('icici_bank');
+  const [newAccountNumber, setNewAccountNumber] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadPassword, setUploadPassword] = useState('');
   const [showUploadPassword, setShowUploadPassword] = useState(false);
@@ -91,18 +102,107 @@ const Savings: React.FC = () => {
     }
   };
 
+  const fetchBankNames = async () => {
+    try {
+      const data = await banksAPI.getAll({ is_active: true });
+      setBankNames(
+        Array.isArray(data)
+          ? data.map((b: any) => ({ value: b.name, label: b.display_label, website: b.website }))
+          : []
+      );
+    } catch (err) {
+      console.error('Failed to fetch banks:', err);
+    }
+  };
+
   useEffect(() => {
     fetchAccounts();
+    fetchBankNames();
   }, []);
+
+  const formatBankName = (name: string) =>
+    bankNames.find((b) => b.value === name)?.label || formatBankNameFallback(name);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
 
   const totalBalance = accounts.reduce((s, a) => s + (a.current_balance || 0), 0);
 
+  // ── Add / Edit account handlers ──────────────────────────────────────────
+  const handleOpenAccountDialog = (account?: BankAccount) => {
+    if (account) {
+      setEditingAccount(account);
+      setAccountFormData({
+        bank_name: account.bank_name,
+        account_type: account.account_type,
+        account_number: account.account_number,
+        nickname: account.nickname || '',
+        current_balance: account.current_balance,
+        available_balance: account.current_balance,
+        is_active: account.is_active,
+      });
+    } else {
+      setEditingAccount(null);
+      setAccountFormData({
+        bank_name: 'icici_bank',
+        account_type: 'savings',
+        account_number: '',
+        nickname: '',
+        current_balance: 0,
+        available_balance: 0,
+        is_active: true,
+      });
+    }
+    setOpenAccountDialog(true);
+  };
+
+  const handleCloseAccountDialog = () => {
+    setOpenAccountDialog(false);
+    setEditingAccount(null);
+  };
+
+  const handleAccountSubmit = async () => {
+    if (!accountFormData.account_number.trim()) {
+      notify.error('Account number is required');
+      return;
+    }
+    try {
+      setAccountSubmitting(true);
+      if (editingAccount) {
+        await api.put(`/bank-accounts/${editingAccount.id}`, accountFormData);
+        notify.success('Savings account updated successfully');
+      } else {
+        await api.post('/bank-accounts/', accountFormData);
+        notify.success('Savings account added successfully');
+      }
+      handleCloseAccountDialog();
+      fetchAccounts();
+    } catch (err) {
+      notify.error(getErrorMessage(err, `Failed to ${editingAccount ? 'update' : 'add'} savings account`));
+    } finally {
+      setAccountSubmitting(false);
+    }
+  };
+
+  // ── Delete handler ───────────────────────────────────────────────────────
+  const handleDelete = async (account: BankAccount) => {
+    if (!window.confirm(`Delete ${formatBankName(account.bank_name)} (••••${account.account_number.slice(-4)})? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await api.delete(`/bank-accounts/${account.id}`);
+      notify.success('Bank account deleted');
+      fetchAccounts();
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to delete bank account'));
+    }
+  };
+
   // ── Upload handlers ────────────────────────────────────────────────────────
   const handleOpenUpload = (account?: BankAccount) => {
     setUploadAccountId(account ? account.id : '');
+    setNewAccountBank('icici_bank');
+    setNewAccountNumber('');
     setSelectedFile(null);
     setUploadPassword('');
     setAutoCategorize(true);
@@ -116,17 +216,45 @@ const Savings: React.FC = () => {
   };
 
   const handleUploadStatement = async () => {
-    if (!selectedFile || !uploadAccountId) {
-      notify.error('Please select an account and a statement file');
+    if (!selectedFile) {
+      notify.error('Please select a statement file');
+      return;
+    }
+
+    if (uploadAccountId === 'new' && !newAccountNumber.trim()) {
+      notify.error('Please enter the account number for the new account');
+      return;
+    }
+
+    if (!uploadAccountId) {
+      notify.error('Please select an account or choose "+ New Account"');
       return;
     }
 
     try {
       setUploading(true);
 
+      let accountId: number;
+
+      if (uploadAccountId === 'new') {
+        // Create the bank account first
+        const createRes = await api.post('/bank-accounts/', {
+          bank_name: newAccountBank,
+          account_type: 'savings',
+          account_number: newAccountNumber.trim(),
+          current_balance: 0,
+          available_balance: 0,
+          is_active: true,
+        });
+        accountId = createRes.data.id;
+        notify.success('Bank account created');
+      } else {
+        accountId = uploadAccountId as number;
+      }
+
       const formPayload = new FormData();
       formPayload.append('file', selectedFile);
-      formPayload.append('bank_account_id', String(uploadAccountId));
+      formPayload.append('bank_account_id', String(accountId));
       formPayload.append('auto_categorize', String(autoCategorize));
       if (uploadPassword) {
         formPayload.append('password', uploadPassword);
@@ -143,7 +271,7 @@ const Savings: React.FC = () => {
         categorized: summary?.categorized ?? 0,
       });
 
-      // Refresh balances
+      // Refresh accounts list (picks up new account + updated balances)
       fetchAccounts();
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to upload statement. Please check the file and password.'));
@@ -152,8 +280,10 @@ const Savings: React.FC = () => {
     }
   };
 
-  const selectedAccountForUpload = accounts.find((a) => a.id === uploadAccountId);
-  const isSBI = selectedAccountForUpload?.bank_name === 'state_bank_of_india';
+  const selectedAccountForUpload = uploadAccountId !== 'new' ? accounts.find((a) => a.id === uploadAccountId) : undefined;
+  const isSBI = uploadAccountId === 'new'
+    ? newAccountBank === 'state_bank_of_india'
+    : selectedAccountForUpload?.bank_name === 'state_bank_of_india';
 
   if (loading) {
     return (
@@ -170,9 +300,14 @@ const Savings: React.FC = () => {
           <AccountBalance color="primary" />
           <Typography variant="h4">Savings Accounts</Typography>
         </Box>
-        <Button variant="outlined" startIcon={<UploadIcon />} onClick={() => handleOpenUpload()}>
-          Upload Statement
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button variant="outlined" startIcon={<UploadIcon />} onClick={() => handleOpenUpload()}>
+            Upload Statement
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenAccountDialog()}>
+            Add Bank Account
+          </Button>
+        </Box>
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -217,9 +352,15 @@ const Savings: React.FC = () => {
               accounts.map((account) => (
                 <TableRow key={account.id} hover>
                   <TableCell>
-                    <Typography variant="body2" fontWeight="medium">
-                      {formatBankName(account.bank_name)}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CompanyIcon
+                        website={bankNames.find((b) => b.value === account.bank_name)?.website}
+                        name={formatBankName(account.bank_name)}
+                      />
+                      <Typography variant="body2" fontWeight="medium">
+                        {formatBankName(account.bank_name)}
+                      </Typography>
+                    </Box>
                   </TableCell>
                   <TableCell>{account.nickname || '—'}</TableCell>
                   <TableCell>
@@ -238,14 +379,22 @@ const Savings: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell align="center">
-                    <Button
+                    <IconButton
                       size="small"
-                      variant="outlined"
-                      startIcon={<UploadIcon />}
-                      onClick={() => handleOpenUpload(account)}
+                      color="primary"
+                      title="Edit account"
+                      onClick={() => handleOpenAccountDialog(account)}
                     >
-                      Upload Statement
-                    </Button>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      title="Delete account"
+                      onClick={() => handleDelete(account)}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
                   </TableCell>
                 </TableRow>
               ))
@@ -272,10 +421,16 @@ const Savings: React.FC = () => {
               select
               label="Savings Account"
               value={uploadAccountId}
-              onChange={(e) => setUploadAccountId(Number(e.target.value))}
+              onChange={(e) => {
+                const val = e.target.value;
+                setUploadAccountId(val === 'new' ? 'new' : Number(val));
+              }}
               fullWidth
               required
             >
+              <MenuItem value="new" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                + New Account
+              </MenuItem>
               {accounts.map((acc) => (
                 <MenuItem key={acc.id} value={acc.id}>
                   {formatBankName(acc.bank_name)}
@@ -283,6 +438,30 @@ const Savings: React.FC = () => {
                 </MenuItem>
               ))}
             </TextField>
+
+            {/* New account fields – shown when "+ New Account" is selected */}
+            {uploadAccountId === 'new' && (
+              <>
+                <TextField
+                  select
+                  label="Bank Name"
+                  value={newAccountBank}
+                  onChange={(e) => setNewAccountBank(e.target.value)}
+                  fullWidth
+                >
+                  {bankNames.map((bank) => (
+                    <MenuItem key={bank.value} value={bank.value}>{bank.label}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  label="Account Number"
+                  value={newAccountNumber}
+                  onChange={(e) => setNewAccountNumber(e.target.value)}
+                  fullWidth
+                  required
+                />
+              </>
+            )}
 
             {/* File picker */}
             <Button variant="outlined" component="label" startIcon={<UploadIcon />} fullWidth>
@@ -347,12 +526,73 @@ const Savings: React.FC = () => {
             <Button
               onClick={handleUploadStatement}
               variant="contained"
-              disabled={uploading || !selectedFile || !uploadAccountId}
+              disabled={uploading || !selectedFile || !uploadAccountId || (uploadAccountId === 'new' && !newAccountNumber.trim())}
               startIcon={uploading ? <CircularProgress size={18} /> : <UploadIcon />}
             >
               {uploading ? 'Uploading…' : 'Upload'}
             </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Add / Edit Bank Account dialog ─────────────────────────────── */}
+      <Dialog open={openAccountDialog} onClose={handleCloseAccountDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingAccount ? 'Edit Savings Account' : 'Add Savings Account'}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField
+              select
+              label="Bank Name"
+              value={accountFormData.bank_name}
+              onChange={(e) => setAccountFormData({ ...accountFormData, bank_name: e.target.value })}
+              fullWidth
+            >
+              {bankNames.map((bank) => (
+                <MenuItem key={bank.value} value={bank.value}>{bank.label}</MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              label="Account Number"
+              value={accountFormData.account_number}
+              onChange={(e) => setAccountFormData({ ...accountFormData, account_number: e.target.value })}
+              fullWidth
+              required
+            />
+
+            <TextField
+              label="Nickname (Optional)"
+              value={accountFormData.nickname}
+              onChange={(e) => setAccountFormData({ ...accountFormData, nickname: e.target.value })}
+              fullWidth
+              helperText="e.g. Salary Account, Emergency Fund"
+            />
+
+            <TextField
+              label="Current Balance"
+              type="number"
+              value={accountFormData.current_balance}
+              onChange={(e) => {
+                const balance = parseFloat(e.target.value) || 0;
+                setAccountFormData({ ...accountFormData, current_balance: balance, available_balance: balance });
+              }}
+              fullWidth
+              InputProps={{
+                startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAccountDialog}>Cancel</Button>
+          <Button
+            onClick={handleAccountSubmit}
+            variant="contained"
+            disabled={accountSubmitting || !accountFormData.account_number.trim()}
+            startIcon={accountSubmitting ? <CircularProgress size={18} /> : editingAccount ? <EditIcon /> : <AddIcon />}
+          >
+            {accountSubmitting ? 'Saving…' : editingAccount ? 'Update' : 'Add Account'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
