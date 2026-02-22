@@ -614,9 +614,11 @@ setup_backend() {
     # Install requirements
     CURRENT_STEP="installing backend packages"
     print_info "Installing backend packages (this may take a few minutes)..."
-    if ! pip install -r requirements.txt; then
+    local pip_output
+    if ! pip_output=$(pip install -r requirements.txt 2>&1); then
+        echo "$pip_output" >> "$BACKEND_DIR/logs/install_errors.log" 2>/dev/null || true
         fail "Some backend packages could not be installed." \
-             "Check your internet connection and try running the installer again."
+             "Check your internet connection and try running the installer again. Details saved to backend/logs/install_errors.log"
     fi
     print_success "Backend packages installed"
 
@@ -654,9 +656,19 @@ setup_backend() {
     # Run Alembic migrations
     CURRENT_STEP="setting up database tables"
     print_info "Setting up the database tables..."
-    if ! alembic upgrade head; then
-        fail "Could not set up the database tables." \
-             "Make sure the database server is running and the configuration in backend/.env is correct."
+    local alembic_output
+    if ! alembic_output=$(alembic upgrade head 2>&1); then
+        echo "$alembic_output" >> "$BACKEND_DIR/logs/install_errors.log" 2>/dev/null || true
+        if echo "$alembic_output" | grep -qi "CORS\|SettingsError\|parsing value\|\.env"; then
+            fail "There is a problem with the backend configuration file (backend/.env)." \
+                 "Delete backend/.env and run the installer again — it will create a fresh one."
+        elif echo "$alembic_output" | grep -qi "connection refused\|could not connect\|password authentication"; then
+            fail "Could not connect to the database." \
+                 "Make sure the database server is running and try again."
+        else
+            fail "Could not set up the database tables." \
+                 "Check the error details in backend/logs/install_errors.log and try again."
+        fi
     fi
     print_success "Database tables are ready"
 
@@ -670,7 +682,7 @@ setup_backend() {
     if [[ "$SEED_DEMO" == true ]] && [[ -f "$BACKEND_DIR/seed_demo_user.py" ]]; then
         CURRENT_STEP="creating demo user account"
         print_info "Creating demo user account..."
-        if ! python "$BACKEND_DIR/seed_demo_user.py"; then
+        if ! python "$BACKEND_DIR/seed_demo_user.py" 2>/dev/null; then
             print_warning "Could not create the demo user (the app will still work — you can register a new account)"
         else
             print_success "Demo user created (email: demouser@portact.com, password: portact1)"
@@ -700,9 +712,11 @@ setup_frontend() {
     CURRENT_STEP="installing frontend packages"
     if [[ ! -d "$FRONTEND_DIR/node_modules" ]]; then
         print_info "Installing frontend packages (this may take a few minutes)..."
-        if ! npm install; then
+        local npm_output
+        if ! npm_output=$(npm install 2>&1); then
+            echo "$npm_output" >> "$PROJECT_DIR/frontend_install_errors.log" 2>/dev/null || true
             fail "Some frontend packages could not be installed." \
-                 "Check your internet connection and try running the installer again."
+                 "Check your internet connection and try running the installer again. Details saved to frontend_install_errors.log"
         fi
         print_success "Frontend packages installed"
     else
