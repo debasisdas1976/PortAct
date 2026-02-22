@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
-from app.api.dependencies import get_current_active_user
+from app.api.dependencies import get_current_active_user, get_default_portfolio_id
+from app.services.currency_converter import get_usd_to_inr_rate
 from app.models.user import User
 from app.models.demat_account import DematAccount, AccountMarket
 from app.models.asset import Asset, AssetType
@@ -47,29 +48,49 @@ async def get_demat_accounts(
         query = query.filter(DematAccount.is_active == is_active)
 
     accounts = query.offset(skip).limit(limit).all()
-    
-    # Add asset statistics to each account
+
+    if not accounts:
+        return []
+
+    # Batch-load asset statistics for all accounts in a single query
+    account_ids = [account.id for account in accounts]
+    asset_stats = db.query(
+        Asset.demat_account_id,
+        func.count(Asset.id).label("asset_count"),
+        func.coalesce(func.sum(Asset.total_invested), 0.0).label("total_invested"),
+        func.coalesce(func.sum(Asset.current_value), 0.0).label("current_value"),
+    ).filter(
+        Asset.demat_account_id.in_(account_ids),
+        Asset.is_active == True
+    ).group_by(Asset.demat_account_id).all()
+
+    # Build a lookup dict keyed by demat_account_id
+    stats_map = {
+        row.demat_account_id: {
+            "asset_count": row.asset_count,
+            "total_invested": float(row.total_invested),
+            "current_value": float(row.current_value),
+            "total_profit_loss": float(row.current_value) - float(row.total_invested),
+        }
+        for row in asset_stats
+    }
+
+    default_stats = {
+        "asset_count": 0,
+        "total_invested": 0.0,
+        "current_value": 0.0,
+        "total_profit_loss": 0.0,
+    }
+
     result = []
     for account in accounts:
-        assets = db.query(Asset).filter(
-            Asset.demat_account_id == account.id,
-            Asset.is_active == True
-        ).all()
-        
-        asset_count = len(assets)
-        total_invested = sum(asset.total_invested for asset in assets)
-        current_value = sum(asset.current_value for asset in assets)
-        total_profit_loss = current_value - total_invested
-        
+        stats = stats_map.get(account.id, default_stats)
         account_dict = {
             **account.__dict__,
-            "asset_count": asset_count,
-            "total_invested": total_invested,
-            "current_value": current_value,
-            "total_profit_loss": total_profit_loss
+            **stats,
         }
         result.append(DematAccountWithAssets(**account_dict))
-    
+
     return result
 
 
@@ -91,21 +112,23 @@ async def get_demat_accounts_summary(
     accounts = query.all()
 
     total_cash_balance = sum(acc.cash_balance for acc in accounts)
-    
-    # Get asset statistics for all demat accounts
-    total_invested = 0.0
-    total_current_value = 0.0
-    
-    for account in accounts:
-        assets = db.query(Asset).filter(
-            Asset.demat_account_id == account.id,
+
+    # Get asset statistics for all demat accounts in a single query
+    account_ids = [acc.id for acc in accounts]
+    if account_ids:
+        totals = db.query(
+            func.coalesce(func.sum(Asset.total_invested), 0.0).label("total_invested"),
+            func.coalesce(func.sum(Asset.current_value), 0.0).label("current_value"),
+        ).filter(
+            Asset.demat_account_id.in_(account_ids),
             Asset.is_active == True
-        ).all()
-        
-        for asset in assets:
-            total_invested += asset.total_invested
-            total_current_value += asset.current_value
-    
+        ).first()
+        total_invested = float(totals.total_invested)
+        total_current_value = float(totals.current_value)
+    else:
+        total_invested = 0.0
+        total_current_value = 0.0
+
     total_profit_loss = total_current_value - total_invested
     
     accounts_by_broker = {}
@@ -179,8 +202,6 @@ async def create_demat_account(
     """
     Create a new demat account
     """
-    from app.services.currency_converter import get_usd_to_inr_rate
-    
     # Check if account already exists
     existing = db.query(DematAccount).filter(
         DematAccount.user_id == current_user.id,
@@ -219,7 +240,6 @@ async def create_demat_account(
     
     # Auto-assign to default portfolio if not specified
     if not account_dict.get('portfolio_id'):
-        from app.api.dependencies import get_default_portfolio_id
         account_dict['portfolio_id'] = get_default_portfolio_id(current_user.id, db)
 
     account = DematAccount(
@@ -244,8 +264,6 @@ async def update_demat_account(
     """
     Update a demat account
     """
-    from app.services.currency_converter import get_usd_to_inr_rate
-    
     account = db.query(DematAccount).filter(
         DematAccount.id == account_id,
         DematAccount.user_id == current_user.id

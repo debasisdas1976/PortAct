@@ -28,6 +28,30 @@ from app.api.dependencies import get_default_portfolio_id
 
 logger = logging.getLogger(__name__)
 
+# Canonical broker display-name -> master-table key mapping
+BROKER_MAPPING = {
+    'zerodha': 'zerodha',
+    'groww': 'groww',
+    'upstox': 'upstox',
+    'angel one': 'angel_one',
+    'angel': 'angel_one',
+    'icici direct': 'icici_direct',
+    'icici': 'icici_direct',
+    'hdfc securities': 'hdfc_securities',
+    'hdfc': 'hdfc_securities',
+    'kotak securities': 'kotak_securities',
+    'kotak': 'kotak_securities',
+    'axis direct': 'axis_direct',
+    'axis': 'axis_direct',
+    'sharekhan': 'sharekhan',
+    'motilal oswal': 'motilal_oswal',
+    'iifl securities': 'iifl_securities',
+    'iifl': 'iifl_securities',
+    'indmoney': 'indmoney',
+    'vested': 'vested',
+    'mf_central': 'mf_central',
+}
+
 
 def get_or_create_demat_account(
     user_id: int,
@@ -47,32 +71,8 @@ def get_or_create_demat_account(
     if not portfolio_id:
         portfolio_id = get_default_portfolio_id(user_id, db)
 
-    # Map broker display names to master table name keys
-    broker_mapping = {
-        'zerodha': 'zerodha',
-        'groww': 'groww',
-        'upstox': 'upstox',
-        'angel one': 'angel_one',
-        'angel': 'angel_one',
-        'icici direct': 'icici_direct',
-        'icici': 'icici_direct',
-        'hdfc securities': 'hdfc_securities',
-        'hdfc': 'hdfc_securities',
-        'kotak securities': 'kotak_securities',
-        'kotak': 'kotak_securities',
-        'axis direct': 'axis_direct',
-        'axis': 'axis_direct',
-        'sharekhan': 'sharekhan',
-        'motilal oswal': 'motilal_oswal',
-        'iifl securities': 'iifl_securities',
-        'iifl': 'iifl_securities',
-        'indmoney': 'indmoney',
-        'vested': 'vested',
-        'mf_central': 'mf_central',
-    }
-
     broker_name_lower = broker_name.lower() if broker_name else ''
-    broker_enum = broker_mapping.get(broker_name_lower, 'other')
+    broker_enum = BROKER_MAPPING.get(broker_name_lower, 'other')
     
     if not account_id:
         return None
@@ -379,14 +379,14 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
             if isinstance(data, pd.DataFrame):
                 # Check for ICICI Direct formats
                 if is_icici_direct_stock_format(data):
-                    print("Detected ICICI Direct Stock CSV format")
+                    logger.info("Detected ICICI Direct Stock CSV format")
                     assets, transactions = parse_icici_direct_stock_csv(data, statement)
                 elif is_icici_direct_mf_format(data):
-                    print("Detected ICICI Direct Mutual Fund CSV format")
+                    logger.info("Detected ICICI Direct Mutual Fund CSV format")
                     assets, transactions = parse_icici_direct_mf_csv(data, statement)
                 # Check if it's Groww format
                 elif is_groww_format(data):
-                    print("Detected Groww Stock Holdings format")
+                    logger.info("Detected Groww Stock Holdings format")
                     assets, transactions = parse_groww_holdings(data, statement)
                 # Check if it's Zerodha format
                 elif is_zerodha_format(data, statement):
@@ -402,12 +402,12 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
                         assets, transactions = parse_generic_statement(text, statement)
             # Check if it's a multi-sheet file
             elif isinstance(data, list):
-                print(f"Processing {len(data)} sheets")
+                logger.info(f"Processing {len(data)} sheets")
                 for item in data:
                     sheet_name, df, account_info = item
-                    print(f"\nProcessing sheet: {sheet_name}")
+                    logger.info(f"Processing sheet: {sheet_name}")
                     if is_groww_format(df, account_info):
-                        print(f"Detected Groww format in sheet '{sheet_name}'")
+                        logger.info(f"Detected Groww format in sheet '{sheet_name}'")
                         sheet_assets, sheet_transactions = parse_groww_holdings(df, statement, account_info)
                         assets.extend(sheet_assets)
                         transactions.extend(sheet_transactions)
@@ -421,13 +421,13 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
                 if isinstance(df, pd.DataFrame):
                     # Check for ICICI Direct formats first
                     if is_icici_direct_stock_format(df):
-                        print("Detected ICICI Direct Stock CSV format")
+                        logger.info("Detected ICICI Direct Stock CSV format")
                         assets, transactions = parse_icici_direct_stock_csv(df, statement, account_info)
                     elif is_icici_direct_mf_format(df):
-                        print("Detected ICICI Direct Mutual Fund CSV format")
+                        logger.info("Detected ICICI Direct Mutual Fund CSV format")
                         assets, transactions = parse_icici_direct_mf_csv(df, statement, account_info)
                     elif is_groww_format(df, account_info):
-                        print("Detected Groww Stock Holdings format")
+                        logger.info("Detected Groww Stock Holdings format")
                         assets, transactions = parse_groww_holdings(df, statement, account_info)
                     elif is_zerodha_format(df, statement):
                         assets, transactions = parse_zerodha_holdings(df, statement, None, account_info)
@@ -446,21 +446,9 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
         if expected_institution and assets and len(assets) > 0:
             extracted_broker = assets[0].get('broker_name', '')
             if extracted_broker:
-                # Normalize both names using the same broker_mapping from get_or_create_demat_account
-                broker_mapping = {
-                    'zerodha': 'zerodha', 'groww': 'groww', 'upstox': 'upstox',
-                    'angel one': 'angel_one', 'angel': 'angel_one',
-                    'icici direct': 'icici_direct', 'icici': 'icici_direct',
-                    'hdfc securities': 'hdfc_securities', 'hdfc': 'hdfc_securities',
-                    'kotak securities': 'kotak_securities', 'kotak': 'kotak_securities',
-                    'axis direct': 'axis_direct', 'axis': 'axis_direct',
-                    'sharekhan': 'sharekhan', 'motilal oswal': 'motilal_oswal',
-                    'iifl securities': 'iifl_securities', 'iifl': 'iifl_securities',
-                    'indmoney': 'indmoney', 'vested': 'vested',
-                    'mf_central': 'mf_central',
-                }
-                normalized_expected = broker_mapping.get(expected_institution.lower(), expected_institution.lower())
-                normalized_extracted = broker_mapping.get(extracted_broker.lower(), extracted_broker.lower())
+                # Normalize both names using the module-level BROKER_MAPPING
+                normalized_expected = BROKER_MAPPING.get(expected_institution.lower(), expected_institution.lower())
+                normalized_extracted = BROKER_MAPPING.get(extracted_broker.lower(), extracted_broker.lower())
                 if normalized_expected != normalized_extracted:
                     statement.status = StatementStatus.FAILED
                     statement.error_message = (
@@ -645,14 +633,14 @@ def parse_nsdl_cas_pdf(file_path: str, statement: Statement, password: str = Non
     
     try:
         with pdfplumber.open(file_path, password=password) as pdf:
-            print(f"Processing NSDL CAS PDF with {len(pdf.pages)} pages")
+            logger.info(f"Processing NSDL CAS PDF with {len(pdf.pages)} pages")
             
             # Process each page individually
             for page_num, page in enumerate(pdf.pages, 1):
                 text = page.extract_text()
                 cleaned = clean_pdf_text(text)
                 
-                print(f"\n=== Processing Page {page_num} ===")
+                logger.debug(f"Processing Page {page_num}")
                 
                 # Look for ISIN patterns (assets) on each page
                 # NSDL/CDSL Mutual Funds: INF followed by alphanumeric
@@ -690,7 +678,7 @@ def parse_nsdl_cas_pdf(file_path: str, statement: Statement, password: str = Non
                             'statement_id': statement.id
                         }
                         assets.append(asset_data)
-                        print(f"  Added MF: {description[:40]} - {units} units @ ₹{nav}")
+                        logger.debug(f"  Added MF: {description[:40]} - {units} units @ ₹{nav}")
                     except (ValueError, IndexError) as e:
                         continue
                 
@@ -730,7 +718,7 @@ def parse_nsdl_cas_pdf(file_path: str, statement: Statement, password: str = Non
                             'statement_id': statement.id
                         }
                         assets.append(asset_data)
-                        print(f"  Added Equity: {symbol} - {quantity} shares @ ₹{price}")
+                        logger.debug(f"  Added Equity: {symbol} - {quantity} shares @ ₹{price}")
                     except (ValueError, IndexError) as e:
                         continue
                 
@@ -763,16 +751,14 @@ def parse_nsdl_cas_pdf(file_path: str, statement: Statement, password: str = Non
                             'statement_id': statement.id
                         }
                         assets.append(asset_data)
-                        print(f"  Added SGB: {isin} - {units} units @ ₹{market_price}")
+                        logger.debug(f"  Added SGB: {isin} - {units} units @ ₹{market_price}")
                     except (ValueError, IndexError) as e:
                         continue
             
-            print(f"\nTotal assets extracted: {len(assets)}")
+            logger.info(f"Total assets extracted: {len(assets)}")
             
     except Exception as e:
-        import traceback
-        print(f"Error parsing NSDL CAS PDF: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Error parsing NSDL CAS PDF: {str(e)}", exc_info=True)
         raise Exception(f"Failed to parse NSDL CAS PDF: {str(e)}")
     
     return assets, transactions
@@ -946,13 +932,13 @@ def parse_nsdl_demat_holdings(text: str, statement: Statement, broker_name: str)
     nsdl_match = re.search(nsdl_pattern, text, re.DOTALL)
     
     if not nsdl_match:
-        print("NSDL account info not found")
+        logger.debug("NSDL account info not found")
         return assets
     
     dp_id = nsdl_match.group(1)
     client_id = nsdl_match.group(2)
     account_id = f"{dp_id}-{client_id}"
-    print(f"Found NSDL account: {account_id}")
+    logger.info(f"Found NSDL account: {account_id}")
     
     # The NSDL holdings appear before CDSL section
     # Extract text between account info and CDSL section
@@ -960,11 +946,11 @@ def parse_nsdl_demat_holdings(text: str, statement: Statement, broker_name: str)
     holdings_match = re.search(nsdl_holdings_pattern, text, re.DOTALL)
     
     if not holdings_match:
-        print("NSDL holdings section not found")
+        logger.debug("NSDL holdings section not found")
         return assets
-    
+
     holdings_text = holdings_match.group(1)
-    
+
     # Parse Mutual Funds from NSDL account
     # Pattern: INF... followed by description, units, NAV, value
     # Example: INF109KC1NT3 ICICI PRUDENTIAL MUTUAL FUND GOLD 2,30 140.31 3,2,706.79
@@ -1002,9 +988,9 @@ def parse_nsdl_demat_holdings(text: str, statement: Statement, broker_name: str)
                 'statement_id': statement.id
             }
             assets.append(asset_data)
-            print(f"  Added NSDL MF: {fund_name[:30]} - {units} units")
+            logger.debug(f"  Added NSDL MF: {fund_name[:30]} - {units} units")
         except ValueError as e:
-            print(f"  Skipped invalid MF entry: {e}")
+            logger.debug(f"  Skipped invalid MF entry: {e}")
             continue
     
     # Parse Sovereign Gold Bonds
@@ -1037,9 +1023,9 @@ def parse_nsdl_demat_holdings(text: str, statement: Statement, broker_name: str)
                 'statement_id': statement.id
             }
             assets.append(asset_data)
-            print(f"  Added SGB: {isin} - {units} units")
+            logger.debug(f"  Added SGB: {isin} - {units} units")
         except ValueError as e:
-            print(f"  Skipped invalid SGB entry: {e}")
+            logger.debug(f"  Skipped invalid SGB entry: {e}")
             continue
     
     return assets
@@ -1054,20 +1040,20 @@ def parse_cdsl_demat_holdings(text: str, statement: Statement, broker_name: str)
     cdsl_match = re.search(cdsl_pattern, text, re.DOTALL)
     
     if not cdsl_match:
-        print("CDSL account info not found")
+        logger.debug("CDSL account info not found")
         return assets
     
     dp_id = cdsl_match.group(1)
     client_id = cdsl_match.group(2)
     account_id = f"{dp_id}-{client_id}"
-    print(f"Found CDSL account: {account_id}")
+    logger.info(f"Found CDSL account: {account_id}")
     
     # Extract CDSL holdings section (from CDSL account to end or next major section)
     cdsl_holdings_pattern = r'CDSL Demat Acount.*?DP ID:\w+\s+Client ID:\w+(.*?)(?:Mutual Fund Folios|Transactions|Notes:)'
     holdings_match = re.search(cdsl_holdings_pattern, text, re.DOTALL)
     
     if not holdings_match:
-        print("CDSL holdings section not found")
+        logger.debug("CDSL holdings section not found")
         return assets
     
     holdings_text = holdings_match.group(1)
@@ -1111,9 +1097,9 @@ def parse_cdsl_demat_holdings(text: str, statement: Statement, broker_name: str)
                 'statement_id': statement.id
             }
             assets.append(asset_data)
-            print(f"  Added CDSL Equity: {symbol} - {quantity} units")
+            logger.debug(f"  Added CDSL Equity: {symbol} - {quantity} units")
         except ValueError as e:
-            print(f"  Skipped invalid equity entry: {e}")
+            logger.debug(f"  Skipped invalid equity entry: {e}")
             continue
     
     # Parse Mutual Funds from CDSL
@@ -1149,9 +1135,9 @@ def parse_cdsl_demat_holdings(text: str, statement: Statement, broker_name: str)
                 'statement_id': statement.id
             }
             assets.append(asset_data)
-            print(f"  Added CDSL MF: {fund_name[:30]} - {units} units")
+            logger.debug(f"  Added CDSL MF: {fund_name[:30]} - {units} units")
         except ValueError as e:
-            print(f"  Skipped invalid MF entry: {e}")
+            logger.debug(f"  Skipped invalid MF entry: {e}")
             continue
     
     return assets
@@ -1247,8 +1233,8 @@ def parse_icici_direct_stock_csv(df: pd.DataFrame, statement: Statement, account
     if account_info is None:
         account_info = {}
     
-    print(f"\n=== Parsing ICICI Direct Stock Portfolio ===")
-    print(f"DataFrame shape: {df.shape}")
+    logger.info("Parsing ICICI Direct Stock Portfolio")
+    logger.debug(f"DataFrame shape: {df.shape}")
     
     # Clean column names
     df.columns = df.columns.str.strip()
@@ -1269,9 +1255,9 @@ def parse_icici_direct_stock_csv(df: pd.DataFrame, statement: Statement, account
             qty = float(str(qty).replace(',', ''))
             
             if qty <= 0:
-                print(f"Skipping {symbol} - zero quantity")
+                logger.debug(f"Skipping {symbol} - zero quantity")
                 continue
-            
+
             # Extract prices
             avg_cost = row.get('Average Cost Price', 0)
             if pd.isna(avg_cost):
@@ -1301,8 +1287,8 @@ def parse_icici_direct_stock_csv(df: pd.DataFrame, statement: Statement, account
             if any(keyword in symbol.upper() for keyword in ['GOLD', 'SILVER', 'ICIGOL', 'NIPSIL', 'SBIGOL']):
                 asset_type = AssetType.COMMODITY
             
-            print(f"Processing: {symbol} - {qty} units @ ₹{current_price}")
-            
+            logger.debug(f"Processing: {symbol} - {qty} units @ ₹{current_price}")
+
             # Create asset
             asset_data = {
                 'asset_type': asset_type,
@@ -1339,12 +1325,10 @@ def parse_icici_direct_stock_csv(df: pd.DataFrame, statement: Statement, account
             transactions.append(transaction_data)
             
         except Exception as e:
-            print(f"Error processing row {index}: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.debug(f"Error processing row {index}: {str(e)}", exc_info=True)
             continue
-    
-    print(f"Parsed {len(assets)} assets from ICICI Direct stock CSV")
+
+    logger.info(f"Parsed {len(assets)} assets from ICICI Direct stock CSV")
     return assets, transactions
 
 
@@ -1359,8 +1343,8 @@ def parse_icici_direct_mf_csv(df: pd.DataFrame, statement: Statement, account_in
     if account_info is None:
         account_info = {}
     
-    print(f"\n=== Parsing ICICI Direct Mutual Fund Holdings ===")
-    print(f"DataFrame shape: {df.shape}")
+    logger.info("Parsing ICICI Direct Mutual Fund Holdings")
+    logger.debug(f"DataFrame shape: {df.shape}")
     
     # Clean column names
     df.columns = df.columns.str.strip()
@@ -1381,7 +1365,7 @@ def parse_icici_direct_mf_csv(df: pd.DataFrame, statement: Statement, account_in
             units = float(str(units).replace(',', ''))
             
             if units <= 0:
-                print(f"Skipping {scheme_name} - zero units")
+                logger.debug(f"Skipping {scheme_name} - zero units")
                 continue
             
             # Extract NAV
@@ -1422,7 +1406,7 @@ def parse_icici_direct_mf_csv(df: pd.DataFrame, statement: Statement, account_in
             if any(keyword in scheme_lower for keyword in ['gold', 'silver']):
                 asset_type = AssetType.COMMODITY
             
-            print(f"Processing: {scheme_name[:40]} - {units} units @ ₹{nav}")
+            logger.debug(f"Processing: {scheme_name[:40]} - {units} units @ ₹{nav}")
             
             # Create asset
             asset_data = {
@@ -1461,12 +1445,10 @@ def parse_icici_direct_mf_csv(df: pd.DataFrame, statement: Statement, account_in
             transactions.append(transaction_data)
             
         except Exception as e:
-            print(f"Error processing row {index}: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.debug(f"Error processing row {index}: {str(e)}", exc_info=True)
             continue
-    
-    print(f"Parsed {len(assets)} mutual funds from ICICI Direct CSV")
+
+    logger.info(f"Parsed {len(assets)} mutual funds from ICICI Direct CSV")
     return assets, transactions
 
 
@@ -1508,7 +1490,7 @@ def extract_account_info_from_excel(file_path: str) -> dict:
                         account_info['account_holder_name'] = value
                     elif 'unique client code' in label or 'client code' in label:
                         account_info['account_id'] = value
-            print(f"Detected Groww statement. Account info: {account_info}")
+            logger.info(f"Detected Groww statement. Account info: {account_info}")
             return account_info
 
         # Generic extraction for other brokers (Zerodha etc.)
@@ -1533,9 +1515,9 @@ def extract_account_info_from_excel(file_path: str) -> dict:
                     if name and len(name) > 2:
                         account_info['account_holder_name'] = name
 
-        print(f"Extracted account info: {account_info}")
+        logger.debug(f"Extracted account info: {account_info}")
     except Exception as e:
-        print(f"Could not extract account info: {str(e)}")
+        logger.debug(f"Could not extract account info: {str(e)}")
 
     return account_info
 
@@ -1555,7 +1537,7 @@ def extract_text_from_excel(file_path: str):
         
         # If it's a Zerodha file with multiple sheets, process all relevant sheets
         if len(xl_file.sheet_names) > 1:
-            print(f"Found {len(xl_file.sheet_names)} sheets: {xl_file.sheet_names}")
+            logger.info(f"Found {len(xl_file.sheet_names)} sheets: {xl_file.sheet_names}")
             sheets_data = []
             
             for sheet_name in xl_file.sheet_names:
@@ -1586,7 +1568,7 @@ def extract_text_from_excel(file_path: str):
                     df = pd.DataFrame(df_raw.iloc[header_row + 1:].values, columns=headers)
                     df = df.loc[:, (df != '').any(axis=0)]
 
-                    print(f"Sheet '{sheet_name}': Extracted {len(df)} rows")
+                    logger.debug(f"Sheet '{sheet_name}': Extracted {len(df)} rows")
                     sheets_data.append((sheet_name, df, account_info))
             
             return sheets_data if sheets_data else None
@@ -1612,7 +1594,7 @@ def extract_text_from_excel(file_path: str):
                 df = pd.DataFrame(df_raw.iloc[header_row + 1:].values, columns=headers)
                 df = df.loc[:, (df != '').any(axis=0)]
 
-                print(f"Extracted {len(df)} rows with columns: {list(df.columns)}")
+                logger.debug(f"Extracted {len(df)} rows with columns: {list(df.columns)}")
                 return (df, account_info)
             else:
                 return pd.read_excel(file_path, engine='openpyxl')
@@ -1701,17 +1683,17 @@ def is_zerodha_format(df: pd.DataFrame, statement: Statement) -> bool:
         
         df_columns_lower = [col.lower().strip() for col in df.columns]
         
-        print(f"DataFrame columns: {df_columns_lower}")  # Debug
+        logger.debug(f"DataFrame columns: {df_columns_lower}")
         
         # Check if at least 4 of the Zerodha columns are present
         matches = sum(1 for col in zerodha_columns if col in df_columns_lower)
         matches_alt = sum(1 for col in zerodha_columns_alt if col in df_columns_lower)
         
-        print(f"Zerodha format matches: {matches}, alt matches: {matches_alt}")  # Debug
+        logger.debug(f"Zerodha format matches: {matches}, alt matches: {matches_alt}")
         
         return matches >= 3 or matches_alt >= 2  # Lowered threshold
     except Exception as e:
-        print(f"Error checking Zerodha format: {str(e)}")
+        logger.debug(f"Error checking Zerodha format: {str(e)}")
         return False
 
 
@@ -1732,9 +1714,9 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
     if account_info is None:
         account_info = {}
     
-    print(f"\n=== Parsing Zerodha Holdings (Sheet: {sheet_name or 'Unknown'}) ===")
-    print(f"Account Info: {account_info}")
-    print(f"Starting to parse Zerodha holdings. DataFrame shape: {df.shape}")  # Debug
+    logger.info(f"Parsing Zerodha Holdings (Sheet: {sheet_name or 'Unknown'})")
+    logger.debug(f"Account Info: {account_info}")
+    logger.debug(f"Starting to parse Zerodha holdings. DataFrame shape: {df.shape}")
     
     # Clean column names
     df.columns = df.columns.str.strip()
@@ -1742,8 +1724,8 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
     # Skip empty rows
     df = df.dropna(how='all')
     
-    print(f"After cleaning, DataFrame shape: {df.shape}")  # Debug
-    print(f"Columns: {list(df.columns)}")  # Debug
+    logger.debug(f"After cleaning, DataFrame shape: {df.shape}")
+    logger.debug(f"Columns: {list(df.columns)}")
     
     # Determine default asset type from sheet name
     default_asset_type = AssetType.STOCK
@@ -1752,10 +1734,10 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
         if 'mutual' in sheet_lower or 'mf' in sheet_lower:
             # Default to equity mutual fund, user can reclassify later
             default_asset_type = AssetType.EQUITY_MUTUAL_FUND
-            print(f"Sheet '{sheet_name}' detected as Mutual Fund sheet (defaulting to Equity MF)")
+            logger.info(f"Sheet '{sheet_name}' detected as Mutual Fund sheet (defaulting to Equity MF)")
         elif 'equity' in sheet_lower or 'stock' in sheet_lower:
             default_asset_type = AssetType.STOCK
-            print(f"Sheet '{sheet_name}' detected as Equity sheet")
+            logger.info(f"Sheet '{sheet_name}' detected as Equity sheet")
     
     # Detect asset type based on content
     for index, row in df.iterrows():
@@ -1769,7 +1751,7 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
             if not symbol or symbol.lower() in ['total', 'grand total', 'symbol']:
                 continue
             
-            print(f"Processing symbol: {symbol}")  # Debug
+            logger.debug(f"Processing symbol: {symbol}")
             
             # Determine asset type - use sheet name as primary indicator
             asset_type = default_asset_type
@@ -1791,9 +1773,9 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
             qty = float(str(qty).replace(',', ''))
             
             if qty <= 0:
-                print(f"Skipping {symbol} - zero quantity")
+                logger.debug(f"Skipping {symbol} - zero quantity")
                 continue
-            
+
             # Extract average price
             avg_price = row.get('Average Price', row.get('average price', 0))
             if pd.isna(avg_price):
@@ -1817,7 +1799,7 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
             else:
                 pnl = float(str(pnl).replace(',', '').replace('₹', '').strip())
             
-            print(f"  Qty: {qty}, Avg Price: {avg_price}, Current Price: {current_price}")  # Debug
+            logger.debug(f"  Qty: {qty}, Avg Price: {avg_price}, Current Price: {current_price}")
             
             # Create asset with account information
             asset_data = {
@@ -1858,12 +1840,10 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
             
         except Exception as e:
             # Log error but continue processing other rows
-            print(f"Error processing row {index}: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.debug(f"Error processing row {index}: {str(e)}", exc_info=True)
             continue
-    
-    print(f"Parsed {len(assets)} assets and {len(transactions)} transactions")  # Debug
+
+    logger.info(f"Parsed {len(assets)} assets and {len(transactions)} transactions")
     return assets, transactions
 
 
@@ -1897,9 +1877,9 @@ def parse_groww_holdings(df: pd.DataFrame, statement: Statement, account_info: d
     if account_info is None:
         account_info = {}
 
-    print(f"\n=== Parsing Groww Holdings ===")
-    print(f"Account Info: {account_info}")
-    print(f"DataFrame shape: {df.shape}")
+    logger.info("Parsing Groww Holdings")
+    logger.debug(f"Account Info: {account_info}")
+    logger.debug(f"DataFrame shape: {df.shape}")
 
     # Clean column names
     df.columns = df.columns.str.strip()
@@ -1923,10 +1903,10 @@ def parse_groww_holdings(df: pd.DataFrame, statement: Statement, account_info: d
     pnl_col = get_col('Unrealised P&L')
 
     if not stock_name_col or not qty_col:
-        print("Required columns not found in Groww statement")
+        logger.debug("Required columns not found in Groww statement")
         return assets, transactions
 
-    print(f"Columns mapped: {list(df.columns)}")
+    logger.debug(f"Columns mapped: {list(df.columns)}")
 
     for index, row in df.iterrows():
         try:
@@ -1949,7 +1929,7 @@ def parse_groww_holdings(df: pd.DataFrame, statement: Statement, account_info: d
                 qty = 0
             qty = float(str(qty).replace(',', ''))
             if qty <= 0:
-                print(f"Skipping {name} - zero quantity")
+                logger.debug(f"Skipping {name} - zero quantity")
                 continue
 
             # Average buy price
@@ -1991,7 +1971,7 @@ def parse_groww_holdings(df: pd.DataFrame, statement: Statement, account_info: d
             if any(kw in name_upper for kw in ['GOLD', 'SILVER', 'GOLDBEES', 'SILVERBEES']):
                 asset_type = AssetType.COMMODITY
 
-            print(f"Processing: {name} ({symbol}) - {qty} units @ avg {avg_price}, closing {closing_price}")
+            logger.debug(f"Processing: {name} ({symbol}) - {qty} units @ avg {avg_price}, closing {closing_price}")
 
             asset_data = {
                 'asset_type': asset_type,
@@ -2029,12 +2009,10 @@ def parse_groww_holdings(df: pd.DataFrame, statement: Statement, account_info: d
             transactions.append(transaction_data)
 
         except Exception as e:
-            print(f"Error processing row {index}: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.debug(f"Error processing row {index}: {str(e)}", exc_info=True)
             continue
 
-    print(f"Parsed {len(assets)} assets and {len(transactions)} transactions from Groww")
+    logger.info(f"Parsed {len(assets)} assets and {len(transactions)} transactions from Groww")
     return assets, transactions
 
 

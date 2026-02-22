@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 
 from app.core.database import get_db
-from app.api.dependencies import get_current_active_user
+from app.api.dependencies import get_current_active_user, get_default_portfolio_id
 from app.models.asset import Asset, AssetType
 from app.models.user import User
 from app.schemas.insurance import (
@@ -143,7 +143,6 @@ async def create_insurance_policy(
     db: Session = Depends(get_db),
 ):
     """Create a new insurance policy."""
-    from app.api.dependencies import get_default_portfolio_id
     resolved_portfolio_id = portfolio_id or data.portfolio_id or get_default_portfolio_id(current_user.id, db)
 
     current_value = data.current_value or 0.0

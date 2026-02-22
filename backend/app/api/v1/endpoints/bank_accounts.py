@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
-from app.api.dependencies import get_current_active_user
+from app.api.dependencies import get_current_active_user, get_default_portfolio_id
 from app.models.user import User
 from app.models.bank_account import BankAccount, BankType
 from app.models.expense import Expense, ExpenseType
@@ -170,7 +170,6 @@ async def create_bank_account(
 
     # Auto-assign to default portfolio if not specified
     if not account_dict.get('portfolio_id'):
-        from app.api.dependencies import get_default_portfolio_id
         account_dict['portfolio_id'] = get_default_portfolio_id(current_user.id, db)
 
     account = BankAccount(

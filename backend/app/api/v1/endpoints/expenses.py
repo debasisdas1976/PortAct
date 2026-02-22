@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_, extract
 from datetime import datetime, timedelta
 from app.core.database import get_db
-from app.api.dependencies import get_current_active_user
+from app.api.dependencies import get_current_active_user, get_default_portfolio_id
 from app.models.user import User
 from app.models.expense import Expense, ExpenseType, PaymentMethod
 from app.models.bank_account import BankAccount
@@ -123,24 +123,36 @@ async def get_expenses(
             query = query.order_by(order_column.asc())
     
     expenses = query.offset(skip).limit(limit).all()
-    
-    # Enrich with bank account and category names
+
+    # Batch-load all referenced bank accounts and categories in two queries
+    bank_account_ids = {e.bank_account_id for e in expenses if e.bank_account_id}
+    category_ids = {e.category_id for e in expenses if e.category_id}
+
+    bank_account_map = {}
+    if bank_account_ids:
+        bank_accounts = db.query(BankAccount).filter(BankAccount.id.in_(bank_account_ids)).all()
+        for ba in bank_accounts:
+            bank_account_map[ba.id] = ba.nickname or f"{ba.bank_name} - {ba.account_number[-4:]}"
+
+    category_map = {}
+    if category_ids:
+        categories = db.query(ExpenseCategory).filter(ExpenseCategory.id.in_(category_ids)).all()
+        for cat in categories:
+            category_map[cat.id] = cat.name
+
+    # Enrich with bank account and category names from the pre-loaded maps
     result = []
     for expense in expenses:
         expense_dict = expense.__dict__.copy()
-        
-        # Get bank account name
+
         if expense.bank_account_id:
-            bank_account = db.query(BankAccount).filter(BankAccount.id == expense.bank_account_id).first()
-            expense_dict['bank_account_name'] = bank_account.nickname or f"{bank_account.bank_name} - {bank_account.account_number[-4:]}" if bank_account else None
-        
-        # Get category name
+            expense_dict['bank_account_name'] = bank_account_map.get(expense.bank_account_id)
+
         if expense.category_id:
-            category = db.query(ExpenseCategory).filter(ExpenseCategory.id == expense.category_id).first()
-            expense_dict['category_name'] = category.name if category else None
-        
+            expense_dict['category_name'] = category_map.get(expense.category_id)
+
         result.append(ExpenseWithDetails(**expense_dict))
-    
+
     return {
         "items": result,
         "total": total_count,
@@ -684,7 +696,6 @@ async def create_expense(
 
     # Auto-assign to default portfolio if not specified
     if not expense_dict.get('portfolio_id'):
-        from app.api.dependencies import get_default_portfolio_id
         expense_dict['portfolio_id'] = get_default_portfolio_id(current_user.id, db)
 
     expense = Expense(

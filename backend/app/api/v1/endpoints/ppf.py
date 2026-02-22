@@ -6,7 +6,7 @@ from datetime import datetime, date
 import os
 import shutil
 from app.core.database import get_db
-from app.api.dependencies import get_current_active_user
+from app.api.dependencies import get_current_active_user, get_default_portfolio_id
 from app.models.user import User
 from app.models.asset import Asset, AssetType
 from app.models.transaction import Transaction, TransactionType
@@ -239,7 +239,6 @@ async def create_ppf_account(
         maturity_date = ppf_data.opening_date + relativedelta(years=15)
     
     # Resolve portfolio: parameter > schema > user default
-    from app.api.dependencies import get_default_portfolio_id
     resolved_portfolio_id = portfolio_id or ppf_data.portfolio_id or get_default_portfolio_id(current_user.id, db)
 
     # Create asset record

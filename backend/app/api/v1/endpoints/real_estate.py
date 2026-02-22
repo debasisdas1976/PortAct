@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 
 from app.core.database import get_db
-from app.api.dependencies import get_current_active_user
+from app.api.dependencies import get_current_active_user, get_default_portfolio_id
 from app.models.asset import Asset, AssetType
 from app.models.user import User
 from app.schemas.real_estate import (
@@ -146,7 +146,6 @@ async def create_property(
     profit_loss_pct = (profit_loss / data.purchase_price * 100) if data.purchase_price else 0
 
     # Resolve portfolio for the new property
-    from app.api.dependencies import get_default_portfolio_id
     resolved_portfolio_id = get_default_portfolio_id(current_user.id, db)
 
     asset = Asset(

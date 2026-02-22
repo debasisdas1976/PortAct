@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_active_user, get_db
+from app.api.dependencies import get_current_active_user, get_db, get_default_portfolio_id
 from app.models.user import User
 from app.models.asset import Asset, AssetType
 from app.models.transaction import Transaction, TransactionType
@@ -152,7 +152,6 @@ async def create_rd(
     db: Session = Depends(get_db),
 ):
     """Create a new recurring deposit."""
-    from app.api.dependencies import get_default_portfolio_id
     resolved_portfolio_id = portfolio_id or data.portfolio_id or get_default_portfolio_id(current_user.id, db)
 
     asset = Asset(

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 
 from app.core.database import get_db
-from app.api.dependencies import get_current_active_user
+from app.api.dependencies import get_current_active_user, get_default_portfolio_id
 from app.models.asset import Asset, AssetType
 from app.models.user import User
 from app.schemas.gratuity import (
@@ -143,7 +143,6 @@ async def create_gratuity_account(
     db: Session = Depends(get_db),
 ):
     """Create a new gratuity account."""
-    from app.api.dependencies import get_default_portfolio_id
     resolved_portfolio_id = portfolio_id or data.portfolio_id or get_default_portfolio_id(current_user.id, db)
 
     computed = _compute_gratuity(data.basic_pay, data.date_of_joining)

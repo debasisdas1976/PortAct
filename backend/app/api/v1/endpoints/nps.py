@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, s
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.api.dependencies import get_current_active_user, get_db
+from app.api.dependencies import get_current_active_user, get_db, get_default_portfolio_id
 from app.models.user import User
 from app.models.asset import Asset, AssetType
 from app.models.transaction import Transaction, TransactionType
@@ -202,7 +202,6 @@ async def create_nps_account(
     Create a new NPS account manually
     """
     # Resolve portfolio: parameter > schema > user default
-    from app.api.dependencies import get_default_portfolio_id
     resolved_portfolio_id = portfolio_id or nps_data.portfolio_id or get_default_portfolio_id(current_user.id, db)
 
     # Create asset

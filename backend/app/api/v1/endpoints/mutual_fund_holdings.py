@@ -182,7 +182,7 @@ async def upload_holdings_csv(
                 # Clean up temp file
                 try:
                     os.unlink(tmp_path)
-                except:
+                except OSError:
                     pass
         
         # Delete existing holdings
@@ -292,9 +292,9 @@ async def download_and_parse_from_url(
         # Clean up downloaded file
         try:
             os.unlink(file_path)
-        except:
+        except OSError:
             pass
-        
+
         if not holdings_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -474,9 +474,9 @@ async def auto_update_all_holdings(
                 # Clean up downloaded file
                 try:
                     os.unlink(file_path)
-                except:
+                except OSError:
                     pass
-                
+
                 if not holdings_data:
                     fund_result["message"] = "No equity holdings found in portfolio file"
                     results.append(fund_result)
@@ -880,9 +880,9 @@ async def upload_consolidated_file(
             # Clean up temporary file
             try:
                 os.unlink(tmp_file_path)
-            except:
+            except OSError:
                 pass
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1052,7 +1052,7 @@ async def preview_consolidated_file(
             # Clean up temp file on error
             try:
                 os.unlink(temp_file_path)
-            except:
+            except OSError:
                 pass
             raise
         
@@ -1203,9 +1203,9 @@ async def confirm_consolidated_import(
             # Clean up temp file
             try:
                 os.unlink(temp_file_path)
-            except:
+            except OSError:
                 pass
-            
+
             return {
                 "success": True,
                 "message": f"Import completed: {successful_imports} successful, {failed_imports} failed",
@@ -1219,7 +1219,7 @@ async def confirm_consolidated_import(
             try:
                 if os.path.exists(temp_file_path):
                     os.unlink(temp_file_path)
-            except:
+            except OSError:
                 pass
         
     except HTTPException:

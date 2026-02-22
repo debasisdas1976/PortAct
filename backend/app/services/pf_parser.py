@@ -2,12 +2,15 @@
 Provident Fund (EPF/PF) Statement Parser
 Supports PDF statements from EPFO (Employees' Provident Fund Organisation)
 """
+import logging
 import re
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import pdfplumber
 import PyPDF2
 from io import BytesIO
+
+logger = logging.getLogger(__name__)
 
 
 class PFStatementParser:
@@ -50,7 +53,7 @@ class PFStatementParser:
             try:
                 with pdfplumber.open(pdf_file, password=self.password) as pdf:
                     total_pages = len(pdf.pages)
-                    print(f"PDF has {total_pages} pages")
+                    logger.info(f"PDF has {total_pages} pages")
                     
                     # Extract text from all pages
                     for i in range(total_pages):
@@ -59,19 +62,19 @@ class PFStatementParser:
                             page_text = page.extract_text(layout=False)
                             if page_text:
                                 text += page_text + "\n"
-                                print(f"Successfully extracted text from page {i+1} using pdfplumber")
+                                logger.debug(f"Successfully extracted text from page {i+1} using pdfplumber")
                             else:
                                 pdfplumber_failed_pages.append(i)
                         except Exception as e:
-                            print(f"pdfplumber failed for page {i+1}: {e}")
+                            logger.debug(f"pdfplumber failed for page {i+1}: {e}")
                             pdfplumber_failed_pages.append(i)
             except Exception as e:
-                print(f"pdfplumber failed: {e}")
+                logger.debug(f"pdfplumber failed: {e}")
                 pdfplumber_failed_pages = list(range(12))  # Assume 12 pages
             
             # If pdfplumber failed on any pages, use PyPDF2 for ALL pages
             if pdfplumber_failed_pages:
-                print(f"pdfplumber failed on {len(pdfplumber_failed_pages)} pages, using PyPDF2 for all pages...")
+                logger.info(f"pdfplumber failed on {len(pdfplumber_failed_pages)} pages, using PyPDF2 for all pages...")
                 pdf_file.seek(0)  # Reset file pointer
                 text = ""  # Reset text to extract from all pages with PyPDF2
                 
@@ -90,17 +93,17 @@ class PFStatementParser:
                             page_text = page.extract_text()
                             if page_text:
                                 text += page_text + "\n"
-                                print(f"Successfully extracted text from page {i+1} using PyPDF2")
+                                logger.debug(f"Successfully extracted text from page {i+1} using PyPDF2")
                         except Exception as e:
-                            print(f"PyPDF2 failed for page {i+1}: {e}")
+                            logger.debug(f"PyPDF2 failed for page {i+1}: {e}")
                             continue
                 except Exception as e:
-                    print(f"PyPDF2 fallback failed: {e}")
+                    logger.debug(f"PyPDF2 fallback failed: {e}")
             
             if not text.strip():
                 raise ValueError("No text could be extracted from PDF")
             
-            print(f"Total text extracted: {len(text)} characters")
+            logger.info(f"Total text extracted: {len(text)} characters")
             return text
             
         except Exception as e:
@@ -376,7 +379,7 @@ class PFStatementParser:
             return transactions_list
             
         except Exception as e:
-            print(f"Error parsing contribution line: {e}")
+            logger.debug(f"Error parsing contribution line: {e}")
             return []
     
     def _parse_interest_line(self, line: str) -> List[Dict]:
@@ -399,19 +402,19 @@ class PFStatementParser:
             long_number_match = re.search(r'(\d{10,12})', after_date)
             
             if not long_number_match:
-                print(f"DEBUG: No long number found in: {after_date}")
+                logger.debug(f"No long number found in: {after_date}")
                 return []
             
             long_number = long_number_match.group(1)
-            print(f"DEBUG: Interest line: {line}")
-            print(f"DEBUG: Long number found: {long_number}")
+            logger.debug(f"Interest line: {line}")
+            logger.debug(f"Long number found: {long_number}")
             
             # Split the long number into two equal parts (each 5-6 digits)
             mid_point = len(long_number) // 2
             employee_interest = float(long_number[:mid_point])
             employer_interest = float(long_number[mid_point:])
             
-            print(f"DEBUG: Employee interest: {employee_interest}, Employer interest: {employer_interest}")
+            logger.debug(f"Employee interest: {employee_interest}, Employer interest: {employer_interest}")
             
             transactions = []
             
@@ -442,7 +445,7 @@ class PFStatementParser:
             return transactions
             
         except Exception as e:
-            print(f"Error parsing interest line: {e}")
+            logger.debug(f"Error parsing interest line: {e}")
             return []
     
     def _parse_date(self, date_str: str) -> str:

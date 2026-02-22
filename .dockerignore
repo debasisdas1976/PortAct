@@ -1,0 +1,17 @@
+.git
+.gitignore
+*.md
+.env
+.env.*
+__pycache__
+*.pyc
+node_modules
+.vscode
+.idea
+*.log
+logs/
+uploads/
+backend/test_*.py
+backend/.venv
+frontend/build
+.claude

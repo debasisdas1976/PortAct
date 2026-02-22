@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_active_user, get_db
+from app.api.dependencies import get_current_active_user, get_db, get_default_portfolio_id
 from app.models.user import User
 from app.models.asset import Asset, AssetType
 from app.models.transaction import Transaction, TransactionType
@@ -208,7 +208,6 @@ async def create_pf_account(
     db: Session = Depends(get_db)
 ):
     """Create a new PF account manually"""
-    from app.api.dependencies import get_default_portfolio_id
     resolved_portfolio_id = portfolio_id or pf_data.portfolio_id or get_default_portfolio_id(current_user.id, db)
 
     asset = Asset(
