@@ -35,6 +35,7 @@ async def get_expenses(
     is_categorized: Optional[bool] = None,
     is_reconciled: Optional[bool] = None,
     search_query: Optional[str] = None,
+    portfolio_id: Optional[int] = None,
     order_by: Optional[str] = Query("transaction_date", regex="^(transaction_date|amount|description|merchant_name|transaction_type|category_name|bank_account_name)$"),
     order: Optional[str] = Query("desc", regex="^(asc|desc)$"),
     skip: int = Query(0, ge=0),
@@ -47,7 +48,10 @@ async def get_expenses(
     """
     # Join with related tables for sorting by name fields
     query = db.query(Expense).filter(Expense.user_id == current_user.id)
-    
+
+    if portfolio_id is not None:
+        query = query.filter(Expense.portfolio_id == portfolio_id)
+
     # Add joins if sorting by related table fields
     if order_by == "category_name":
         query = query.outerjoin(ExpenseCategory, Expense.category_id == ExpenseCategory.id)
@@ -158,6 +162,7 @@ async def get_expenses_summary(
     is_categorized: Optional[bool] = None,
     is_reconciled: Optional[bool] = None,
     search_query: Optional[str] = None,
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -166,37 +171,40 @@ async def get_expenses_summary(
     """
     # Build base query with all filters
     query = db.query(Expense).filter(Expense.user_id == current_user.id)
-    
+
+    if portfolio_id is not None:
+        query = query.filter(Expense.portfolio_id == portfolio_id)
+
     if bank_account_id:
         query = query.filter(Expense.bank_account_id == bank_account_id)
-    
+
     if category_id:
         query = query.filter(Expense.category_id == category_id)
-    
+
     if transaction_type:
         query = query.filter(Expense.transaction_type == transaction_type)
-    
+
     if payment_method:
         query = query.filter(Expense.payment_method == payment_method)
-    
+
     if start_date:
         query = query.filter(Expense.transaction_date >= start_date)
-    
+
     if end_date:
         query = query.filter(Expense.transaction_date <= end_date)
-    
+
     if min_amount is not None:
         query = query.filter(Expense.amount >= min_amount)
-    
+
     if max_amount is not None:
         query = query.filter(Expense.amount <= max_amount)
-    
+
     if is_categorized is not None:
         query = query.filter(Expense.is_categorized == is_categorized)
-    
+
     if is_reconciled is not None:
         query = query.filter(Expense.is_reconciled == is_reconciled)
-    
+
     if search_query:
         search_pattern = f"%{search_query}%"
         query = query.filter(
@@ -206,15 +214,17 @@ async def get_expenses_summary(
                 Expense.reference_number.ilike(search_pattern)
             )
         )
-    
+
     total_expenses = query.count()
-    
+
     # Build debit query with same filters
     debit_query = db.query(func.sum(Expense.amount)).filter(
         Expense.user_id == current_user.id,
         Expense.transaction_type == ExpenseType.DEBIT
     )
-    
+
+    if portfolio_id is not None:
+        debit_query = debit_query.filter(Expense.portfolio_id == portfolio_id)
     if bank_account_id:
         debit_query = debit_query.filter(Expense.bank_account_id == bank_account_id)
     if category_id:
@@ -242,15 +252,17 @@ async def get_expenses_summary(
                 Expense.reference_number.ilike(search_pattern)
             )
         )
-    
+
     total_debits = debit_query.scalar() or 0.0
-    
+
     # Build credit query with same filters
     credit_query = db.query(func.sum(Expense.amount)).filter(
         Expense.user_id == current_user.id,
         Expense.transaction_type == ExpenseType.CREDIT
     )
-    
+
+    if portfolio_id is not None:
+        credit_query = credit_query.filter(Expense.portfolio_id == portfolio_id)
     if bank_account_id:
         credit_query = credit_query.filter(Expense.bank_account_id == bank_account_id)
     if category_id:
@@ -298,6 +310,7 @@ async def get_expenses_summary(
 async def get_monthly_expense_report(
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -312,19 +325,22 @@ async def get_monthly_expense_report(
         end_date = datetime(year, month + 1, 1)
     
     # Get all expenses for the month
-    expenses = db.query(Expense).filter(
+    month_query = db.query(Expense).filter(
         Expense.user_id == current_user.id,
         Expense.transaction_date >= start_date,
         Expense.transaction_date < end_date
-    ).all()
-    
+    )
+    if portfolio_id is not None:
+        month_query = month_query.filter(Expense.portfolio_id == portfolio_id)
+    expenses = month_query.all()
+
     # Calculate totals
     total_income = sum(e.amount for e in expenses if e.transaction_type == ExpenseType.CREDIT)
     total_expenses = sum(e.amount for e in expenses if e.transaction_type == ExpenseType.DEBIT)
     net_savings = total_income - total_expenses
-    
+
     # Category breakdown
-    category_breakdown = db.query(
+    cat_query = db.query(
         ExpenseCategory.name,
         func.sum(Expense.amount).label('total'),
         func.count(Expense.id).label('count')
@@ -335,7 +351,10 @@ async def get_monthly_expense_report(
         Expense.transaction_date >= start_date,
         Expense.transaction_date < end_date,
         Expense.transaction_type == ExpenseType.DEBIT
-    ).group_by(
+    )
+    if portfolio_id is not None:
+        cat_query = cat_query.filter(Expense.portfolio_id == portfolio_id)
+    category_breakdown = cat_query.group_by(
         ExpenseCategory.name
     ).all()
     
@@ -350,7 +369,7 @@ async def get_monthly_expense_report(
     ]
     
     # Top merchants
-    top_merchants = db.query(
+    merchant_query = db.query(
         Expense.merchant_name,
         func.sum(Expense.amount).label('total'),
         func.count(Expense.id).label('count')
@@ -360,7 +379,10 @@ async def get_monthly_expense_report(
         Expense.transaction_date < end_date,
         Expense.transaction_type == ExpenseType.DEBIT,
         Expense.merchant_name.isnot(None)
-    ).group_by(
+    )
+    if portfolio_id is not None:
+        merchant_query = merchant_query.filter(Expense.portfolio_id == portfolio_id)
+    top_merchants = merchant_query.group_by(
         Expense.merchant_name
     ).order_by(
         func.sum(Expense.amount).desc()
@@ -376,7 +398,7 @@ async def get_monthly_expense_report(
     ]
     
     # Payment method breakdown
-    payment_breakdown = db.query(
+    payment_query = db.query(
         Expense.payment_method,
         func.sum(Expense.amount).label('total')
     ).filter(
@@ -385,7 +407,10 @@ async def get_monthly_expense_report(
         Expense.transaction_date < end_date,
         Expense.transaction_type == ExpenseType.DEBIT,
         Expense.payment_method.isnot(None)
-    ).group_by(
+    )
+    if portfolio_id is not None:
+        payment_query = payment_query.filter(Expense.portfolio_id == portfolio_id)
+    payment_breakdown = payment_query.group_by(
         Expense.payment_method
     ).all()
     
@@ -414,6 +439,7 @@ async def get_monthly_expenses_by_category(
     months: int = Query(12, ge=1, le=24, description="Number of months to retrieve"),
     year: Optional[int] = Query(None, description="Specific year for single month view"),
     month: Optional[int] = Query(None, ge=1, le=12, description="Specific month for single month view"),
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -439,12 +465,15 @@ async def get_monthly_expenses_by_category(
         start_date = end_date - relativedelta(months=months)
     
     # Get all expenses in the date range
-    expenses = db.query(Expense).filter(
+    dashboard_query = db.query(Expense).filter(
         Expense.user_id == current_user.id,
         Expense.transaction_date >= start_date,
         Expense.transaction_date <= end_date,
         Expense.transaction_type == ExpenseType.DEBIT
-    ).all()
+    )
+    if portfolio_id is not None:
+        dashboard_query = dashboard_query.filter(Expense.portfolio_id == portfolio_id)
+    expenses = dashboard_query.all()
     
     # Get all categories (including income categories to handle all cases)
     categories = db.query(ExpenseCategory).filter(

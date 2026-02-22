@@ -21,6 +21,7 @@ class ExpenseBase(BaseModel):
     location: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = None
     tags: Optional[str] = None
+    portfolio_id: Optional[int] = None
 
 
 class ExpenseCreate(ExpenseBase):
@@ -46,6 +47,7 @@ class ExpenseUpdate(BaseModel):
     notes: Optional[str] = None
     tags: Optional[str] = None
     is_reconciled: Optional[bool] = None
+    portfolio_id: Optional[int] = None
 
 
 class ExpenseInDB(ExpenseBase):
@@ -115,6 +117,7 @@ class ExpenseFilter(BaseModel):
     is_categorized: Optional[bool] = None
     is_reconciled: Optional[bool] = None
     search_query: Optional[str] = None
+    portfolio_id: Optional[int] = None
     skip: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=1000)
 

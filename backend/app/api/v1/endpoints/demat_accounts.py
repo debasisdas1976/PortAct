@@ -26,6 +26,7 @@ router = APIRouter()
 async def get_demat_accounts(
     broker_name: Optional[str] = None,
     is_active: Optional[bool] = None,
+    portfolio_id: Optional[int] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     current_user: User = Depends(get_current_active_user),
@@ -35,13 +36,16 @@ async def get_demat_accounts(
     Get all demat accounts for the current user with optional filtering and asset statistics
     """
     query = db.query(DematAccount).filter(DematAccount.user_id == current_user.id)
-    
+
+    if portfolio_id is not None:
+        query = query.filter(DematAccount.portfolio_id == portfolio_id)
+
     if broker_name:
         query = query.filter(DematAccount.broker_name == broker_name)
-    
+
     if is_active is not None:
         query = query.filter(DematAccount.is_active == is_active)
-    
+
     accounts = query.offset(skip).limit(limit).all()
     
     # Add asset statistics to each account
@@ -71,16 +75,20 @@ async def get_demat_accounts(
 
 @router.get("/summary", response_model=DematAccountSummary)
 async def get_demat_accounts_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get summary of all demat accounts with portfolio statistics
     """
-    accounts = db.query(DematAccount).filter(
+    query = db.query(DematAccount).filter(
         DematAccount.user_id == current_user.id,
         DematAccount.is_active == True
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(DematAccount.portfolio_id == portfolio_id)
+    accounts = query.all()
     
     total_cash_balance = sum(acc.cash_balance for acc in accounts)
     

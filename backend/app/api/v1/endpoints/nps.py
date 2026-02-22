@@ -28,16 +28,20 @@ router = APIRouter()
 
 @router.get("/", response_model=List[NPSAccountResponse])
 async def get_all_nps_accounts(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get all NPS accounts for the current user
     """
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.NPS
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     nps_accounts = []
     for asset in assets:
@@ -46,8 +50,8 @@ async def get_all_nps_accounts(
             user_id=asset.user_id,
             asset_id=asset.id,
             nickname=asset.name or f"NPS - {asset.account_id}",
-            pran_number=asset.account_id or "",
-            account_holder_name=asset.account_holder_name or "",
+            pran_number=asset.account_id or asset.details.get('pran_number', ''),
+            account_holder_name=asset.account_holder_name or '',
             sector_type=asset.details.get('sector_type', 'all_citizen'),
             tier_type=asset.details.get('tier_type', 'tier_1'),
             opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
@@ -70,16 +74,20 @@ async def get_all_nps_accounts(
 
 @router.get("/summary", response_model=NPSSummary)
 async def get_nps_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get summary statistics for all NPS accounts
     """
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.NPS
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     total_accounts = len(assets)
     total_balance = sum(asset.current_value for asset in assets)
@@ -186,6 +194,7 @@ async def get_nps_account(
 @router.post("/", response_model=NPSAccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_nps_account(
     nps_data: NPSAccountCreate,
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -208,6 +217,7 @@ async def create_nps_account(
         total_invested=nps_data.total_contributions,
         profit_loss=nps_data.total_returns,
         notes=nps_data.notes,
+        portfolio_id=portfolio_id or nps_data.portfolio_id,
         details={
             'date_of_birth': nps_data.date_of_birth.strftime('%Y-%m-%d'),
             'sector_type': nps_data.sector_type,
@@ -526,8 +536,8 @@ async def upload_nps_statement(
             user_id=asset.user_id,
             asset_id=asset.id,
             nickname=asset.name or f"NPS - {asset.account_id}",
-            pran_number=asset.account_id or "",
-            account_holder_name=asset.account_holder_name or "",
+            pran_number=asset.account_id or asset.details.get('pran_number', ''),
+            account_holder_name=asset.account_holder_name or '',
             sector_type=asset.details.get('sector_type', 'all_citizen'),
             tier_type=asset.details.get('tier_type', 'tier_1'),
             opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
@@ -545,6 +555,6 @@ async def upload_nps_statement(
         )
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse statement: {str(e)}")
+        raise HTTPException(status_code=400, detail="Could not process the NPS statement. Please check the file format.")
 
 # Made with Bob

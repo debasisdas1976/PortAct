@@ -45,9 +45,13 @@ import {
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelector } from 'react-redux';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { RootState } from '../store';
 
 interface RDAccount {
   id: number;
+  portfolio_id?: number;
   bank_name: string;
   nickname?: string;
   account_number?: string;
@@ -73,6 +77,7 @@ interface RDTx {
 }
 
 const EMPTY_RD: Partial<RDAccount> = {
+  portfolio_id: undefined,
   bank_name: '',
   nickname: '',
   account_number: '',
@@ -92,6 +97,8 @@ const fmt = (v: number) =>
 
 const RecurringDeposit: React.FC = () => {
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [rds, setRds] = useState<RDAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -136,7 +143,7 @@ const RecurringDeposit: React.FC = () => {
   const loadRds = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get('/recurring-deposits/');
+      const res = await api.get('/recurring-deposits/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       const data: RDAccount[] = res.data;
       setRds(data);
 
@@ -149,7 +156,7 @@ const RecurringDeposit: React.FC = () => {
         }
       }
       if (autoAccounts.length > 0) {
-        const res2 = await api.get('/recurring-deposits/');
+        const res2 = await api.get('/recurring-deposits/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
         setRds(res2.data);
       }
     } catch (err) {
@@ -157,7 +164,7 @@ const RecurringDeposit: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [notify]);
+  }, [notify, selectedPortfolioId]);
 
   useEffect(() => {
     loadRds();
@@ -208,7 +215,7 @@ const RecurringDeposit: React.FC = () => {
     }
   };
 
-  const openAddRd = () => setRdDlg({ open: true, mode: 'add', data: { ...EMPTY_RD } });
+  const openAddRd = () => setRdDlg({ open: true, mode: 'add', data: { ...EMPTY_RD, portfolio_id: selectedPortfolioId || undefined } });
   const openEditRd = (rd: RDAccount) =>
     setRdDlg({ open: true, mode: 'edit', data: { ...rd } });
   const closeRdDlg = () => setRdDlg((p) => ({ ...p, open: false }));
@@ -217,6 +224,7 @@ const RecurringDeposit: React.FC = () => {
     setSaving(true);
     try {
       const payload = {
+        portfolio_id: rdDlg.data.portfolio_id || undefined,
         bank_name: rdDlg.data.bank_name,
         nickname: rdDlg.data.nickname || null,
         account_number: rdDlg.data.account_number || null,
@@ -640,6 +648,20 @@ const RecurringDeposit: React.FC = () => {
                   setRdDlg((p) => ({ ...p, data: { ...p.data, nickname: e.target.value } }))
                 }
               />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                select
+                fullWidth
+                label="Portfolio"
+                value={rdDlg.data.portfolio_id || ''}
+                onChange={(e) => setRdDlg(p => ({ ...p, data: { ...p.data, portfolio_id: e.target.value ? Number(e.target.value) : undefined } }))}
+              >
+                <MenuItem value="">None</MenuItem>
+                {portfolios.map((p: any) => (
+                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                ))}
+              </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField

@@ -233,7 +233,7 @@ async def upload_holdings_csv(
         logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process file: {str(e)}"
+            detail="Failed to process the uploaded file. Please ensure it is a valid portfolio file."
         )
 
 
@@ -352,7 +352,7 @@ async def download_and_parse_from_url(
         logger.error(f"Error downloading/parsing from URL: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to download or parse portfolio: {str(e)}"
+            detail="Could not download or process the portfolio. Please try again."
         )
 
 
@@ -544,7 +544,7 @@ async def auto_update_all_holdings(
         logger.error(f"Error in auto-update-all: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to auto-update holdings: {str(e)}"
+            detail="Holdings auto-update failed. Please try again later."
         )
 
 
@@ -707,7 +707,7 @@ async def import_from_consolidated_file(
         logger.error(f"Error in import-from-consolidated-file: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to import from consolidated file: {str(e)}"
+            detail="Failed to import data from the file. Please check the format."
         )
 
 
@@ -1062,7 +1062,7 @@ async def preview_consolidated_file(
         logger.error(f"Error in preview-consolidated-file: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to preview file: {str(e)}"
+            detail="Could not preview the file. Please check the format."
         )
 
 
@@ -1228,12 +1228,7 @@ async def confirm_consolidated_import(
         logger.error(f"Error in confirm-consolidated-import: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to import: {str(e)}"
-        )
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process uploaded file: {str(e)}"
+            detail="Import failed. Please check the file format and try again."
         )
 
 

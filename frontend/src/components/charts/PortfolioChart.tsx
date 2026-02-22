@@ -16,13 +16,13 @@ import { fetchPortfolioPerformance } from '../../store/slices/portfolioSlice';
 
 const PortfolioChart: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { performanceData, performanceLoading: loading, performanceError: error } = useSelector((state: RootState) => state.portfolio);
+  const { performanceData, performanceLoading: loading, performanceError: error, selectedPortfolioId } = useSelector((state: RootState) => state.portfolio);
 
   useEffect(() => {
     // Fetch 90 days of data for the bottom chart
-    dispatch(fetchPortfolioPerformance(90));
+    dispatch(fetchPortfolioPerformance({ days: 90, portfolioId: selectedPortfolioId }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedPortfolioId]);
 
   if (loading) {
     return (

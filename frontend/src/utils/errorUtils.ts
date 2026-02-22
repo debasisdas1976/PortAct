@@ -1,5 +1,8 @@
 import { AxiosError } from 'axios';
 
+/** Patterns that indicate a raw technical message leaked through. */
+const TECHNICAL_PATTERNS = ['Traceback', 'sqlalchemy.', 'psycopg2.', 'OperationalError', 'ProgrammingError'];
+
 /**
  * Extract a user-friendly error message from any error type.
  * Handles Axios errors, standard errors, and unknown values.
@@ -22,10 +25,28 @@ export function getErrorMessage(error: unknown, fallback = 'Something went wrong
 
     // Server returned a structured detail message
     if (detail) {
-      if (typeof detail === 'string') return detail;
+      if (typeof detail === 'string') {
+        // Filter out raw technical messages that slipped through
+        if (TECHNICAL_PATTERNS.some(p => detail.includes(p))) {
+          // Fall through to status-code fallback below
+        } else {
+          return detail;
+        }
+      }
       // FastAPI validation errors come as array of { msg, loc, type }
+      // (After the interceptor normalizes, this branch is a defensive fallback)
       if (Array.isArray(detail)) {
-        return detail.map((d: any) => d.msg || String(d)).join('. ');
+        const messages = detail.map((d: any) => {
+          if (d.loc && d.msg) {
+            const fields = d.loc.filter((l: string) => l !== 'body' && l !== 'query' && l !== 'path');
+            const fieldName = fields.length > 0
+              ? fields.join(' > ').replace(/_/g, ' ')
+              : 'input';
+            return `${fieldName}: ${d.msg}`;
+          }
+          return d.msg || String(d);
+        });
+        return messages.join('. ') + '.';
       }
     }
 
@@ -64,6 +85,9 @@ export function getErrorMessage(error: unknown, fallback = 'Something went wrong
 
   // Plain string
   if (typeof error === 'string') {
+    if (TECHNICAL_PATTERNS.some(p => error.includes(p))) {
+      return fallback;
+    }
     return error.length < 200 ? error : fallback;
   }
 

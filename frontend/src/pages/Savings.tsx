@@ -40,6 +40,9 @@ import api, { banksAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import CompanyIcon from '../components/CompanyIcon';
+import { useSelector } from 'react-redux';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { RootState } from '../store';
 
 interface BankAccount {
   id: number;
@@ -56,6 +59,8 @@ const formatBankNameFallback = (name: string) =>
 
 const Savings: React.FC = () => {
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,13 +68,14 @@ const Savings: React.FC = () => {
   const [openAccountDialog, setOpenAccountDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
   const [accountFormData, setAccountFormData] = useState({
-    bank_name: 'icici_bank',
+    bank_name: '',
     account_type: 'savings',
     account_number: '',
     nickname: '',
     current_balance: 0,
     available_balance: 0,
     is_active: true,
+    portfolio_id: '' as number | '',
   });
   const [accountSubmitting, setAccountSubmitting] = useState(false);
 
@@ -78,7 +84,7 @@ const Savings: React.FC = () => {
   // Upload dialog state
   const [openUploadDialog, setOpenUploadDialog] = useState(false);
   const [uploadAccountId, setUploadAccountId] = useState<number | '' | 'new'>('');
-  const [newAccountBank, setNewAccountBank] = useState('icici_bank');
+  const [newAccountBank, setNewAccountBank] = useState('');
   const [newAccountNumber, setNewAccountNumber] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadPassword, setUploadPassword] = useState('');
@@ -90,7 +96,7 @@ const Savings: React.FC = () => {
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/bank-accounts/');
+      const response = await api.get('/bank-accounts/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       const filtered = (response.data as BankAccount[]).filter(
         (a) => a.account_type === 'savings' && a.is_active
       );
@@ -111,14 +117,14 @@ const Savings: React.FC = () => {
           : []
       );
     } catch (err) {
-      console.error('Failed to fetch banks:', err);
+      notify.error(getErrorMessage(err, 'Failed to load bank list'));
     }
   };
 
   useEffect(() => {
     fetchAccounts();
     fetchBankNames();
-  }, []);
+  }, [selectedPortfolioId]);
 
   const formatBankName = (name: string) =>
     bankNames.find((b) => b.value === name)?.label || formatBankNameFallback(name);
@@ -140,17 +146,19 @@ const Savings: React.FC = () => {
         current_balance: account.current_balance,
         available_balance: account.current_balance,
         is_active: account.is_active,
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
       });
     } else {
       setEditingAccount(null);
       setAccountFormData({
-        bank_name: 'icici_bank',
+        bank_name: '',
         account_type: 'savings',
         account_number: '',
         nickname: '',
         current_balance: 0,
         available_balance: 0,
         is_active: true,
+        portfolio_id: selectedPortfolioId || '',
       });
     }
     setOpenAccountDialog(true);
@@ -168,11 +176,12 @@ const Savings: React.FC = () => {
     }
     try {
       setAccountSubmitting(true);
+      const submitData = { ...accountFormData, portfolio_id: accountFormData.portfolio_id || undefined };
       if (editingAccount) {
-        await api.put(`/bank-accounts/${editingAccount.id}`, accountFormData);
+        await api.put(`/bank-accounts/${editingAccount.id}`, submitData);
         notify.success('Savings account updated successfully');
       } else {
-        await api.post('/bank-accounts/', accountFormData);
+        await api.post('/bank-accounts/', submitData);
         notify.success('Savings account added successfully');
       }
       handleCloseAccountDialog();
@@ -201,7 +210,7 @@ const Savings: React.FC = () => {
   // ── Upload handlers ────────────────────────────────────────────────────────
   const handleOpenUpload = (account?: BankAccount) => {
     setUploadAccountId(account ? account.id : '');
-    setNewAccountBank('icici_bank');
+    setNewAccountBank('');
     setNewAccountNumber('');
     setSelectedFile(null);
     setUploadPassword('');
@@ -567,6 +576,19 @@ const Savings: React.FC = () => {
               fullWidth
               helperText="e.g. Salary Account, Emergency Fund"
             />
+
+            <TextField
+              select
+              label="Portfolio"
+              value={accountFormData.portfolio_id}
+              onChange={(e) => setAccountFormData({ ...accountFormData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              fullWidth
+            >
+              <MenuItem value="">None</MenuItem>
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </TextField>
 
             <TextField
               label="Current Balance"

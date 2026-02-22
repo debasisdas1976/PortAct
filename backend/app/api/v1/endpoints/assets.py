@@ -15,6 +15,7 @@ from app.schemas.asset import (
 )
 from app.services.price_updater import update_asset_price
 from app.services.currency_converter import convert_usd_to_inr
+from app.models.portfolio import Portfolio
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import AssetSnapshot
 from app.models.mutual_fund_holding import MutualFundHolding
@@ -27,6 +28,7 @@ router = APIRouter()
 async def get_assets(
     asset_type: Optional[AssetType] = None,
     is_active: Optional[bool] = None,
+    portfolio_id: Optional[int] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     current_user: User = Depends(get_current_active_user),
@@ -36,13 +38,16 @@ async def get_assets(
     Get all assets for the current user with optional filtering
     """
     query = db.query(Asset).filter(Asset.user_id == current_user.id)
-    
+
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+
     if asset_type:
         query = query.filter(Asset.asset_type == asset_type)
-    
+
     if is_active is not None:
         query = query.filter(Asset.is_active == is_active)
-    
+
     assets = query.offset(skip).limit(limit).all()
     
     # Calculate current metrics for each asset
@@ -56,16 +61,20 @@ async def get_assets(
 
 @router.get("/summary", response_model=AssetSummary)
 async def get_portfolio_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get portfolio summary with aggregated metrics
     """
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.is_active == True
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     # Calculate metrics
     for asset in assets:
@@ -143,13 +152,22 @@ async def create_asset(
         # Convert purchase_price, current_price, and total_invested from USD to INR
         if 'purchase_price' in asset_dict and asset_dict['purchase_price']:
             asset_dict['purchase_price'] = convert_usd_to_inr(asset_dict['purchase_price'])
-        
+
         if 'current_price' in asset_dict and asset_dict['current_price']:
             asset_dict['current_price'] = convert_usd_to_inr(asset_dict['current_price'])
-        
+
         if 'total_invested' in asset_dict and asset_dict['total_invested']:
             asset_dict['total_invested'] = convert_usd_to_inr(asset_dict['total_invested'])
-    
+
+    # Auto-assign to default portfolio if not specified
+    if not asset_dict.get('portfolio_id'):
+        default_portfolio = db.query(Portfolio).filter(
+            Portfolio.user_id == current_user.id,
+            Portfolio.is_default == True,
+        ).first()
+        if default_portfolio:
+            asset_dict['portfolio_id'] = default_portfolio.id
+
     new_asset = Asset(
         user_id=current_user.id,
         **asset_dict

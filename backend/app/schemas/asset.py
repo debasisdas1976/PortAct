@@ -25,6 +25,7 @@ class AssetBase(BaseModel):
     # Foreign keys
     demat_account_id: Optional[int] = None
     crypto_account_id: Optional[int] = None
+    portfolio_id: Optional[int] = None
 
 
 class AssetCreate(AssetBase):
@@ -54,6 +55,7 @@ class AssetUpdate(BaseModel):
     # Foreign keys
     demat_account_id: Optional[int] = None
     crypto_account_id: Optional[int] = None
+    portfolio_id: Optional[int] = None
 
 
 class AssetInDB(AssetBase):

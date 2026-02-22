@@ -20,6 +20,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[BankAccountSchema])
 async def get_bank_accounts(
+    portfolio_id: Optional[int] = None,
     bank_name: Optional[str] = None,
     account_type: Optional[BankType] = None,
     is_active: Optional[bool] = None,
@@ -32,32 +33,39 @@ async def get_bank_accounts(
     Get all bank accounts for the current user with optional filtering
     """
     query = db.query(BankAccount).filter(BankAccount.user_id == current_user.id)
-    
+
+    if portfolio_id is not None:
+        query = query.filter(BankAccount.portfolio_id == portfolio_id)
+
     if bank_name:
         query = query.filter(BankAccount.bank_name == bank_name)
-    
+
     if account_type:
         query = query.filter(BankAccount.account_type == account_type)
-    
+
     if is_active is not None:
         query = query.filter(BankAccount.is_active == is_active)
-    
+
     accounts = query.offset(skip).limit(limit).all()
     return accounts
 
 
 @router.get("/summary", response_model=BankAccountSummary)
 async def get_bank_accounts_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get summary of all bank accounts
     """
-    accounts = db.query(BankAccount).filter(
+    query = db.query(BankAccount).filter(
         BankAccount.user_id == current_user.id,
         BankAccount.is_active == True
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(BankAccount.portfolio_id == portfolio_id)
+    accounts = query.all()
     
     total_balance = sum(acc.current_balance for acc in accounts)
     total_credit_limit = sum(acc.credit_limit for acc in accounts if acc.account_type == BankType.CREDIT_CARD)

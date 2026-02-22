@@ -45,9 +45,13 @@ import {
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelector } from 'react-redux';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { RootState } from '../store';
 
 interface FDAccount {
   id: number;
+  portfolio_id?: number;
   bank_name: string;
   nickname?: string;
   account_number?: string;
@@ -73,6 +77,7 @@ interface FDTx {
 }
 
 const EMPTY_FD: Partial<FDAccount> = {
+  portfolio_id: undefined,
   bank_name: '',
   nickname: '',
   account_number: '',
@@ -94,6 +99,8 @@ const fmt = (v: number) =>
 
 const FixedDeposit: React.FC = () => {
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [fds, setFds] = useState<FDAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -127,7 +134,7 @@ const FixedDeposit: React.FC = () => {
   const loadFds = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get('/fixed-deposits/');
+      const res = await api.get('/fixed-deposits/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       const data: FDAccount[] = res.data;
       setFds(data);
 
@@ -140,7 +147,7 @@ const FixedDeposit: React.FC = () => {
         }
       }
       if (autoAccounts.length > 0) {
-        const res2 = await api.get('/fixed-deposits/');
+        const res2 = await api.get('/fixed-deposits/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
         setFds(res2.data);
       }
     } catch (err) {
@@ -148,7 +155,7 @@ const FixedDeposit: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [notify]);
+  }, [notify, selectedPortfolioId]);
 
   useEffect(() => {
     loadFds();
@@ -198,7 +205,7 @@ const FixedDeposit: React.FC = () => {
     }
   };
 
-  const openAddFd = () => setFdDlg({ open: true, mode: 'add', data: { ...EMPTY_FD } });
+  const openAddFd = () => setFdDlg({ open: true, mode: 'add', data: { ...EMPTY_FD, portfolio_id: selectedPortfolioId || undefined } });
   const openEditFd = (fd: FDAccount) =>
     setFdDlg({ open: true, mode: 'edit', data: { ...fd } });
   const closeFdDlg = () => setFdDlg((p) => ({ ...p, open: false }));
@@ -207,6 +214,7 @@ const FixedDeposit: React.FC = () => {
     setSaving(true);
     try {
       const payload = {
+        portfolio_id: fdDlg.data.portfolio_id || undefined,
         bank_name: fdDlg.data.bank_name,
         nickname: fdDlg.data.nickname || null,
         account_number: fdDlg.data.account_number || null,
@@ -618,6 +626,20 @@ const FixedDeposit: React.FC = () => {
                   setFdDlg((p) => ({ ...p, data: { ...p.data, nickname: e.target.value } }))
                 }
               />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                select
+                fullWidth
+                label="Portfolio"
+                value={fdDlg.data.portfolio_id || ''}
+                onChange={(e) => setFdDlg(p => ({ ...p, data: { ...p.data, portfolio_id: e.target.value ? Number(e.target.value) : undefined } }))}
+              >
+                <MenuItem value="">None</MenuItem>
+                {portfolios.map((p: any) => (
+                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                ))}
+              </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField

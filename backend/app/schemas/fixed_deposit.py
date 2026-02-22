@@ -48,7 +48,7 @@ class FDAccountBase(BaseModel):
 
 
 class FDAccountCreate(FDAccountBase):
-    pass
+    portfolio_id: Optional[int] = None
 
 
 class FDAccountUpdate(BaseModel):

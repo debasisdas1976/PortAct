@@ -19,6 +19,7 @@ class BankAccountBase(BaseModel):
     is_primary: bool = Field(default=False)
     nickname: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = None
+    portfolio_id: Optional[int] = None
 
 
 class BankAccountCreate(BankAccountBase):
@@ -41,6 +42,7 @@ class BankAccountUpdate(BaseModel):
     nickname: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = None
     last_statement_date: Optional[datetime] = None
+    portfolio_id: Optional[int] = None
 
 
 class BankAccountInDB(BankAccountBase):

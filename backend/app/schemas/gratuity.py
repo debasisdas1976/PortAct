@@ -14,7 +14,7 @@ class GratuityAccountBase(BaseModel):
 
 
 class GratuityAccountCreate(GratuityAccountBase):
-    pass
+    portfolio_id: Optional[int] = None
 
 
 class GratuityAccountUpdate(BaseModel):
@@ -31,6 +31,9 @@ class GratuityAccountResponse(GratuityAccountBase):
     id: int
     user_id: int
     asset_id: int
+    # Override base fields to allow incomplete data in responses
+    employer_name: str = ""
+    employee_name: str = ""
     years_of_service: float
     completed_years: int
     gratuity_amount: float

@@ -38,6 +38,9 @@ import {
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelector } from 'react-redux';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { RootState } from '../store';
 
 // Helper function to get user-friendly transaction type label
 const getTransactionTypeLabel = (type: string): string => {
@@ -107,6 +110,7 @@ const PF: React.FC = () => {
   const [transactions, setTransactions] = useState<PFTransaction[]>([]);
   const [tabValue, setTabValue] = useState(0);
   const [formData, setFormData] = useState({
+    portfolio_id: '' as number | '',
     nickname: '',
     uan_number: '',
     pf_number: '',
@@ -136,16 +140,18 @@ const PF: React.FC = () => {
   const [uploadPassword, setUploadPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
 
   useEffect(() => {
     fetchAccounts();
     fetchSummary();
-  }, []);
+  }, [selectedPortfolioId]);
 
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/pf/');
+      const response = await api.get('/pf/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       setAccounts(response.data);
       // Auto-select first account to enable Transactions tab
       if (response.data.length > 0 && !selectedAccount) {
@@ -161,7 +167,7 @@ const PF: React.FC = () => {
 
   const fetchSummary = async () => {
     try {
-      const response = await api.get('/pf/summary');
+      const response = await api.get('/pf/summary', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       setSummary(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to fetch PF summary'));
@@ -181,6 +187,7 @@ const PF: React.FC = () => {
     if (account) {
       setEditingAccount(account);
       setFormData({
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
         nickname: account.nickname,
         uan_number: account.uan_number,
         pf_number: account.pf_number || '',
@@ -200,6 +207,7 @@ const PF: React.FC = () => {
     } else {
       setEditingAccount(null);
       setFormData({
+        portfolio_id: selectedPortfolioId || '',
         nickname: '',
         uan_number: '',
         pf_number: '',
@@ -230,10 +238,10 @@ const PF: React.FC = () => {
       setLoading(true);
 
       if (editingAccount) {
-        await api.put(`/pf/${editingAccount.id}`, formData);
+        await api.put(`/pf/${editingAccount.id}`, {...formData, portfolio_id: formData.portfolio_id || undefined});
         notify.success('Account updated successfully');
       } else {
-        await api.post('/pf/', formData);
+        await api.post('/pf/', {...formData, portfolio_id: formData.portfolio_id || undefined});
         notify.success('Account added successfully');
       }
 
@@ -642,6 +650,20 @@ const PF: React.FC = () => {
                 required
                 helperText="Friendly name to identify this account"
               />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                select
+                label="Portfolio"
+                value={formData.portfolio_id}
+                onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              >
+                <MenuItem value="">None</MenuItem>
+                {portfolios.map((p: any) => (
+                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                ))}
+              </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField

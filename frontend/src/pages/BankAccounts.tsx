@@ -37,9 +37,13 @@ import {
   Visibility,
   VisibilityOff,
 } from '@mui/icons-material';
+import { useSelector, useDispatch } from 'react-redux';
+import { AppDispatch, RootState } from '../store';
+import { fetchPortfolios } from '../store/slices/portfolioSlice';
 import axios from 'axios';
 import api, { banksAPI } from '../services/api';
 import CompanyIcon from '../components/CompanyIcon';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
 interface BankAccount {
   id: number;
@@ -54,13 +58,16 @@ interface BankAccount {
 
 const BankAccounts: React.FC = () => {
   const { notify } = useNotification();
+  const dispatch = useDispatch<AppDispatch>();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
 
   // Add/Edit dialog
   const [openDialog, setOpenDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
   const [formData, setFormData] = useState({
-    bank_name: 'icici_bank',
+    bank_name: '',
     account_type: 'savings',
     account_number: '',
     nickname: '',
@@ -68,6 +75,7 @@ const BankAccounts: React.FC = () => {
     available_balance: 0,
     credit_limit: 0,
     is_active: true,
+    portfolio_id: '' as number | '',
   });
 
   // Upload dialog
@@ -79,6 +87,7 @@ const BankAccounts: React.FC = () => {
   const [autoCategorize, setAutoCategorize] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ imported: number; duplicates: number; categorized: number } | null>(null);
+  const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
 
   const [bankNames, setBankNames] = useState<{ value: string; label: string; website?: string }[]>([]);
 
@@ -93,7 +102,8 @@ const BankAccounts: React.FC = () => {
   useEffect(() => {
     fetchAccounts();
     fetchBankNames();
-  }, []);
+    dispatch(fetchPortfolios());
+  }, [dispatch]);
 
   const fetchAccounts = async () => {
     try {
@@ -116,7 +126,7 @@ const BankAccounts: React.FC = () => {
           : []
       );
     } catch (err) {
-      console.error('Failed to fetch banks:', err);
+      notify.error(getErrorMessage(err, 'Failed to load bank list'));
     }
   };
 
@@ -133,11 +143,12 @@ const BankAccounts: React.FC = () => {
         available_balance: account.current_balance,
         credit_limit: account.credit_limit || 0,
         is_active: account.is_active,
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
       });
     } else {
       setEditingAccount(null);
       setFormData({
-        bank_name: 'icici_bank',
+        bank_name: '',
         account_type: 'savings',
         account_number: '',
         nickname: '',
@@ -145,6 +156,7 @@ const BankAccounts: React.FC = () => {
         available_balance: 0,
         credit_limit: 0,
         is_active: true,
+        portfolio_id: selectedPortfolioId || '',
       });
     }
     setOpenDialog(true);
@@ -158,15 +170,16 @@ const BankAccounts: React.FC = () => {
   const handleSubmit = async () => {
     try {
       const token = localStorage.getItem('token');
+      const payload = { ...formData, portfolio_id: formData.portfolio_id || undefined };
       if (editingAccount) {
         await axios.put(
           `http://localhost:8000/api/v1/bank-accounts/${editingAccount.id}`,
-          formData,
+          payload,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         notify.success('Bank account updated successfully');
       } else {
-        await axios.post('http://localhost:8000/api/v1/bank-accounts/', formData, {
+        await axios.post('http://localhost:8000/api/v1/bank-accounts/', payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
         notify.success('Bank account added successfully');
@@ -199,6 +212,7 @@ const BankAccounts: React.FC = () => {
     setUploadPassword('');
     setAutoCategorize(true);
     setUploadResult(null);
+    setUploadPortfolioId(selectedPortfolioId || '');
     setOpenUploadDialog(true);
   };
 
@@ -222,6 +236,9 @@ const BankAccounts: React.FC = () => {
       formPayload.append('auto_categorize', String(autoCategorize));
       if (uploadPassword) {
         formPayload.append('password', uploadPassword);
+      }
+      if (uploadPortfolioId) {
+        formPayload.append('portfolio_id', String(uploadPortfolioId));
       }
 
       const response = await api.post('/bank-statements/upload', formPayload, {
@@ -386,6 +403,19 @@ const BankAccounts: React.FC = () => {
             </TextField>
 
             <TextField
+              select
+              label="Portfolio"
+              value={formData.portfolio_id}
+              onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              fullWidth
+            >
+              <MenuItem value="">None</MenuItem>
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
               label="Account Number"
               value={formData.account_number}
               onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
@@ -451,6 +481,20 @@ const BankAccounts: React.FC = () => {
                   {bankNames.find((b) => b.value === acc.bank_name)?.label || acc.bank_name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                   {acc.nickname ? ` · ${acc.nickname}` : ''} (****{acc.account_number.slice(-4)})
                 </MenuItem>
+              ))}
+            </TextField>
+
+            {/* Portfolio */}
+            <TextField
+              select
+              label="Portfolio"
+              value={uploadPortfolioId}
+              onChange={(e) => setUploadPortfolioId(e.target.value ? Number(e.target.value) : '')}
+              fullWidth
+            >
+              <MenuItem value="">Default Portfolio</MenuItem>
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
               ))}
             </TextField>
 

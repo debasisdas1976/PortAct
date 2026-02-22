@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import Dict, List, Optional
+from typing import Optional
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
@@ -16,17 +16,22 @@ router = APIRouter()
 
 @router.get("/overview")
 async def get_dashboard_overview(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Get comprehensive dashboard overview with all key metrics
+    Get comprehensive dashboard overview with all key metrics.
+    Optionally filtered by portfolio_id.
     """
     # Get all active assets
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.is_active == True
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     # Calculate metrics
     for asset in assets:
@@ -139,16 +144,21 @@ async def get_dashboard_overview(
 
 @router.get("/asset-allocation")
 async def get_asset_allocation(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Get asset allocation breakdown by type
+    Get asset allocation breakdown by type.
+    Optionally filtered by portfolio_id.
     """
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.is_active == True
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     for asset in assets:
         asset.calculate_metrics()
@@ -179,20 +189,64 @@ async def get_asset_allocation(
 @router.get("/portfolio-performance")
 async def get_portfolio_performance(
     days: int = Query(default=30, ge=1, le=365),
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get portfolio performance history over time.
     Returns daily snapshots for the specified number of days.
+    When portfolio_id is provided, computes from asset-level snapshots.
     """
     start_date = date.today() - timedelta(days=days)
-    
+
+    if portfolio_id is not None:
+        # Compute from AssetSnapshot joined to Asset filtered by portfolio_id
+        rows = (
+            db.query(
+                AssetSnapshot.snapshot_date,
+                func.sum(AssetSnapshot.total_invested).label("total_invested"),
+                func.sum(AssetSnapshot.current_value).label("total_current_value"),
+                func.sum(AssetSnapshot.profit_loss).label("total_profit_loss"),
+                func.count(AssetSnapshot.id).label("total_assets_count"),
+            )
+            .join(Asset, AssetSnapshot.asset_id == Asset.id)
+            .filter(
+                Asset.user_id == current_user.id,
+                Asset.portfolio_id == portfolio_id,
+                AssetSnapshot.snapshot_date >= start_date,
+            )
+            .group_by(AssetSnapshot.snapshot_date)
+            .order_by(AssetSnapshot.snapshot_date)
+            .all()
+        )
+        snapshots_data = []
+        for row in rows:
+            invested = row.total_invested or 0
+            current_val = row.total_current_value or 0
+            pl = row.total_profit_loss or 0
+            pl_pct = (pl / invested * 100) if invested else 0
+            snapshots_data.append({
+                "date": row.snapshot_date.isoformat(),
+                "total_invested": round(invested, 2),
+                "total_current_value": round(current_val, 2),
+                "total_profit_loss": round(pl, 2),
+                "total_profit_loss_percentage": round(pl_pct, 2),
+                "total_assets_count": row.total_assets_count,
+            })
+        return {
+            "period_days": days,
+            "start_date": start_date.isoformat(),
+            "end_date": date.today().isoformat(),
+            "snapshots": snapshots_data,
+        }
+
+    # No portfolio filter — use user-level PortfolioSnapshot
     snapshots = db.query(PortfolioSnapshot).filter(
         PortfolioSnapshot.user_id == current_user.id,
         PortfolioSnapshot.snapshot_date >= start_date
     ).order_by(PortfolioSnapshot.snapshot_date).all()
-    
+
     return {
         "period_days": days,
         "start_date": start_date.isoformat(),
@@ -229,7 +283,10 @@ async def get_asset_performance(
     ).first()
     
     if not asset:
-        return {"error": "Asset not found"}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found"
+        )
     
     start_date = date.today() - timedelta(days=days)
     
@@ -263,17 +320,22 @@ async def get_asset_performance(
 
 @router.get("/assets-list")
 async def get_assets_list(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get a list of all active assets for the user.
     Used for asset selection in performance charts.
+    Optionally filtered by portfolio_id.
     """
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.is_active == True
-    ).order_by(Asset.name).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.order_by(Asset.name).all()
     
     return {
         "assets": [

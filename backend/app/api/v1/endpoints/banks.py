@@ -59,6 +59,7 @@ async def create_bank(
         name=name,
         display_label=data.display_label.strip(),
         bank_type=data.bank_type,
+        website=data.website,
         is_active=data.is_active,
         sort_order=data.sort_order,
     )

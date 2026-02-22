@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { alertsAPI } from '../../services/api';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 interface AlertsState {
   alerts: any[];
@@ -22,7 +23,7 @@ export const fetchAlerts = createAsyncThunk(
       const response = await alertsAPI.getAll();
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch alerts');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load alerts.'));
     }
   }
 );
@@ -34,7 +35,7 @@ export const deleteAlert = createAsyncThunk(
       await alertsAPI.dismiss(alertId);
       return alertId;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to delete alert');
+      return rejectWithValue(getErrorMessage(error, 'Failed to delete alert.'));
     }
   }
 );

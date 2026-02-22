@@ -29,17 +29,21 @@ logger = logging.getLogger(__name__)
 
 @router.get("/", response_model=List[PPFAccountResponse])
 async def get_ppf_accounts(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get all PPF accounts for the current user
     """
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.PPF,
         Asset.is_active == True
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     # Calculate current metrics
     for asset in assets:
@@ -54,9 +58,9 @@ async def get_ppf_accounts(
             user_id=asset.user_id,
             asset_id=asset.id,
             nickname=asset.name or f"PPF - {asset.broker_name}",
-            account_number=asset.account_id or "",
-            bank_name=asset.broker_name or "",
-            account_holder_name=asset.account_holder_name or "",
+            account_number=asset.account_id or asset.details.get('account_number', ''),
+            bank_name=asset.broker_name or asset.details.get('bank', ''),
+            account_holder_name=asset.account_holder_name or '',
             opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
             maturity_date=asset.details.get('maturity_date'),
             interest_rate=asset.details.get('interest_rate', 7.1),
@@ -75,17 +79,21 @@ async def get_ppf_accounts(
 
 @router.get("/summary", response_model=PPFSummary)
 async def get_ppf_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get PPF portfolio summary
     """
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.PPF,
         Asset.is_active == True
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     # Calculate metrics
     for asset in assets:
@@ -108,9 +116,9 @@ async def get_ppf_summary(
             user_id=asset.user_id,
             asset_id=asset.id,
             nickname=asset.name or f"PPF - {asset.broker_name}",
-            account_number=asset.account_id or "",
-            bank_name=asset.broker_name or "",
-            account_holder_name=asset.account_holder_name or "",
+            account_number=asset.account_id or asset.details.get('account_number', ''),
+            bank_name=asset.broker_name or asset.details.get('bank', ''),
+            account_holder_name=asset.account_holder_name or '',
             opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
             maturity_date=asset.details.get('maturity_date'),
             interest_rate=asset.details.get('interest_rate', 7.1),
@@ -217,6 +225,7 @@ async def get_ppf_account(
 @router.post("/", response_model=PPFAccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_ppf_account(
     ppf_data: PPFAccountCreate,
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -244,6 +253,7 @@ async def create_ppf_account(
         total_invested=ppf_data.total_deposits,
         current_value=ppf_data.current_balance,
         purchase_date=datetime.combine(ppf_data.opening_date, datetime.min.time()),
+        portfolio_id=portfolio_id or ppf_data.portfolio_id,
         details={
             'maturity_date': maturity_date.isoformat() if maturity_date else None,
             'interest_rate': ppf_data.interest_rate,
@@ -558,16 +568,16 @@ async def upload_ppf_statement(
             
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to process statement: {str(e)}"
+                detail="Could not process the PPF statement. Please check the file format and try again."
             )
-    
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error uploading PPF statement: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload statement: {str(e)}"
+            detail="Statement upload failed. Please try again."
         )
 
 

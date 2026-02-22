@@ -32,9 +32,12 @@ import {
   KeyboardArrowDown,
   KeyboardArrowRight,
 } from '@mui/icons-material';
+import { useSelector } from 'react-redux';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { RootState } from '../store';
 
 interface MFAsset {
   id: number;
@@ -80,6 +83,8 @@ const EquityMF: React.FC = () => {
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
 
   // Add/Edit dialog
   const [openDialog, setOpenDialog] = useState(false);
@@ -92,6 +97,7 @@ const EquityMF: React.FC = () => {
     total_invested: 0,
     current_price: 0,
     demat_account_id: '' as number | '',
+    portfolio_id: selectedPortfolioId || '' as number | '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -109,7 +115,7 @@ const EquityMF: React.FC = () => {
     try {
       setLoading(true);
       const [assetsRes, dematRes] = await Promise.all([
-        api.get('/assets/'),
+        api.get('/assets/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} }),
         api.get('/demat-accounts/'),
       ]);
       const filtered = (assetsRes.data as MFAsset[]).filter(
@@ -131,7 +137,7 @@ const EquityMF: React.FC = () => {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [selectedPortfolioId]);
 
   // ── Add / Edit ──────────────────────────────────────────────────────────
   const handleOpenDialog = (asset?: MFAsset) => {
@@ -145,10 +151,11 @@ const EquityMF: React.FC = () => {
         total_invested: asset.total_invested,
         current_price: asset.current_price,
         demat_account_id: asset.demat_account_id || '',
+        portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '',
       });
     } else {
       setEditingAsset(null);
-      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, demat_account_id: '' });
+      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, demat_account_id: '', portfolio_id: selectedPortfolioId || '' });
     }
     setOpenDialog(true);
   };
@@ -168,6 +175,7 @@ const EquityMF: React.FC = () => {
         total_invested: formData.total_invested || formData.quantity * formData.purchase_price,
         current_price: formData.current_price,
         demat_account_id: formData.demat_account_id || undefined,
+        portfolio_id: formData.portfolio_id || undefined,
       };
       if (editingAsset) {
         await api.put(`/assets/${editingAsset.id}`, payload);
@@ -390,6 +398,17 @@ const EquityMF: React.FC = () => {
               <MenuItem value="">None</MenuItem>
               {dematAccounts.map((da) => (
                 <MenuItem key={da.id} value={da.id}>{buildDematLabel(da)}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              label="Portfolio"
+              value={formData.portfolio_id}
+              onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              fullWidth
+            >
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
               ))}
             </TextField>
           </Box>

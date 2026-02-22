@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token
 from app.core.config import settings
 from app.models.user import User
+from app.models.portfolio import Portfolio
 from app.schemas.user import (
     UserCreate,
     User as UserSchema,
@@ -54,7 +55,16 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
+
+    # Create default portfolio for the new user
+    default_portfolio = Portfolio(
+        user_id=new_user.id,
+        name="Default",
+        is_default=True,
+    )
+    db.add(default_portfolio)
+    db.commit()
+
     return new_user
 
 

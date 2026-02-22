@@ -21,7 +21,7 @@ class PPFAccountBase(BaseModel):
 
 class PPFAccountCreate(PPFAccountBase):
     """Schema for creating a PPF account"""
-    pass
+    portfolio_id: Optional[int] = None
 
 
 class PPFAccountUpdate(BaseModel):
@@ -76,9 +76,13 @@ class PPFAccountResponse(PPFAccountBase):
     id: int
     user_id: int
     asset_id: int  # Link to the asset record
+    # Override base fields to allow empty strings in responses (data may be incomplete)
+    account_number: str = ""
+    bank_name: str = ""
+    account_holder_name: str = ""
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 

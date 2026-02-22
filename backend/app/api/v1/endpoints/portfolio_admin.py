@@ -27,12 +27,13 @@ from app.models.expense import Expense
 from app.models.expense_category import ExpenseCategory
 from app.models.transaction import Transaction
 from app.models.alert import Alert
+from app.models.portfolio import Portfolio
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
 
 router = APIRouter()
 
-EXPORT_VERSION = "2.0"
-SUPPORTED_VERSIONS = {"1.0", "2.0"}
+EXPORT_VERSION = "3.0"
+SUPPORTED_VERSIONS = {"1.0", "2.0", "3.0"}
 
 
 # ─── helpers ────────────────────────────────────────────────────────────────
@@ -83,6 +84,8 @@ async def export_portfolio(
     expenses = db.query(Expense).filter(Expense.user_id == uid).all()
     alerts = db.query(Alert).filter(Alert.user_id == uid).all()
 
+    portfolios = db.query(Portfolio).filter(Portfolio.user_id == uid).all()
+
     asset_ids = [a.id for a in assets]
     transactions = (
         db.query(Transaction).filter(Transaction.asset_id.in_(asset_ids)).all()
@@ -104,6 +107,7 @@ async def export_portfolio(
         "export_version": EXPORT_VERSION,
         "exported_at": datetime.now().isoformat(),
         "exported_by": current_user.email,
+        "portfolios": [_to_dict(r) for r in portfolios],
         "bank_accounts": [_to_dict(r) for r in bank_accounts],
         "demat_accounts": [_to_dict(r) for r in demat_accounts],
         "crypto_accounts": [_to_dict(r) for r in crypto_accounts],
@@ -157,17 +161,57 @@ async def restore_portfolio(
 
     stats: Dict[str, Dict[str, int]] = {
         k: {"imported": 0, "skipped": 0}
-        for k in ("bank_accounts", "demat_accounts", "crypto_accounts",
+        for k in ("portfolios", "bank_accounts", "demat_accounts", "crypto_accounts",
                   "assets", "expense_categories", "expenses", "transactions",
                   "alerts", "portfolio_snapshots", "asset_snapshots")
     }
 
     # old_id → new_id maps
+    portfolio_map: Dict[int, int] = {}
     ba_map: Dict[int, int] = {}
     da_map: Dict[int, int] = {}
     ca_map: Dict[int, int] = {}
     cat_map: Dict[int, int] = {}
     asset_map: Dict[int, int] = {}
+
+    # ── 0. Portfolios ────────────────────────────────────────────────────────
+    # Ensure the user has a default portfolio (needed for v1/v2 backups or
+    # as a fallback when restoring assets without portfolio data).
+    default_portfolio = (
+        db.query(Portfolio)
+        .filter(Portfolio.user_id == uid, Portfolio.is_default == True)
+        .first()
+    )
+    if not default_portfolio:
+        default_portfolio = Portfolio(user_id=uid, name="Default", is_default=True)
+        db.add(default_portfolio)
+        db.flush()
+
+    for r in data.get("portfolios", []):
+        old_id = r.get("id")
+        existing = (
+            db.query(Portfolio)
+            .filter(
+                Portfolio.user_id == uid,
+                Portfolio.name == r.get("name"),
+            )
+            .first()
+        )
+        if existing:
+            portfolio_map[old_id] = existing.id
+            stats["portfolios"]["skipped"] += 1
+        else:
+            obj = Portfolio(
+                user_id=uid,
+                name=r.get("name"),
+                description=r.get("description"),
+                is_default=False,  # only the pre-existing default is default
+                is_active=r.get("is_active", True),
+            )
+            db.add(obj)
+            db.flush()
+            portfolio_map[old_id] = obj.id
+            stats["portfolios"]["imported"] += 1
 
     # ── 1. Bank accounts ─────────────────────────────────────────────────────
     for r in data.get("bank_accounts", []):
@@ -372,6 +416,7 @@ async def restore_portfolio(
         # Remap account IDs
         new_demat_id = da_map.get(r.get("demat_account_id"))
         new_crypto_id = ca_map.get(r.get("crypto_account_id"))
+        new_portfolio_id = portfolio_map.get(r.get("portfolio_id")) or default_portfolio.id
 
         # Find candidates matching (user, type, name) that haven't been
         # consumed by a previous import row already.
@@ -401,6 +446,7 @@ async def restore_portfolio(
         else:
             obj = Asset(
                 user_id=uid,
+                portfolio_id=new_portfolio_id,
                 demat_account_id=new_demat_id,
                 crypto_account_id=new_crypto_id,
                 asset_type=r.get("asset_type"),

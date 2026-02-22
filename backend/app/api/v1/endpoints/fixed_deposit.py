@@ -1,7 +1,7 @@
 """Fixed Deposit API Endpoints"""
 import calendar
 from datetime import date, datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -102,36 +102,35 @@ def _recalc_fd_value(asset: Asset, db: Session):
 
 @router.get("/", response_model=List[FDAccountResponse])
 async def list_fds(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """List all fixed deposits for the current user."""
-    assets = (
-        db.query(Asset)
-        .filter(
-            Asset.user_id == current_user.id,
-            Asset.asset_type == AssetType.FIXED_DEPOSIT,
-        )
-        .order_by(Asset.created_at.desc())
-        .all()
+    query = db.query(Asset).filter(
+        Asset.user_id == current_user.id,
+        Asset.asset_type == AssetType.FIXED_DEPOSIT,
     )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.order_by(Asset.created_at.desc()).all()
     return [_asset_to_fd(a) for a in assets]
 
 
 @router.get("/summary", response_model=FDSummary)
 async def fd_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Summary statistics for all fixed deposits."""
-    assets = (
-        db.query(Asset)
-        .filter(
-            Asset.user_id == current_user.id,
-            Asset.asset_type == AssetType.FIXED_DEPOSIT,
-        )
-        .all()
+    query = db.query(Asset).filter(
+        Asset.user_id == current_user.id,
+        Asset.asset_type == AssetType.FIXED_DEPOSIT,
     )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     total_principal = sum(
         (a.details or {}).get("principal_amount", a.total_invested) for a in assets
     )
@@ -147,12 +146,14 @@ async def fd_summary(
 @router.post("/", response_model=FDAccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_fd(
     data: FDAccountCreate,
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Create a new fixed deposit."""
     asset = Asset(
         user_id=current_user.id,
+        portfolio_id=portfolio_id or data.portfolio_id,
         asset_type=AssetType.FIXED_DEPOSIT,
         name=data.nickname or data.bank_name,
         account_id=data.account_number,

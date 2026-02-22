@@ -33,6 +33,9 @@ class Expense(Base):
     bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=False)
     category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=True)
     statement_id = Column(Integer, ForeignKey("statements.id"), nullable=True)
+
+    # Portfolio association
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=True)
     
     # Transaction details
     transaction_date = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -73,5 +76,6 @@ class Expense(Base):
     bank_account = relationship("BankAccount", back_populates="expenses")
     category = relationship("ExpenseCategory", back_populates="expenses")
     statement = relationship("Statement", back_populates="expenses")
+    portfolio = relationship("Portfolio", foreign_keys=[portfolio_id])
 
 # Made with Bob

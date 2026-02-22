@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { authAPI } from '../../services/api';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 interface User {
   id: number;
@@ -32,7 +33,7 @@ export const login = createAsyncThunk(
       localStorage.setItem('token', response.access_token);
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Login failed');
+      return rejectWithValue(getErrorMessage(error, 'Login failed. Please check your credentials.'));
     }
   }
 );
@@ -44,7 +45,7 @@ export const register = createAsyncThunk(
       const response = await authAPI.register(userData);
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Registration failed');
+      return rejectWithValue(getErrorMessage(error, 'Registration failed. Please try again.'));
     }
   }
 );
@@ -56,7 +57,7 @@ export const getCurrentUser = createAsyncThunk(
       const response = await authAPI.getCurrentUser();
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to get user');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load user profile.'));
     }
   }
 );

@@ -32,6 +32,7 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import axios from 'axios';
 
 interface CategoryData {
@@ -65,6 +66,7 @@ interface DashboardData {
 }
 
 const ExpenseDashboard: React.FC = () => {
+  const selectedPortfolioId = useSelectedPortfolio();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
@@ -76,20 +78,21 @@ const ExpenseDashboard: React.FC = () => {
   useEffect(() => {
     fetchDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monthsToShow, selectedYear, selectedMonth, viewMode]);
+  }, [monthsToShow, selectedYear, selectedMonth, viewMode, selectedPortfolioId]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      
+
       let url = 'http://localhost:8000/api/v1/expenses/dashboard/monthly-by-category';
       if (viewMode === 'single') {
-        // For single month view, we still fetch multiple months but will filter on display
-        // This allows us to show comparison data if needed
         url += `?months=1&year=${selectedYear}&month=${selectedMonth}`;
       } else {
         url += `?months=${monthsToShow}`;
+      }
+      if (selectedPortfolioId) {
+        url += `&portfolio_id=${selectedPortfolioId}`;
       }
       
       const response = await axios.get(url, {

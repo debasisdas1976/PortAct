@@ -33,6 +33,12 @@ import {
   Upload as UploadIcon,
   Delete as DeleteIcon
 } from '@mui/icons-material';
+import { useSelector, useDispatch } from 'react-redux';
+import { AppDispatch, RootState } from '../store';
+import { fetchPortfolios } from '../store/slices/portfolioSlice';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { useNotification } from '../contexts/NotificationContext';
+import { getErrorMessage } from '../utils/errorUtils';
 import axios from 'axios';
 
 interface Expense {
@@ -67,6 +73,11 @@ interface Category {
 }
 
 const Expenses: React.FC = () => {
+  const { notify } = useNotification();
+  const dispatch = useDispatch<AppDispatch>();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
+  const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -102,28 +113,36 @@ const Expenses: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    dispatch(fetchPortfolios());
+  }, [dispatch]);
+
+  useEffect(() => {
     fetchExpenses();
-  }, [filters, page, rowsPerPage, orderBy, order]);
+  }, [filters, page, rowsPerPage, orderBy, order, selectedPortfolioId]);
 
   useEffect(() => {
     fetchSummary();
     fetchBankAccounts();
     fetchCategories();
-  }, [filters]);
+  }, [filters, selectedPortfolioId]);
 
   const fetchExpenses = async () => {
     try {
       const token = localStorage.getItem('token');
       const params = new URLSearchParams();
-      
+
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.append(key, value);
       });
-      
+
+      if (selectedPortfolioId) {
+        params.append('portfolio_id', String(selectedPortfolioId));
+      }
+
       // Add pagination parameters
       params.append('skip', (page * rowsPerPage).toString());
       params.append('limit', rowsPerPage.toString());
-      
+
       // Add sorting parameters
       params.append('order_by', orderBy);
       params.append('order', order);
@@ -151,10 +170,14 @@ const Expenses: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       const params = new URLSearchParams();
-      
+
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.append(key, value);
       });
+
+      if (selectedPortfolioId) {
+        params.append('portfolio_id', String(selectedPortfolioId));
+      }
 
       const response = await axios.get(
         `http://localhost:8000/api/v1/expenses/summary?${params.toString()}`,
@@ -168,7 +191,7 @@ const Expenses: React.FC = () => {
         transactionCount: response.data.total_expenses || 0
       });
     } catch (err) {
-      console.error('Failed to fetch summary', err);
+      notify.error(getErrorMessage(err, 'Failed to load expense summary'));
     }
   };
 
@@ -200,7 +223,7 @@ const Expenses: React.FC = () => {
       });
       setBankAccounts(response.data);
     } catch (err) {
-      console.error('Failed to fetch bank accounts');
+      notify.error(getErrorMessage(err, 'Failed to load bank accounts'));
     }
   };
 
@@ -212,7 +235,7 @@ const Expenses: React.FC = () => {
       });
       setCategories(response.data);
     } catch (err) {
-      console.error('Failed to fetch categories');
+      notify.error(getErrorMessage(err, 'Failed to load categories'));
     }
   };
 
@@ -227,6 +250,9 @@ const Expenses: React.FC = () => {
     formData.append('file', selectedFile);
     formData.append('bank_account_id', selectedBankAccount);
     formData.append('auto_categorize', autoCategorize.toString());
+    if (uploadPortfolioId) {
+      formData.append('portfolio_id', String(uploadPortfolioId));
+    }
 
     try {
       const token = localStorage.getItem('token');
@@ -340,7 +366,10 @@ const Expenses: React.FC = () => {
         <Button
           variant="contained"
           startIcon={<UploadIcon />}
-          onClick={() => setUploadDialogOpen(true)}
+          onClick={() => {
+            setUploadPortfolioId(selectedPortfolioId || '' as any);
+            setUploadDialogOpen(true);
+          }}
         >
           Upload Statement
         </Button>
@@ -698,6 +727,20 @@ const Expenses: React.FC = () => {
                   <MenuItem key={acc.id} value={acc.id}>
                     {acc.nickname || `${acc.bank_name} - ${acc.account_number.slice(-4)}`}
                   </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth>
+              <InputLabel>Portfolio</InputLabel>
+              <Select
+                value={uploadPortfolioId}
+                label="Portfolio"
+                onChange={(e) => setUploadPortfolioId(e.target.value as number | '')}
+              >
+                <MenuItem value="">Default Portfolio</MenuItem>
+                {portfolios.map((p: any) => (
+                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                 ))}
               </Select>
             </FormControl>

@@ -24,6 +24,7 @@ async def upload_bank_statement(
     bank_account_id: int = Form(...),
     auto_categorize: bool = Form(True),
     password: Optional[str] = Form(None),
+    portfolio_id: Optional[int] = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -205,6 +206,17 @@ async def upload_bank_statement(
                     duplicate_count += 1
                     continue
                 
+                # Determine portfolio_id: use provided, fall back to bank account's, then user's default
+                expense_portfolio_id = portfolio_id or bank_account.portfolio_id
+                if not expense_portfolio_id:
+                    from app.models.portfolio import Portfolio
+                    default_portfolio = db.query(Portfolio).filter(
+                        Portfolio.user_id == current_user.id,
+                        Portfolio.is_default == True
+                    ).first()
+                    if default_portfolio:
+                        expense_portfolio_id = default_portfolio.id
+
                 # Create new expense
                 expense = Expense(
                     user_id=current_user.id,
@@ -219,17 +231,18 @@ async def upload_bank_statement(
                     reference_number=txn.get('reference_number'),
                     balance_after=txn.get('balance_after'),
                     is_categorized=txn.get('category_id') is not None,
-                    is_reconciled=True  # Mark as reconciled since it's from bank statement
+                    is_reconciled=True,  # Mark as reconciled since it's from bank statement
+                    portfolio_id=expense_portfolio_id,
                 )
-                
+
                 db.add(expense)
                 created_expenses.append(expense)
-                
+
             except Exception as e:
                 logger.warning(f"Error processing transaction row: {e}")
                 error_count += 1
                 continue
-        
+
         # Commit all transactions
         db.commit()
         
@@ -315,6 +328,7 @@ async def reprocess_statement(
     filename: str,
     bank_account_id: int = Form(...),
     auto_categorize: bool = Form(True),
+    portfolio_id: Optional[int] = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -388,6 +402,17 @@ async def reprocess_statement(
                     existing.is_categorized = True
                     updated_count += 1
             else:
+                # Determine portfolio_id for reprocessed expenses
+                reprocess_portfolio_id = portfolio_id or bank_account.portfolio_id
+                if not reprocess_portfolio_id:
+                    from app.models.portfolio import Portfolio
+                    default_portfolio = db.query(Portfolio).filter(
+                        Portfolio.user_id == current_user.id,
+                        Portfolio.is_default == True
+                    ).first()
+                    if default_portfolio:
+                        reprocess_portfolio_id = default_portfolio.id
+
                 # Create new expense
                 expense = Expense(
                     user_id=current_user.id,
@@ -402,7 +427,8 @@ async def reprocess_statement(
                     reference_number=txn.get('reference_number'),
                     balance_after=txn.get('balance_after'),
                     is_categorized=txn.get('category_id') is not None,
-                    is_reconciled=True
+                    is_reconciled=True,
+                    portfolio_id=reprocess_portfolio_id,
                 )
                 db.add(expense)
                 created_count += 1

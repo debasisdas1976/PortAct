@@ -27,7 +27,7 @@ class PFAccountBase(BaseModel):
 
 class PFAccountCreate(PFAccountBase):
     """Schema for creating a PF account"""
-    pass
+    portfolio_id: Optional[int] = None
 
 
 class PFAccountUpdate(BaseModel):

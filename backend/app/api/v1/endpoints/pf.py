@@ -27,14 +27,18 @@ router = APIRouter()
 
 @router.get("/", response_model=List[PFAccountResponse])
 async def get_all_pf_accounts(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Get all PF accounts for the current user"""
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.PF
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     pf_accounts = []
     for asset in assets:
@@ -80,14 +84,18 @@ async def get_all_pf_accounts(
 
 @router.get("/summary", response_model=PFSummary)
 async def get_pf_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Get summary statistics for all PF accounts"""
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.PF
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     total_accounts = len(assets)
     active_accounts = sum(1 for asset in assets if asset.details.get('is_active', True))
@@ -195,6 +203,7 @@ async def get_pf_account(
 @router.post("/", response_model=PFAccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_pf_account(
     pf_data: PFAccountCreate,
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -214,6 +223,7 @@ async def create_pf_account(
         total_invested=pf_data.employee_contribution + pf_data.employer_contribution,
         profit_loss=pf_data.total_interest_earned,
         notes=pf_data.notes,
+        portfolio_id=portfolio_id or pf_data.portfolio_id,
         details={
             'uan_number': pf_data.uan_number,
             'date_of_joining': pf_data.date_of_joining.strftime('%Y-%m-%d'),
@@ -588,6 +598,6 @@ async def upload_pf_statement(
         )
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse statement: {str(e)}")
+        raise HTTPException(status_code=400, detail="Could not process the PF statement. Please check the file format.")
 
 # Made with Bob

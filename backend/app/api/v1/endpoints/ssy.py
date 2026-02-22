@@ -28,16 +28,20 @@ router = APIRouter()
 
 @router.get("/", response_model=List[SSYAccountResponse])
 async def get_all_ssy_accounts(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get all SSY accounts for the current user
     """
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.SSY
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     ssy_accounts = []
     for asset in assets:
@@ -46,11 +50,11 @@ async def get_all_ssy_accounts(
             user_id=asset.user_id,
             asset_id=asset.id,
             nickname=asset.name or f"SSY - {asset.broker_name}",
-            account_number=asset.account_id or "",
-            bank_name=asset.broker_name or "",
-            post_office_name=asset.details.get('post_office_name'),
-            girl_name=asset.account_holder_name or "",
-            girl_dob=datetime.strptime(asset.details.get('girl_dob'), '%Y-%m-%d').date() if asset.details.get('girl_dob') else date.today(),
+            account_number=asset.account_id or asset.details.get('account_number', ''),
+            bank_name=asset.broker_name or asset.details.get('post_office', ''),
+            post_office_name=asset.details.get('post_office_name') or asset.details.get('post_office'),
+            girl_name=asset.account_holder_name or asset.details.get('beneficiary_name', ''),
+            girl_dob=datetime.strptime(asset.details.get('girl_dob') or asset.details.get('beneficiary_dob', ''), '%Y-%m-%d').date() if (asset.details.get('girl_dob') or asset.details.get('beneficiary_dob')) else date.today(),
             guardian_name=asset.details.get('guardian_name', ''),
             opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
             maturity_date=asset.details.get('maturity_date'),
@@ -70,16 +74,20 @@ async def get_all_ssy_accounts(
 
 @router.get("/summary", response_model=SSYSummary)
 async def get_ssy_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Get summary statistics for all SSY accounts
     """
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.SSY
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     
     total_accounts = len(assets)
     total_balance = sum(asset.current_value for asset in assets)
@@ -181,6 +189,7 @@ async def get_ssy_account(
 @router.post("/", response_model=SSYAccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_ssy_account(
     ssy_data: SSYAccountCreate,
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -209,6 +218,7 @@ async def create_ssy_account(
         total_invested=ssy_data.total_deposits,
         profit_loss=ssy_data.total_interest_earned,
         notes=ssy_data.notes,
+        portfolio_id=portfolio_id or ssy_data.portfolio_id,
         details={
             'girl_dob': ssy_data.girl_dob.strftime('%Y-%m-%d'),
             'guardian_name': ssy_data.guardian_name,
@@ -537,11 +547,11 @@ async def upload_ssy_statement(
             user_id=asset.user_id,
             asset_id=asset.id,
             nickname=asset.name or f"SSY - {asset.broker_name}",
-            account_number=asset.account_id or "",
-            bank_name=asset.broker_name or "",
-            post_office_name=asset.details.get('post_office_name'),
-            girl_name=asset.account_holder_name or "",
-            girl_dob=datetime.strptime(asset.details.get('girl_dob'), '%Y-%m-%d').date() if asset.details.get('girl_dob') else date.today(),
+            account_number=asset.account_id or asset.details.get('account_number', ''),
+            bank_name=asset.broker_name or asset.details.get('post_office', ''),
+            post_office_name=asset.details.get('post_office_name') or asset.details.get('post_office'),
+            girl_name=asset.account_holder_name or asset.details.get('beneficiary_name', ''),
+            girl_dob=datetime.strptime(asset.details.get('girl_dob') or asset.details.get('beneficiary_dob', ''), '%Y-%m-%d').date() if (asset.details.get('girl_dob') or asset.details.get('beneficiary_dob')) else date.today(),
             guardian_name=asset.details.get('guardian_name', ''),
             opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
             maturity_date=asset.details.get('maturity_date'),
@@ -556,6 +566,6 @@ async def upload_ssy_statement(
         )
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse statement: {str(e)}")
+        raise HTTPException(status_code=400, detail="Could not process the SSY statement. Please check the file format.")
 
 # Made with Bob

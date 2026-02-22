@@ -23,9 +23,12 @@ import {
   InputAdornment,
 } from '@mui/material';
 import { Upload, CloudUpload, Delete, Visibility, VisibilityOff } from '@mui/icons-material';
-import api from '../services/api';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
+import api, { brokersAPI, banksAPI, cryptoExchangesAPI, institutionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
 interface Statement {
   id: number;
@@ -40,6 +43,8 @@ interface Statement {
 
 const Statements: React.FC = () => {
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [statements, setStatements] = useState<Statement[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -52,10 +57,47 @@ const Statements: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
+  const [brokersList, setBrokersList] = useState<{ value: string; label: string }[]>([]);
+  const [banksList, setBanksList] = useState<{ value: string; label: string }[]>([]);
+  const [exchangesList, setExchangesList] = useState<{ value: string; label: string }[]>([]);
+  const [npsCraList, setNpsCraList] = useState<{ value: string; label: string }[]>([]);
+  const [insuranceList, setInsuranceList] = useState<{ value: string; label: string }[]>([]);
 
   useEffect(() => {
     fetchStatements();
+    fetchMasterData();
   }, []);
+
+  const fetchMasterData = async () => {
+    try {
+      const [brokers, banks, exchanges, npsCras, insuranceProviders] = await Promise.all([
+        brokersAPI.getAll({ is_active: true }),
+        banksAPI.getAll({ is_active: true }),
+        cryptoExchangesAPI.getAll({ is_active: true }),
+        institutionsAPI.getAll({ is_active: true, category: 'nps_cra' }),
+        institutionsAPI.getAll({ is_active: true, category: 'insurance_provider' }),
+      ]);
+      setBrokersList(
+        Array.isArray(brokers) ? brokers.map((b: any) => ({ value: b.name, label: b.display_label })) : []
+      );
+      setBanksList(
+        Array.isArray(banks) ? banks.map((b: any) => ({ value: b.name, label: b.display_label })) : []
+      );
+      setExchangesList(
+        Array.isArray(exchanges) ? exchanges.map((e: any) => ({ value: e.name, label: e.display_label })) : []
+      );
+      setNpsCraList(
+        Array.isArray(npsCras) ? npsCras.map((c: any) => ({ value: c.name, label: c.display_label })) : []
+      );
+      setInsuranceList(
+        Array.isArray(insuranceProviders) ? insuranceProviders.map((i: any) => ({ value: i.name, label: i.display_label })) : []
+      );
+    } catch (err) {
+      // Non-critical: dropdowns will just be empty; user can still select "other"
+      console.error('Failed to fetch master data for dropdowns', err);
+    }
+  };
 
   const fetchStatements = async () => {
     try {
@@ -90,6 +132,9 @@ const Statements: React.FC = () => {
       if (password) {
         formData.append('password', password);
       }
+      if (uploadPortfolioId) {
+        formData.append('portfolio_id', String(uploadPortfolioId));
+      }
 
       await api.post('/statements/upload', formData, {
         headers: {
@@ -102,6 +147,7 @@ const Statements: React.FC = () => {
       setBroker('');
       setStatementType('');
       setPassword('');
+      setUploadPortfolioId('');
       notify.success('Statement uploaded successfully');
       fetchStatements();
     } catch (err) {
@@ -163,7 +209,7 @@ const Statements: React.FC = () => {
         <Button
           variant="contained"
           startIcon={<CloudUpload />}
-          onClick={() => setUploadDialogOpen(true)}
+          onClick={() => { setUploadPortfolioId(selectedPortfolioId || ''); setUploadDialogOpen(true); }}
         >
           Upload Statement
         </Button>
@@ -238,68 +284,9 @@ const Statements: React.FC = () => {
             <TextField
               select
               fullWidth
-              label="Institution/Broker"
-              value={broker}
-              onChange={(e) => setBroker(e.target.value)}
-              sx={{ mb: 2 }}
-              helperText={
-                statementType === 'vested_statement' ? 'Select Vested' :
-                statementType === 'indmoney_statement' ? 'Select INDMoney' :
-                statementType === 'ppf_statement' ? 'Select bank or post office' :
-                statementType === 'ssy_statement' ? 'Select bank or post office' :
-                statementType === 'nps_statement' ? 'Select CRA or fund manager' :
-                statementType === 'pf_statement' ? 'EPFO or employer name' :
-                'Select broker or institution'
-              }
-            >
-              {/* Indian Brokers for stocks/MF */}
-              <MenuItem value="zerodha">Zerodha</MenuItem>
-              <MenuItem value="icici_direct">ICICI Direct</MenuItem>
-              <MenuItem value="groww">Groww</MenuItem>
-              <MenuItem value="upstox">Upstox</MenuItem>
-              <MenuItem value="angelone">Angel One</MenuItem>
-              
-              {/* US Stock Brokers */}
-              <MenuItem value="vested">Vested (US Stocks)</MenuItem>
-              <MenuItem value="indmoney">INDMoney (US Stocks)</MenuItem>
-              
-              {/* Banks for PPF/SSY */}
-              {(statementType === 'ppf_statement' || statementType === 'ssy_statement' || statementType === 'bank_statement') && (
-                <>
-                  <MenuItem value="sbi">State Bank of India (SBI)</MenuItem>
-                  <MenuItem value="hdfc">HDFC Bank</MenuItem>
-                  <MenuItem value="icici">ICICI Bank</MenuItem>
-                  <MenuItem value="axis">Axis Bank</MenuItem>
-                  <MenuItem value="pnb">Punjab National Bank</MenuItem>
-                  <MenuItem value="post_office">Post Office</MenuItem>
-                </>
-              )}
-              
-              {/* NPS CRA */}
-              {statementType === 'nps_statement' && (
-                <>
-                  <MenuItem value="nsdl_cra">NSDL CRA</MenuItem>
-                  <MenuItem value="karvy_cra">Karvy CRA</MenuItem>
-                  <MenuItem value="protean_cra">Protean CRA</MenuItem>
-                </>
-              )}
-              
-              {/* EPFO for PF */}
-              {statementType === 'pf_statement' && (
-                <>
-                  <MenuItem value="epfo">EPFO (Employees' Provident Fund Organisation)</MenuItem>
-                </>
-              )}
-              
-              <MenuItem value="other">Other</MenuItem>
-            </TextField>
-
-            <TextField
-              select
-              fullWidth
               label="Statement Type"
               value={statementType}
-              onChange={(e) => setStatementType(e.target.value)}
+              onChange={(e) => { setStatementType(e.target.value); setBroker(''); }}
               sx={{ mb: 2 }}
             >
               <MenuItem value="broker_statement">Broker Statement (Equity/Stocks)</MenuItem>
@@ -314,6 +301,75 @@ const Statements: React.FC = () => {
               <MenuItem value="pf_statement">PF/EPF Statement (Provident Fund)</MenuItem>
               <MenuItem value="crypto_statement">Crypto Statement</MenuItem>
               <MenuItem value="insurance_statement">Insurance Statement</MenuItem>
+              <MenuItem value="other">Other</MenuItem>
+            </TextField>
+
+            <TextField
+              select
+              fullWidth
+              label="Institution/Broker"
+              value={broker}
+              onChange={(e) => setBroker(e.target.value)}
+              sx={{ mb: 2 }}
+              helperText={
+                !statementType ? 'Select a statement type first' :
+                statementType === 'ppf_statement' || statementType === 'ssy_statement' ? 'Select bank or post office' :
+                statementType === 'nps_statement' ? 'Select CRA or fund manager' :
+                statementType === 'pf_statement' ? 'EPFO or employer name' :
+                statementType === 'bank_statement' ? 'Select your bank' :
+                statementType === 'insurance_statement' ? 'Select insurance provider' :
+                'Select broker or institution'
+              }
+              disabled={!statementType}
+            >
+              {/* Brokers — for broker/MF/demat statements */}
+              {['broker_statement', 'mutual_fund_statement', 'demat_statement'].includes(statementType) &&
+                brokersList.map((b) => (
+                  <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>
+                ))
+              }
+
+              {/* Crypto exchanges — for crypto statements */}
+              {statementType === 'crypto_statement' &&
+                exchangesList.map((e) => (
+                  <MenuItem key={e.value} value={e.value}>{e.label}</MenuItem>
+                ))
+              }
+
+              {/* US Stock Brokers */}
+              {statementType === 'vested_statement' && (
+                <MenuItem value="vested">Vested</MenuItem>
+              )}
+              {statementType === 'indmoney_statement' && (
+                <MenuItem value="indmoney">INDMoney</MenuItem>
+              )}
+
+              {/* Banks — for bank/PPF/SSY statements */}
+              {['bank_statement', 'ppf_statement', 'ssy_statement'].includes(statementType) &&
+                banksList.map((b) => (
+                  <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>
+                ))
+              }
+
+              {/* NPS CRAs */}
+              {statementType === 'nps_statement' &&
+                npsCraList.map((c) => (
+                  <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>
+                ))
+              }
+
+              {/* EPFO for PF */}
+              {statementType === 'pf_statement' && (
+                <MenuItem value="epfo">EPFO (Employees' Provident Fund Organisation)</MenuItem>
+              )}
+
+              {/* Insurance providers */}
+              {statementType === 'insurance_statement' &&
+                insuranceList.map((i) => (
+                  <MenuItem key={i.value} value={i.value}>{i.label}</MenuItem>
+                ))
+              }
+
               <MenuItem value="other">Other</MenuItem>
             </TextField>
 
@@ -341,6 +397,21 @@ const Statements: React.FC = () => {
                 }}
               />
             )}
+
+            <TextField
+              select
+              fullWidth
+              label="Portfolio"
+              value={uploadPortfolioId}
+              onChange={(e) => setUploadPortfolioId(e.target.value ? Number(e.target.value) : '')}
+              sx={{ mb: 2 }}
+              helperText="Assets from this statement will be assigned to the selected portfolio"
+            >
+              <MenuItem value="">Default Portfolio</MenuItem>
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </TextField>
 
             <Button
               variant="outlined"

@@ -48,7 +48,7 @@ class RDAccountBase(BaseModel):
 
 
 class RDAccountCreate(RDAccountBase):
-    pass
+    portfolio_id: Optional[int] = None
 
 
 class RDAccountUpdate(BaseModel):

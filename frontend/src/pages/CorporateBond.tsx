@@ -2,13 +2,16 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Card, CardContent, CircularProgress, Grid, Paper, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Typography, Chip, Alert, Button,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, MenuItem,
 } from '@mui/material';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 import { Add, Edit, Delete, TrendingUp, TrendingDown } from '@mui/icons-material';
 import { assetsAPI } from '../services/api';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
 interface AssetItem {
   id: number; name: string; symbol: string; isin?: string; quantity: number;
@@ -19,13 +22,15 @@ interface AssetItem {
 
 const ASSET_TYPE = 'corporate_bond';
 const PAGE_TITLE = 'Corporate Bonds';
-const EMPTY_FORM = { name: '', symbol: '', isin: '', quantity: '', purchase_price: '', current_price: '', interest_rate: '', maturity_date: '', broker_name: '', notes: '' };
+const EMPTY_FORM = { name: '', symbol: '', isin: '', quantity: '', purchase_price: '', current_price: '', interest_rate: '', maturity_date: '', broker_name: '', notes: '', portfolio_id: '' as number | '' };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
 
 const CorporateBond: React.FC = () => {
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -37,10 +42,10 @@ const CorporateBond: React.FC = () => {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get('/assets/');
+      const res = await api.get('/assets/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       setAssets((res.data as AssetItem[]).filter((a) => a.asset_type?.toLowerCase() === ASSET_TYPE));
     } catch (err) { notify.error(getErrorMessage(err, 'Failed to load data')); } finally { setLoading(false); }
-  }, [notify]);
+  }, [notify, selectedPortfolioId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -49,7 +54,7 @@ const CorporateBond: React.FC = () => {
   const totalPnL = totalValue - totalInvested;
   const totalPnLPct = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
 
-  const handleAdd = () => { setEditingId(null); setForm(EMPTY_FORM); setDialogOpen(true); };
+  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || '' }); setDialogOpen(true); };
   const handleEdit = (asset: AssetItem) => {
     setEditingId(asset.id);
     setForm({
@@ -58,6 +63,7 @@ const CorporateBond: React.FC = () => {
       current_price: String(asset.current_price || ''),
       interest_rate: String(asset.details?.interest_rate || ''), maturity_date: asset.details?.maturity_date || '',
       broker_name: asset.broker_name || '', notes: asset.notes || '',
+      portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '',
     });
     setDialogOpen(true);
   };
@@ -76,6 +82,7 @@ const CorporateBond: React.FC = () => {
       quantity: qty, purchase_price: buyPrice, current_price: curPrice,
       total_invested: qty * buyPrice,
       broker_name: form.broker_name || undefined, notes: form.notes || undefined, details,
+      portfolio_id: form.portfolio_id || undefined,
     };
     try {
       setSaving(true);
@@ -152,6 +159,7 @@ const CorporateBond: React.FC = () => {
             <Grid item xs={12} sm={6}><TextField fullWidth label="Coupon / Interest Rate (%)" type="number" value={form.interest_rate} onChange={(e) => setForm({ ...form, interest_rate: e.target.value })} inputProps={{ min: 0, step: '0.01' }} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Maturity Date" type="date" value={form.maturity_date} onChange={(e) => setForm({ ...form, maturity_date: e.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Broker" value={form.broker_name} onChange={(e) => setForm({ ...form, broker_name: e.target.value })} /></Grid>
+            <Grid item xs={12} sm={6}><TextField select fullWidth label="Portfolio" value={form.portfolio_id} onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}>{portfolios.map((p: any) => (<MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>))}</TextField></Grid>
             <Grid item xs={12}><TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Grid>
           </Grid>
         </DialogContent>

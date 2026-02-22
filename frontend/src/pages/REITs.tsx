@@ -1,14 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Box, Card, CardContent, CircularProgress, Grid, Paper, Table, TableBody,
+  Box, Card, CardContent, CircularProgress, Grid, MenuItem, Paper, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Typography, Chip, Alert, Button,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton,
 } from '@mui/material';
 import { Add, Edit, Delete, TrendingUp, TrendingDown } from '@mui/icons-material';
 import { assetsAPI } from '../services/api';
 import api from '../services/api';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
 interface AssetItem {
   id: number; name: string; symbol: string; quantity: number; purchase_price: number;
@@ -21,7 +24,7 @@ interface DematAccount { id: number; broker_name: string; account_id: string; ac
 
 const ASSET_TYPE = 'reit';
 const PAGE_TITLE = 'REITs';
-const EMPTY_FORM = { name: '', symbol: '', quantity: '', purchase_price: '', current_price: '', broker_name: '', account_id: '', notes: '' };
+const EMPTY_FORM = { name: '', symbol: '', quantity: '', purchase_price: '', current_price: '', broker_name: '', account_id: '', notes: '', portfolio_id: '' as number | '' };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
@@ -34,6 +37,8 @@ const buildDematLabel = (da: DematAccount) => {
 
 const REITs: React.FC = () => {
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
@@ -46,13 +51,13 @@ const REITs: React.FC = () => {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [assetsRes, dematRes] = await Promise.all([api.get('/assets/'), api.get('/demat-accounts/')]);
+      const [assetsRes, dematRes] = await Promise.all([api.get('/assets/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} }), api.get('/demat-accounts/')]);
       setAssets((assetsRes.data as AssetItem[]).filter((a) => a.asset_type?.toLowerCase() === ASSET_TYPE));
       const labelMap: Record<number, string> = {};
       for (const da of dematRes.data as DematAccount[]) labelMap[da.id] = buildDematLabel(da);
       setDematLabelMap(labelMap);
     } catch (err) { notify.error(getErrorMessage(err, 'Failed to load data')); } finally { setLoading(false); }
-  }, [notify]);
+  }, [notify, selectedPortfolioId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -77,10 +82,10 @@ const REITs: React.FC = () => {
     return parts.length ? parts.join(' ') : 'Unlinked Holdings';
   };
 
-  const handleAdd = () => { setEditingId(null); setForm(EMPTY_FORM); setDialogOpen(true); };
+  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || '' }); setDialogOpen(true); };
   const handleEdit = (asset: AssetItem) => {
     setEditingId(asset.id);
-    setForm({ name: asset.name || '', symbol: asset.symbol || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '' });
+    setForm({ name: asset.name || '', symbol: asset.symbol || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '', portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '' });
     setDialogOpen(true);
   };
   const handleSave = async () => {
@@ -89,7 +94,7 @@ const REITs: React.FC = () => {
     const qty = parseFloat(form.quantity) || 1;
     const buyPrice = parseFloat(form.purchase_price) || 0;
     const curPrice = parseFloat(form.current_price) || buyPrice;
-    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, broker_name: form.broker_name || undefined, account_id: form.account_id || undefined, notes: form.notes || undefined };
+    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, broker_name: form.broker_name || undefined, account_id: form.account_id || undefined, notes: form.notes || undefined, portfolio_id: form.portfolio_id || undefined };
     try {
       setSaving(true);
       if (editingId) { await assetsAPI.update(editingId, payload); } else { await assetsAPI.create(payload); }
@@ -176,6 +181,20 @@ const REITs: React.FC = () => {
             <Grid item xs={12} sm={6}><TextField fullWidth label="Broker" value={form.broker_name} onChange={(e) => setForm({ ...form, broker_name: e.target.value })} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Account ID" value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })} /></Grid>
             <Grid item xs={12}><TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Grid>
+            <Grid item xs={12}>
+              <TextField
+                select
+                fullWidth
+                label="Portfolio"
+                value={form.portfolio_id}
+                onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              >
+                <MenuItem value="">None</MenuItem>
+                {portfolios.map((p: any) => (
+                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>

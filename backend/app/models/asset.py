@@ -45,7 +45,8 @@ class Asset(Base):
     statement_id = Column(Integer, ForeignKey("statements.id"), nullable=True)  # Link to source statement
     demat_account_id = Column(Integer, ForeignKey("demat_accounts.id", ondelete="CASCADE"), nullable=True)  # Link to demat account
     crypto_account_id = Column(Integer, ForeignKey("crypto_accounts.id"), nullable=True)  # Link to crypto account
-    
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=True)  # Link to portfolio
+
     # Asset identification
     asset_type = Column(Enum(AssetType), nullable=False, index=True)
     name = Column(String, nullable=False)  # Stock name, property address, etc.
@@ -96,6 +97,7 @@ class Asset(Base):
     statement = relationship("Statement", back_populates="assets")
     demat_account = relationship("DematAccount", back_populates="assets")
     crypto_account = relationship("CryptoAccount", back_populates="assets")
+    portfolio = relationship("Portfolio", back_populates="assets")
     transactions = relationship("Transaction", back_populates="asset", cascade="all, delete-orphan", passive_deletes=True)
     
     def calculate_metrics(self):

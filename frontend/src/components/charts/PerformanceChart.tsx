@@ -31,7 +31,7 @@ interface PerformanceChartProps {
 
 const PerformanceChart: React.FC<PerformanceChartProps> = ({ hideNumbers = false }) => {
   const dispatch = useDispatch<AppDispatch>();
-  const { performanceData, assetPerformanceData, assetsList, performanceLoading: loading, performanceError: error } = useSelector(
+  const { performanceData, assetPerformanceData, assetsList, performanceLoading: loading, performanceError: error, selectedPortfolioId } = useSelector(
     (state: RootState) => state.portfolio
   );
 
@@ -40,18 +40,16 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ hideNumbers = false
   const [timePeriod, setTimePeriod] = useState<number>(30);
 
   useEffect(() => {
-    // Fetch assets list on mount only
-    dispatch(fetchAssetsList());
+    // Fetch assets list for current portfolio
+    dispatch(fetchAssetsList(selectedPortfolioId));
     // Fetch initial portfolio performance data
-    dispatch(fetchPortfolioPerformance(30));
+    dispatch(fetchPortfolioPerformance({ days: 30, portfolioId: selectedPortfolioId }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedPortfolioId]);
 
   useEffect(() => {
-    // Only fetch when user explicitly changes settings
-    // Don't fetch on initial render (handled above)
     if (viewMode === 'portfolio') {
-      dispatch(fetchPortfolioPerformance(timePeriod));
+      dispatch(fetchPortfolioPerformance({ days: timePeriod, portfolioId: selectedPortfolioId }));
     } else if (viewMode === 'asset' && selectedAssetId) {
       dispatch(fetchAssetPerformance({ assetId: selectedAssetId as number, days: timePeriod }));
     }

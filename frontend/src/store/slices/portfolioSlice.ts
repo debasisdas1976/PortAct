@@ -1,5 +1,6 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { dashboardAPI } from '../../services/api';
+import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { dashboardAPI, portfoliosAPI } from '../../services/api';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 interface PortfolioState {
   overview: any;
@@ -13,6 +14,10 @@ interface PortfolioState {
   error: string | null;
   performanceLoading: boolean;
   performanceError: string | null;
+  // Multi-portfolio support
+  portfolios: any[];
+  selectedPortfolioId: number | null;
+  portfoliosLoading: boolean;
 }
 
 const initialState: PortfolioState = {
@@ -27,40 +32,59 @@ const initialState: PortfolioState = {
   error: null,
   performanceLoading: false,
   performanceError: null,
+  // Multi-portfolio support
+  portfolios: [],
+  selectedPortfolioId: (() => {
+    const stored = localStorage.getItem('selectedPortfolioId');
+    return stored ? parseInt(stored, 10) : null;
+  })(),
+  portfoliosLoading: false,
 };
+
+export const fetchPortfolios = createAsyncThunk(
+  'portfolio/fetchPortfolios',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await portfoliosAPI.getAll();
+      return response;
+    } catch (error: any) {
+      return rejectWithValue(getErrorMessage(error, 'Failed to load portfolios.'));
+    }
+  }
+);
 
 export const fetchPortfolioOverview = createAsyncThunk(
   'portfolio/fetchOverview',
-  async (_, { rejectWithValue }) => {
+  async (portfolioId: number | null | undefined, { rejectWithValue }) => {
     try {
-      const response = await dashboardAPI.getOverview();
+      const response = await dashboardAPI.getOverview(portfolioId);
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch portfolio');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load portfolio data.'));
     }
   }
 );
 
 export const fetchAssetAllocation = createAsyncThunk(
   'portfolio/fetchAllocation',
-  async (_, { rejectWithValue }) => {
+  async (portfolioId: number | null | undefined, { rejectWithValue }) => {
     try {
-      const response = await dashboardAPI.getAssetAllocation();
+      const response = await dashboardAPI.getAssetAllocation(portfolioId);
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch allocation');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load allocation data.'));
     }
   }
 );
 
 export const fetchPortfolioSummary = createAsyncThunk(
   'portfolio/fetchSummary',
-  async (_, { rejectWithValue }) => {
+  async (portfolioId: number | null | undefined, { rejectWithValue }) => {
     try {
-      const response = await dashboardAPI.getOverview();
+      const response = await dashboardAPI.getOverview(portfolioId);
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch summary');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load summary.'));
     }
   }
 );
@@ -72,19 +96,19 @@ export const fetchPortfolioHistory = createAsyncThunk(
       const response = await dashboardAPI.getOverview();
       return response.history || [];
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch history');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load history.'));
     }
   }
 );
 
 export const fetchPortfolioPerformance = createAsyncThunk(
   'portfolio/fetchPerformance',
-  async (days: number = 30, { rejectWithValue }) => {
+  async ({ days = 30, portfolioId }: { days?: number; portfolioId?: number | null }, { rejectWithValue }) => {
     try {
-      const response = await dashboardAPI.getPortfolioPerformance(days);
+      const response = await dashboardAPI.getPortfolioPerformance(days, portfolioId);
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch performance data');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load performance data.'));
     }
   }
 );
@@ -96,19 +120,19 @@ export const fetchAssetPerformance = createAsyncThunk(
       const response = await dashboardAPI.getAssetPerformance(assetId, days);
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch asset performance');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load asset performance.'));
     }
   }
 );
 
 export const fetchAssetsList = createAsyncThunk(
   'portfolio/fetchAssetsList',
-  async (_, { rejectWithValue }) => {
+  async (portfolioId: number | null | undefined, { rejectWithValue }) => {
     try {
-      const response = await dashboardAPI.getAssetsList();
+      const response = await dashboardAPI.getAssetsList(portfolioId);
       return response.assets || [];
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch assets list');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load assets list.'));
     }
   }
 );
@@ -120,9 +144,29 @@ const portfolioSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    setSelectedPortfolioId: (state, action: PayloadAction<number | null>) => {
+      state.selectedPortfolioId = action.payload;
+      if (action.payload === null) {
+        localStorage.removeItem('selectedPortfolioId');
+      } else {
+        localStorage.setItem('selectedPortfolioId', String(action.payload));
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
+      // Portfolios list
+      .addCase(fetchPortfolios.pending, (state) => {
+        state.portfoliosLoading = true;
+      })
+      .addCase(fetchPortfolios.fulfilled, (state, action) => {
+        state.portfoliosLoading = false;
+        state.portfolios = action.payload;
+      })
+      .addCase(fetchPortfolios.rejected, (state) => {
+        state.portfoliosLoading = false;
+      })
+      // Overview
       .addCase(fetchPortfolioOverview.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -195,7 +239,7 @@ const portfolioSlice = createSlice({
   },
 });
 
-export const { clearError } = portfolioSlice.actions;
+export const { clearError, setSelectedPortfolioId } = portfolioSlice.actions;
 export default portfolioSlice.reducer;
 
 // Made with Bob

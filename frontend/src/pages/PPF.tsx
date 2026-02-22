@@ -34,8 +34,12 @@ import {
   Visibility as ViewIcon
 } from '@mui/icons-material';
 import axios from 'axios';
+import { banksAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelector } from 'react-redux';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { RootState } from '../store';
 
 interface PPFAccount {
   id: number;
@@ -83,6 +87,7 @@ const PPF: React.FC = () => {
   const [transactions, setTransactions] = useState<PPFTransaction[]>([]);
   const [tabValue, setTabValue] = useState(0);
   const [formData, setFormData] = useState({
+    portfolio_id: '' as number | '',
     nickname: '',
     account_number: '',
     bank_name: '',
@@ -109,31 +114,34 @@ const PPF: React.FC = () => {
   const [uploadAccountId, setUploadAccountId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
 
-  const bankOptions = [
-    'State Bank of India',
-    'HDFC Bank',
-    'ICICI Bank',
-    'Axis Bank',
-    'Punjab National Bank',
-    'Bank of Baroda',
-    'Canara Bank',
-    'Union Bank of India',
-    'Indian Bank',
-    'Post Office',
-    'Other'
-  ];
+  const [bankOptions, setBankOptions] = useState<string[]>([]);
 
   useEffect(() => {
     fetchAccounts();
     fetchSummary();
-  }, []);
+    fetchBankOptions();
+  }, [selectedPortfolioId]);
+
+  const fetchBankOptions = async () => {
+    try {
+      const data = await banksAPI.getAll({ is_active: true });
+      const labels = Array.isArray(data) ? data.map((b: any) => b.display_label) : [];
+      labels.push('Other');
+      setBankOptions(labels);
+    } catch {
+      setBankOptions(['Other']);
+    }
+  };
 
   const fetchAccounts = async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get('http://localhost:8000/api/v1/ppf/', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {}
       });
       setAccounts(response.data);
       // Auto-select first account to enable Transactions tab
@@ -150,7 +158,8 @@ const PPF: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get('http://localhost:8000/api/v1/ppf/summary', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {}
       });
       setSummary(response.data);
     } catch (err) {
@@ -174,6 +183,7 @@ const PPF: React.FC = () => {
     if (account) {
       setEditingAccount(account);
       setFormData({
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
         nickname: account.nickname,
         account_number: account.account_number,
         bank_name: account.bank_name,
@@ -190,6 +200,7 @@ const PPF: React.FC = () => {
     } else {
       setEditingAccount(null);
       setFormData({
+        portfolio_id: selectedPortfolioId || '',
         nickname: '',
         account_number: '',
         bank_name: '',
@@ -220,14 +231,14 @@ const PPF: React.FC = () => {
       if (editingAccount) {
         await axios.put(
           `http://localhost:8000/api/v1/ppf/${editingAccount.id}`,
-          formData,
+          {...formData, portfolio_id: formData.portfolio_id || undefined},
           { headers: { Authorization: `Bearer ${token}` } }
         );
         notify.success('Account updated successfully');
       } else {
         await axios.post(
           'http://localhost:8000/api/v1/ppf/',
-          formData,
+          {...formData, portfolio_id: formData.portfolio_id || undefined},
           { headers: { Authorization: `Bearer ${token}` } }
         );
         notify.success('Account added successfully');
@@ -637,6 +648,20 @@ const PPF: React.FC = () => {
                 required
                 helperText="A friendly name to identify this PPF account (e.g., 'My SBI PPF', 'Wife's PPF')"
               />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                select
+                label="Portfolio"
+                value={formData.portfolio_id}
+                onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              >
+                <MenuItem value="">None</MenuItem>
+                {portfolios.map((p: any) => (
+                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                ))}
+              </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField

@@ -40,7 +40,7 @@ api.interceptors.response.use(
       // Clear auth data from localStorage
       localStorage.removeItem('token');
       localStorage.removeItem('lastApiActivity');
-      
+
       // Only redirect to login if not already on login or register page
       const currentPath = window.location.pathname;
       if (currentPath !== '/login' && currentPath !== '/register') {
@@ -49,6 +49,21 @@ api.interceptors.response.use(
         window.location.href = '/login?session_expired=true';
       }
     }
+
+    // Normalize detail: if it's an array (validation errors), join into a readable string
+    if (error.response?.data?.detail && Array.isArray(error.response.data.detail)) {
+      error.response.data.detail = error.response.data.detail
+        .map((d: any) => {
+          if (d.loc && d.msg) {
+            const fields = d.loc.filter((l: string) => l !== 'body' && l !== 'query' && l !== 'path');
+            const fieldName = fields.length > 0 ? fields.join(' > ').replace(/_/g, ' ') : 'input';
+            return `${fieldName}: ${d.msg}`;
+          }
+          return d.msg || String(d);
+        })
+        .join('. ');
+    }
+
     return Promise.reject(error);
   }
 );
@@ -98,37 +113,70 @@ export const authAPI = {
   },
 };
 
+// Portfolios API
+export const portfoliosAPI = {
+  getAll: async () => {
+    const response = await api.get('/portfolios/');
+    return response.data;
+  },
+
+  getById: async (id: number) => {
+    const response = await api.get(`/portfolios/${id}`);
+    return response.data;
+  },
+
+  create: async (data: { name: string; description?: string }) => {
+    const response = await api.post('/portfolios/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: { name?: string; description?: string; is_active?: boolean }) => {
+    const response = await api.put(`/portfolios/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/portfolios/${id}`);
+  },
+};
+
 // Dashboard API
 export const dashboardAPI = {
-  getOverview: async () => {
-    const response = await api.get('/dashboard/overview');
+  getOverview: async (portfolioId?: number | null) => {
+    const params: any = {};
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/dashboard/overview', { params });
     return response.data;
   },
-  
-  getAssetAllocation: async () => {
-    const response = await api.get('/dashboard/asset-allocation');
+
+  getAssetAllocation: async (portfolioId?: number | null) => {
+    const params: any = {};
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/dashboard/asset-allocation', { params });
     return response.data;
   },
-  
-  getPortfolioPerformance: async (days: number = 30) => {
-    const response = await api.get('/dashboard/portfolio-performance', {
-      params: { days }
-    });
+
+  getPortfolioPerformance: async (days: number = 30, portfolioId?: number | null) => {
+    const params: any = { days };
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/dashboard/portfolio-performance', { params });
     return response.data;
   },
-  
+
   getAssetPerformance: async (assetId: number, days: number = 30) => {
     const response = await api.get(`/dashboard/asset-performance/${assetId}`, {
       params: { days }
     });
     return response.data;
   },
-  
-  getAssetsList: async () => {
-    const response = await api.get('/dashboard/assets-list');
+
+  getAssetsList: async (portfolioId?: number | null) => {
+    const params: any = {};
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/dashboard/assets-list', { params });
     return response.data;
   },
-  
+
   takeSnapshot: async () => {
     const response = await api.post('/dashboard/take-snapshot');
     return response.data;
@@ -302,6 +350,46 @@ export const brokersAPI = {
 
   delete: async (id: number) => {
     await api.delete(`/brokers/${id}`);
+  },
+};
+
+// Asset Types API
+export const assetTypesAPI = {
+  getAll: async (params?: { is_active?: boolean; category?: string }) => {
+    const response = await api.get('/asset-types/', { params });
+    return response.data;
+  },
+
+  update: async (id: number, data: Record<string, any>) => {
+    const response = await api.put(`/asset-types/${id}`, data);
+    return response.data;
+  },
+
+  getCategories: async () => {
+    const response = await api.get('/asset-types/categories');
+    return response.data;
+  },
+};
+
+// Institutions API (NPS fund managers, insurance providers, NPS CRAs, etc.)
+export const institutionsAPI = {
+  getAll: async (params?: { is_active?: boolean; category?: string }) => {
+    const response = await api.get('/institutions/', { params });
+    return response.data;
+  },
+
+  create: async (data: { name?: string; display_label: string; category: string; website?: string | null; sort_order?: number }) => {
+    const response = await api.post('/institutions/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: Record<string, any>) => {
+    const response = await api.put(`/institutions/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/institutions/${id}`);
   },
 };
 

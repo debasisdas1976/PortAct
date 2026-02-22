@@ -18,6 +18,7 @@ class DematAccountBase(BaseModel):
     is_primary: bool = Field(default=False)
     nickname: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = None
+    portfolio_id: Optional[int] = None
 
 
 class DematAccountCreate(DematAccountBase):
@@ -40,6 +41,7 @@ class DematAccountUpdate(BaseModel):
     nickname: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = None
     last_statement_date: Optional[datetime] = None
+    portfolio_id: Optional[int] = None
 
 
 class DematAccountInDB(DematAccountBase):

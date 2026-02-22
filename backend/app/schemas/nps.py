@@ -27,7 +27,7 @@ class NPSAccountBase(BaseModel):
 
 class NPSAccountCreate(NPSAccountBase):
     """Schema for creating an NPS account"""
-    pass
+    portfolio_id: Optional[int] = None
 
 
 class NPSAccountUpdate(BaseModel):
@@ -83,9 +83,12 @@ class NPSAccountResponse(NPSAccountBase):
     id: int
     user_id: int
     asset_id: int
+    # Override base fields to allow incomplete data in responses
+    pran_number: str = ""
+    account_holder_name: str = ""
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 

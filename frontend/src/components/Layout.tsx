@@ -52,9 +52,13 @@ import {
   Diamond as DiamondIcon,
   Home as HomeIcon,
   HelpOutline as HelpIcon,
+  FolderSpecial as PortfoliosIcon,
+  Description as DescriptionIcon,
+  ViewList as ViewListIcon,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { logout } from '../store/slices/authSlice';
+import PortfolioSelector from './PortfolioSelector';
 
 const drawerWidth = 240;
 
@@ -164,6 +168,7 @@ const assetGroups: AssetGroup[] = [
 const overviewItems: NavItem[] = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { text: 'Alerts', icon: <NotificationsIcon />, path: '/alerts' },
+  { text: 'Statements', icon: <DescriptionIcon />, path: '/statements' },
 ];
 
 const assetOverviewItem: NavItem = {
@@ -175,14 +180,19 @@ const assetOverviewItem: NavItem = {
 const expenseItems: NavItem[] = [
   { text: 'Expense Dashboard', icon: <BarChartIcon />, path: '/expense-dashboard' },
   { text: 'Expenses', icon: <ReceiptIcon />, path: '/expenses' },
-  { text: 'Categories', icon: <CategoryIcon />, path: '/categories' },
 ];
 
-const adminItems: NavItem[] = [
-  { text: 'Portfolio Admin', icon: <AdminIcon />, path: '/portfolio-admin' },
+const masterDataItems: NavItem[] = [
+  { text: 'Asset Types', icon: <ViewListIcon />, path: '/asset-types' },
   { text: 'Banks', icon: <AccountBalanceIcon />, path: '/banks-master' },
   { text: 'Brokers', icon: <ShowChartIcon />, path: '/brokers-master' },
   { text: 'Crypto Exchanges', icon: <CryptoIcon />, path: '/crypto-exchanges' },
+  { text: 'Expense Categories', icon: <CategoryIcon />, path: '/categories' },
+];
+
+const adminItems: NavItem[] = [
+  { text: 'Portfolios', icon: <PortfoliosIcon />, path: '/portfolios' },
+  { text: 'Portfolio Admin', icon: <AdminIcon />, path: '/portfolio-admin' },
   { text: 'Application Setup', icon: <SettingsIcon />, path: '/settings' },
 ];
 
@@ -196,6 +206,7 @@ const allNavItems: NavItem[] = [
   assetOverviewItem,
   ...assetGroups.flatMap((g) => g.items),
   ...expenseItems,
+  ...masterDataItems,
   ...adminItems,
   ...helpItems,
 ];
@@ -372,6 +383,19 @@ const Layout: React.FC = () => {
 
       <Divider />
 
+      {/* ── Master Data ── */}
+      <List
+        subheader={
+          <ListItem sx={{ py: 0.5 }}>
+            <ListItemText primary="Master Data" primaryTypographyProps={sectionHeaderSx} />
+          </ListItem>
+        }
+      >
+        {masterDataItems.map((item) => renderNavItem(item))}
+      </List>
+
+      <Divider />
+
       {/* ── Help ── */}
       <List>
         {helpItems.map((item) => renderNavItem(item))}
@@ -401,6 +425,7 @@ const Layout: React.FC = () => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {allNavItems.find((item) => item.path === location.pathname)?.text || 'PortAct'}
           </Typography>
+          <PortfolioSelector />
           <IconButton
             size="large"
             edge="end"

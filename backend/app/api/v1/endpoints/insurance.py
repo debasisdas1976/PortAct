@@ -9,7 +9,7 @@ fund / surrender value.  For pure-protection policies the sum_assured
 represents the coverage amount and current_value defaults to 0.
 """
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
@@ -53,9 +53,9 @@ def _asset_to_response(asset: Asset) -> InsurancePolicyResponse:
         user_id=asset.user_id,
         asset_id=asset.id,
         nickname=asset.name,
-        policy_name=details.get("policy_name", ""),
-        policy_number=asset.account_id or "",
-        insurer_name=asset.broker_name or "",
+        policy_name=details.get("policy_name") or asset.name or "",
+        policy_number=asset.account_id or details.get("policy_number", ""),
+        insurer_name=asset.broker_name or details.get("insurer", ""),
         policy_type=details.get("policy_type", ""),
         insured_name=asset.account_holder_name or "",
         sum_assured=details.get("sum_assured", 0.0),
@@ -76,27 +76,35 @@ def _asset_to_response(asset: Asset) -> InsurancePolicyResponse:
 
 @router.get("/", response_model=List[InsurancePolicyResponse])
 async def get_insurance_policies(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Get all insurance policies for the current user."""
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.INSURANCE_POLICY,
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     return [_asset_to_response(a) for a in assets]
 
 
 @router.get("/summary", response_model=InsuranceSummary)
 async def get_insurance_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Get insurance portfolio summary."""
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.INSURANCE_POLICY,
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     policies = [_asset_to_response(a) for a in assets]
     active = [p for p in policies if p.is_active]
     return InsuranceSummary(
@@ -130,6 +138,7 @@ async def get_insurance_policy(
 @router.post("/", response_model=InsurancePolicyResponse, status_code=status.HTTP_201_CREATED)
 async def create_insurance_policy(
     data: InsurancePolicyCreate,
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -150,6 +159,7 @@ async def create_insurance_policy(
             total_invested=data.total_premium_paid or 0.0,
             current_value=current_value,
             purchase_date=datetime.combine(data.policy_start_date, datetime.min.time()),
+            portfolio_id=portfolio_id or data.portfolio_id,
             is_active=data.is_active,
             notes=data.notes,
             details={

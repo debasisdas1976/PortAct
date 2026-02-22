@@ -64,6 +64,7 @@ async def upload_statement(
     statement_type: StatementType = Form(...),
     institution_name: str = Form(None),
     password: str = Form(None),
+    portfolio_id: int = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -133,18 +134,29 @@ async def upload_statement(
     
     # Process statement asynchronously (in a real app, use Celery or similar)
     try:
-        process_statement(new_statement.id, db)
+        process_statement(new_statement.id, db, portfolio_id=portfolio_id)
     except Exception as e:
         logger.error(f"Error processing statement {new_statement.id}: {e}")
         new_statement.status = StatementStatus.FAILED
         new_statement.error_message = str(e)
         db.commit()
     
+    # Refresh to get updated status after processing
+    db.refresh(new_statement)
+
+    # Build response message based on processing outcome
+    if new_statement.status == StatementStatus.FAILED:
+        message = f"Statement uploaded but processing failed: {new_statement.error_message or 'Unknown error'}"
+    elif new_statement.assets_found and new_statement.assets_found > 0:
+        message = f"Statement processed successfully. {new_statement.assets_found} asset(s) extracted."
+    else:
+        message = "Statement uploaded and processed, but no assets could be extracted. Please check the file format and try again."
+
     return StatementUploadResponse(
         statement_id=new_statement.id,
         filename=file.filename,
         status=new_statement.status.value,
-        message="Statement uploaded and processing started"
+        message=message
     )
 
 

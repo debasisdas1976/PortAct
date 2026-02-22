@@ -24,8 +24,12 @@ import {
   Tooltip,
   Switch,
   FormControlLabel,
+  MenuItem,
 } from '@mui/material';
 import { Add, Edit, Delete, Work as GratuityIcon, InfoOutlined } from '@mui/icons-material';
+import { useSelector } from 'react-redux';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { RootState } from '../store';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -58,6 +62,7 @@ interface GratuitySummary {
 }
 
 const emptyForm = {
+  portfolio_id: '' as number | '',
   nickname: '',
   employer_name: '',
   employee_name: '',
@@ -69,6 +74,8 @@ const emptyForm = {
 
 const Gratuity: React.FC = () => {
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [summary, setSummary] = useState<GratuitySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -80,7 +87,7 @@ const Gratuity: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/gratuity/summary');
+      const response = await api.get('/gratuity/summary', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       setSummary(response.data);
     } catch (err) {
       setLoadError(getErrorMessage(err, 'Failed to load gratuity data'));
@@ -91,20 +98,21 @@ const Gratuity: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [selectedPortfolioId]);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
 
   const handleOpenAdd = () => {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({...emptyForm, portfolio_id: selectedPortfolioId || ''});
     setDialogOpen(true);
   };
 
   const handleOpenEdit = (account: GratuityAccount) => {
     setEditingId(account.id);
     setForm({
+      portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
       nickname: account.nickname,
       employer_name: account.employer_name,
       employee_name: account.employee_name,
@@ -127,6 +135,7 @@ const Gratuity: React.FC = () => {
       return;
     }
     const payload = {
+      portfolio_id: form.portfolio_id || undefined,
       nickname: form.nickname,
       employer_name: form.employer_name,
       employee_name: form.employee_name,
@@ -325,6 +334,19 @@ const Gratuity: React.FC = () => {
               fullWidth
               helperText="e.g., Current Job, Previous Employer"
             />
+            <TextField
+              select
+              fullWidth
+              margin="normal"
+              label="Portfolio"
+              value={form.portfolio_id}
+              onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+            >
+              <MenuItem value="">None</MenuItem>
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </TextField>
             <TextField
               label="Employer Name"
               value={form.employer_name}

@@ -27,7 +27,7 @@ class InsurancePolicyBase(BaseModel):
 
 
 class InsurancePolicyCreate(InsurancePolicyBase):
-    pass
+    portfolio_id: Optional[int] = None
 
 
 class InsurancePolicyUpdate(BaseModel):
@@ -53,6 +53,12 @@ class InsurancePolicyResponse(InsurancePolicyBase):
     id: int
     user_id: int
     asset_id: int
+    # Override base fields to allow incomplete data in responses
+    policy_name: str = ""
+    policy_number: str = ""
+    insurer_name: str = ""
+    policy_type: str = ""
+    insured_name: str = ""
     annual_premium: float   # Normalised to annual regardless of frequency
     created_at: datetime
     updated_at: Optional[datetime] = None

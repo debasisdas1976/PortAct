@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     auth, users, assets, transactions, statements, alerts, dashboard, prices,
     bank_accounts, demat_accounts, crypto_accounts, crypto_exchanges, banks, brokers, expense_categories, expenses, bank_statements, ppf, pf, mutual_fund_holdings, ssy, nps,
-    gratuity, insurance, fixed_deposit, recurring_deposit, portfolio_admin, settings, real_estate
+    gratuity, insurance, fixed_deposit, recurring_deposit, portfolio_admin, settings, real_estate, portfolios, asset_types, institutions
 )
 
 api_router = APIRouter()
@@ -37,5 +37,8 @@ api_router.include_router(recurring_deposit.router, prefix="/recurring-deposits"
 api_router.include_router(portfolio_admin.router, prefix="/portfolio", tags=["Portfolio Admin"])
 api_router.include_router(settings.router, prefix="/settings", tags=["Application Settings"])
 api_router.include_router(real_estate.router, prefix="/real-estates", tags=["Real Estate"])
+api_router.include_router(portfolios.router, prefix="/portfolios", tags=["Portfolios"])
+api_router.include_router(asset_types.router, prefix="/asset-types", tags=["Asset Types"])
+api_router.include_router(institutions.router, prefix="/institutions", tags=["Institutions"])
 
 # Made with Bob

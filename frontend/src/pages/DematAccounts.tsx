@@ -32,11 +32,14 @@ import {
   Visibility,
   VisibilityOff
 } from '@mui/icons-material';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 import axios from 'axios';
 import api, { brokersAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import CompanyIcon from '../components/CompanyIcon';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
 interface DematAccount {
   id: number;
@@ -58,12 +61,14 @@ interface DematAccount {
 
 const DematAccounts: React.FC = () => {
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [accounts, setAccounts] = useState<DematAccount[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [openUploadDialog, setOpenUploadDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState<DematAccount | null>(null);
   const [formData, setFormData] = useState({
-    broker_name: 'zerodha',
+    broker_name: '',
     account_market: 'DOMESTIC',
     account_id: '',
     account_holder_name: '',
@@ -71,7 +76,8 @@ const DematAccounts: React.FC = () => {
     cash_balance: 0,
     cash_balance_usd: 0,
     nickname: '',
-    is_active: true
+    is_active: true,
+    portfolio_id: '' as number | '',
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadBroker, setUploadBroker] = useState('');
@@ -79,6 +85,7 @@ const DematAccounts: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
 
   const statementTypes = [
     { value: 'broker_statement', label: 'Broker Statement' },
@@ -93,13 +100,16 @@ const DematAccounts: React.FC = () => {
   useEffect(() => {
     fetchAccounts();
     fetchBrokerNames();
-  }, []);
+  }, [selectedPortfolioId]);
 
   const fetchAccounts = async () => {
     try {
       const token = localStorage.getItem('token');
+      const params: any = {};
+      if (selectedPortfolioId) params.portfolio_id = selectedPortfolioId;
       const response = await axios.get('http://localhost:8000/api/v1/demat-accounts/', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        params
       });
       setAccounts(response.data);
     } catch (err) {
@@ -116,7 +126,7 @@ const DematAccounts: React.FC = () => {
           : []
       );
     } catch (err) {
-      console.error('Failed to fetch brokers:', err);
+      notify.error(getErrorMessage(err, 'Failed to load broker list'));
     }
   };
 
@@ -132,12 +142,13 @@ const DematAccounts: React.FC = () => {
         cash_balance: account.cash_balance,
         cash_balance_usd: account.cash_balance_usd || 0,
         nickname: account.nickname || '',
-        is_active: account.is_active
+        is_active: account.is_active,
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
       });
     } else {
       setEditingAccount(null);
       setFormData({
-        broker_name: 'zerodha',
+        broker_name: '',
         account_market: 'DOMESTIC',
         account_id: '',
         account_holder_name: '',
@@ -145,7 +156,8 @@ const DematAccounts: React.FC = () => {
         cash_balance: 0,
         cash_balance_usd: 0,
         nickname: '',
-        is_active: true
+        is_active: true,
+        portfolio_id: selectedPortfolioId || '',
       });
     }
     setOpenDialog(true);
@@ -162,9 +174,10 @@ const DematAccounts: React.FC = () => {
       
       // Prepare data based on account market type
       const isInternational = formData.account_market === 'INTERNATIONAL';
+      const baseData = { ...formData, portfolio_id: formData.portfolio_id || undefined };
       const submitData = isInternational
-        ? { ...formData, cash_balance: 0 } // Backend will calculate INR from USD
-        : { ...formData, cash_balance_usd: 0 }; // Domestic accounts don't need USD
+        ? { ...baseData, cash_balance: 0 } // Backend will calculate INR from USD
+        : { ...baseData, cash_balance_usd: 0 }; // Domestic accounts don't need USD
       
       if (editingAccount) {
         await axios.put(
@@ -224,6 +237,9 @@ const DematAccounts: React.FC = () => {
       if (password) {
         formData.append('password', password);
       }
+      if (uploadPortfolioId) {
+        formData.append('portfolio_id', String(uploadPortfolioId));
+      }
 
       await api.post('/statements/upload', formData, {
         headers: {
@@ -265,7 +281,7 @@ const DematAccounts: React.FC = () => {
           <Button
             variant="outlined"
             startIcon={<UploadIcon />}
-            onClick={() => setOpenUploadDialog(true)}
+            onClick={() => { setUploadPortfolioId(selectedPortfolioId || ''); setOpenUploadDialog(true); }}
           >
             Upload Statement
           </Button>
@@ -496,14 +512,28 @@ const DematAccounts: React.FC = () => {
               }}
             />
 
+            <TextField
+              select
+              label="Portfolio"
+              value={uploadPortfolioId}
+              onChange={(e) => setUploadPortfolioId(e.target.value ? Number(e.target.value) : '')}
+              fullWidth
+              helperText="Assets from this statement will be assigned to the selected portfolio"
+            >
+              <MenuItem value="">Default Portfolio</MenuItem>
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </TextField>
+
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenUploadDialog(false)} disabled={uploading}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleUploadStatement} 
+          <Button
+            onClick={handleUploadStatement}
             variant="contained" 
             disabled={uploading || !selectedFile}
             startIcon={uploading ? <CircularProgress size={20} /> : <UploadIcon />}
@@ -575,6 +605,19 @@ const DematAccounts: React.FC = () => {
               onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
               fullWidth
             />
+
+            <TextField
+              select
+              label="Portfolio"
+              value={formData.portfolio_id}
+              onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              fullWidth
+            >
+              <MenuItem value="">None</MenuItem>
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </TextField>
 
             <TextField
               label={formData.account_market === 'INTERNATIONAL' ? 'Cash Balance (USD)' : 'Cash Balance (INR)'}

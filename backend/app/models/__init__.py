@@ -12,12 +12,16 @@ from app.models.crypto_exchange import CryptoExchangeMaster
 from app.models.expense_category import ExpenseCategory
 from app.models.expense import Expense, ExpenseType, PaymentMethod
 from app.models.mutual_fund_holding import MutualFundHolding
+from app.models.portfolio import Portfolio
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
+from app.models.asset_type_master import AssetTypeMaster
+from app.models.institution import InstitutionMaster
 
 __all__ = [
     "User",
     "Asset",
     "AssetType",
+    "Portfolio",
     "Transaction",
     "TransactionType",
     "Statement",
@@ -40,6 +44,8 @@ __all__ = [
     "MutualFundHolding",
     "PortfolioSnapshot",
     "AssetSnapshot",
+    "AssetTypeMaster",
+    "InstitutionMaster",
 ]
 
 # Made with Bob

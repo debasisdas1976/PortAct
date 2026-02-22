@@ -18,6 +18,9 @@ class DematAccount(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
+    # Portfolio association
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=True)
+
     # Account details
     broker_name = Column(String(50), nullable=False, index=True)  # References brokers.name
     account_market = Column(Enum(AccountMarket), nullable=False, default=AccountMarket.DOMESTIC, server_default='DOMESTIC')
@@ -45,6 +48,7 @@ class DematAccount(Base):
     
     # Relationships
     user = relationship("User", back_populates="demat_accounts")
+    portfolio = relationship("Portfolio", foreign_keys=[portfolio_id])
     assets = relationship("Asset", back_populates="demat_account", cascade="all, delete-orphan", passive_deletes=True)
 
 # Made with Bob

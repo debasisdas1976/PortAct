@@ -34,8 +34,12 @@ import {
   Visibility as ViewIcon
 } from '@mui/icons-material';
 import axios from 'axios';
+import { institutionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelector } from 'react-redux';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { RootState } from '../store';
 
 interface NPSAccount {
   id: number;
@@ -90,6 +94,7 @@ const NPS: React.FC = () => {
   const [transactions, setTransactions] = useState<NPSTransaction[]>([]);
   const [tabValue, setTabValue] = useState(0);
   const [formData, setFormData] = useState({
+    portfolio_id: '' as number | '',
     nickname: '',
     pran_number: '',
     account_holder_name: '',
@@ -121,28 +126,34 @@ const NPS: React.FC = () => {
   const [uploadAccountId, setUploadAccountId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
 
-  const fundManagers = [
-    'SBI Pension Funds',
-    'LIC Pension Fund',
-    'UTI Retirement Solutions',
-    'ICICI Prudential Pension Fund',
-    'HDFC Pension Management',
-    'Kotak Mahindra Pension Fund',
-    'Aditya Birla Sun Life Pension',
-    'Other'
-  ];
+  const [fundManagers, setFundManagers] = useState<string[]>([]);
 
   useEffect(() => {
     fetchAccounts();
     fetchSummary();
-  }, []);
+    fetchFundManagers();
+  }, [selectedPortfolioId]);
+
+  const fetchFundManagers = async () => {
+    try {
+      const data = await institutionsAPI.getAll({ is_active: true, category: 'nps_fund_manager' });
+      const labels = Array.isArray(data) ? data.map((fm: any) => fm.display_label) : [];
+      labels.push('Other');
+      setFundManagers(labels);
+    } catch {
+      setFundManagers(['Other']);
+    }
+  };
 
   const fetchAccounts = async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get('http://localhost:8000/api/v1/nps/', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {}
       });
       setAccounts(response.data);
       // Auto-select first account to enable Transactions tab
@@ -159,7 +170,8 @@ const NPS: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get('http://localhost:8000/api/v1/nps/summary', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {}
       });
       setSummary(response.data);
     } catch (err) {
@@ -183,6 +195,7 @@ const NPS: React.FC = () => {
     if (account) {
       setEditingAccount(account);
       setFormData({
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
         nickname: account.nickname,
         pran_number: account.pran_number,
         account_holder_name: account.account_holder_name,
@@ -202,6 +215,7 @@ const NPS: React.FC = () => {
     } else {
       setEditingAccount(null);
       setFormData({
+        portfolio_id: selectedPortfolioId || '',
         nickname: '',
         pran_number: '',
         account_holder_name: '',
@@ -242,7 +256,7 @@ const NPS: React.FC = () => {
       } else {
         await axios.post(
           'http://localhost:8000/api/v1/nps/',
-          formData,
+          { ...formData, portfolio_id: formData.portfolio_id || undefined },
           { headers: { Authorization: `Bearer ${token}` } }
         );
         notify.success('Account added successfully');
@@ -396,10 +410,10 @@ const NPS: React.FC = () => {
         setTransactions(accountResponse.data.transactions || []);
         setTabValue(1);
       } catch (err) {
-        console.error('Failed to fetch transactions after upload');
+        notify.error(getErrorMessage(err, 'Failed to refresh transactions after upload'));
       }
     } catch (err: any) {
-      notify.error(err.response?.data?.detail || 'Failed to upload statement');
+      notify.error(getErrorMessage(err, 'Failed to upload statement'));
     } finally {
       setLoading(false);
     }
@@ -686,6 +700,20 @@ const NPS: React.FC = () => {
                 required
                 helperText="A friendly name to identify this NPS account"
               />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                select
+                label="Portfolio"
+                value={formData.portfolio_id}
+                onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              >
+                <MenuItem value="">None</MenuItem>
+                {portfolios.map((p: any) => (
+                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                ))}
+              </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField

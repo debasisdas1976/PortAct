@@ -15,17 +15,25 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def _is_isin(identifier: str) -> bool:
+    """Check if a string looks like an ISIN (e.g., INE002A01018 for stocks, INF... for MFs)."""
+    return bool(identifier and len(identifier) == 12 and identifier[:2].isalpha() and identifier[2:].isalnum())
+
+
 def get_stock_price_yfinance(symbol: str) -> float:
     """
     Get stock price using yfinance library.
     Handles NSE session management internally.
-    Appends '.NS' for Indian stocks if not already suffixed.
+    Supports both ticker symbols (appends '.NS') and ISIN codes (passed as-is).
     """
     try:
         import yfinance as yf
 
-        # Add NSE suffix if not already present
-        yf_symbol = symbol if ('.' in symbol) else f"{symbol}.NS"
+        # ISINs are resolved natively by yfinance; only append .NS for ticker symbols
+        if _is_isin(symbol):
+            yf_symbol = symbol
+        else:
+            yf_symbol = symbol if ('.' in symbol) else f"{symbol}.NS"
         ticker = yf.Ticker(yf_symbol)
         info = ticker.fast_info
         price = getattr(info, 'last_price', None)
@@ -298,10 +306,15 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
         lookup_symbol = asset.api_symbol if asset.api_symbol else asset.symbol
         
         if asset.asset_type == AssetType.STOCK:
-            # Try to get stock price from NSE
-            new_price = get_stock_price_nse(lookup_symbol)
+            # Prioritize ISIN for price lookup, fall back to api_symbol/symbol
+            if asset.isin:
+                new_price = get_stock_price_yfinance(asset.isin)
+                if new_price:
+                    logger.info(f"Fetched stock price via ISIN {asset.isin} for {asset.symbol}")
             if not new_price:
-                error_message = f"Failed to fetch NSE price for {lookup_symbol}"
+                new_price = get_stock_price_nse(lookup_symbol)
+            if not new_price:
+                error_message = f"Failed to fetch NSE price for {asset.isin or lookup_symbol}"
             
         elif asset.asset_type == AssetType.US_STOCK:
             # Get US stock price and convert to INR
@@ -392,9 +405,15 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
 
         elif asset.asset_type in [AssetType.REIT, AssetType.INVIT, AssetType.SOVEREIGN_GOLD_BOND]:
             # REITs, InvITs, and SGBs are listed on NSE — fetch like stocks
-            new_price = get_stock_price_nse(lookup_symbol)
+            # Prioritize ISIN for price lookup, fall back to api_symbol/symbol
+            if asset.isin:
+                new_price = get_stock_price_yfinance(asset.isin)
+                if new_price:
+                    logger.info(f"Fetched {asset.asset_type.value} price via ISIN {asset.isin} for {asset.symbol}")
             if not new_price:
-                error_message = f"Failed to fetch price for {lookup_symbol} ({asset.asset_type.value})"
+                new_price = get_stock_price_nse(lookup_symbol)
+            if not new_price:
+                error_message = f"Failed to fetch price for {asset.isin or lookup_symbol} ({asset.asset_type.value})"
 
         if new_price and new_price > 0:
             asset.current_price = new_price

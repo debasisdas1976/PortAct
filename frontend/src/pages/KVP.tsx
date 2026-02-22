@@ -2,13 +2,16 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Card, CardContent, CircularProgress, Grid, Paper, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Typography, Alert, Button,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, MenuItem,
 } from '@mui/material';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 import { Add, Edit, Delete } from '@mui/icons-material';
 import { assetsAPI } from '../services/api';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
 interface AssetItem {
   id: number; name: string; symbol: string; total_invested: number; current_value: number;
@@ -17,13 +20,15 @@ interface AssetItem {
 
 const ASSET_TYPE = 'kvp';
 const PAGE_TITLE = 'Kisan Vikas Patra (KVP)';
-const EMPTY_FORM = { name: '', symbol: '', total_invested: '', current_value: '', interest_rate: '', maturity_date: '', broker_name: '', notes: '' };
+const EMPTY_FORM = { name: '', symbol: '', total_invested: '', current_value: '', interest_rate: '', maturity_date: '', broker_name: '', notes: '', portfolio_id: '' as number | '' };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
 
 const KVP: React.FC = () => {
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -35,21 +40,22 @@ const KVP: React.FC = () => {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get('/assets/');
+      const res = await api.get('/assets/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       setAssets((res.data as AssetItem[]).filter((a) => a.asset_type?.toLowerCase() === ASSET_TYPE));
     } catch (err) { notify.error(getErrorMessage(err, 'Failed to load data')); } finally { setLoading(false); }
-  }, [notify]);
+  }, [notify, selectedPortfolioId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const totalInvested = assets.reduce((s, a) => s + (a.total_invested || 0), 0);
   const totalValue = assets.reduce((s, a) => s + (a.current_value || 0), 0);
 
-  const handleAdd = () => { setEditingId(null); setForm(EMPTY_FORM); setDialogOpen(true); };
+  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || '' }); setDialogOpen(true); };
   const handleEdit = (asset: AssetItem) => {
     setEditingId(asset.id);
     setForm({ name: asset.name || '', symbol: asset.symbol || '', total_invested: String(asset.total_invested || ''), current_value: String(asset.current_value || ''),
-      interest_rate: String(asset.details?.interest_rate || ''), maturity_date: asset.details?.maturity_date || '', broker_name: asset.broker_name || '', notes: asset.notes || '' });
+      interest_rate: String(asset.details?.interest_rate || ''), maturity_date: asset.details?.maturity_date || '', broker_name: asset.broker_name || '', notes: asset.notes || '',
+      portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '' });
     setDialogOpen(true);
   };
 
@@ -61,7 +67,7 @@ const KVP: React.FC = () => {
     const details: Record<string, any> = {};
     if (form.interest_rate) details.interest_rate = parseFloat(form.interest_rate);
     if (form.maturity_date) details.maturity_date = form.maturity_date;
-    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, total_invested: invested, quantity: 1, purchase_price: invested, current_price: value, broker_name: form.broker_name || undefined, notes: form.notes || undefined, details };
+    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, total_invested: invested, quantity: 1, purchase_price: invested, current_price: value, broker_name: form.broker_name || undefined, notes: form.notes || undefined, details, portfolio_id: form.portfolio_id || undefined };
     try {
       setSaving(true);
       if (editingId) { await assetsAPI.update(editingId, payload); } else { await assetsAPI.create(payload); }
@@ -129,6 +135,7 @@ const KVP: React.FC = () => {
             <Grid item xs={12} sm={6}><TextField fullWidth label="Current Value" type="number" value={form.current_value} onChange={(e) => setForm({ ...form, current_value: e.target.value })} inputProps={{ min: 0, step: '0.01' }} helperText="Leave empty to use invested amount" /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Interest Rate (%)" type="number" value={form.interest_rate} onChange={(e) => setForm({ ...form, interest_rate: e.target.value })} inputProps={{ min: 0, step: '0.01' }} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Maturity Date" type="date" value={form.maturity_date} onChange={(e) => setForm({ ...form, maturity_date: e.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
+            <Grid item xs={12} sm={6}><TextField select fullWidth label="Portfolio" value={form.portfolio_id} onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}>{portfolios.map((p: any) => (<MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>))}</TextField></Grid>
             <Grid item xs={12}><TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Grid>
           </Grid>
         </DialogContent>

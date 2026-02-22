@@ -17,6 +17,7 @@ import {
   TableRow,
   IconButton,
   Tooltip,
+  Chip,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -25,6 +26,7 @@ import {
   ShowChart,
   Visibility,
   VisibilityOff,
+  ArrowBack,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchPortfolioSummary } from '../store/slices/portfolioSlice';
@@ -32,9 +34,10 @@ import { fetchAssets } from '../store/slices/assetsSlice';
 import PortfolioChart from '../components/charts/PortfolioChart';
 import PerformanceChart from '../components/charts/PerformanceChart';
 import AssetAllocationChart from '../components/charts/AssetAllocationChart';
-import api from '../services/api';
+import api, { assetTypesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
 interface BankAccount {
   id: number;
@@ -117,29 +120,48 @@ const Dashboard: React.FC = () => {
   const { summary, loading, error } = useSelector((state: RootState) => state.portfolio);
   const { notify } = useNotification();
   const { assets } = useSelector((state: RootState) => state.assets);
+  const selectedPortfolioId = useSelectedPortfolio();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
   const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematAccountsLoading, setDematAccountsLoading] = useState(false);
   const [hideNumbers, setHideNumbers] = useState(false);
+  const [assetTypeMap, setAssetTypeMap] = useState<Record<string, { category: string; displayLabel: string }>>({});
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        await dispatch(fetchPortfolioSummary());
-        await dispatch(fetchAssets());
+        await dispatch(fetchPortfolioSummary(selectedPortfolioId));
+        await dispatch(fetchAssets(selectedPortfolioId));
         await Promise.all([fetchBankAccounts(), fetchDematAccounts()]);
       } catch (err) {
         notify.error(getErrorMessage(err, 'Failed to load dashboard data'));
       }
     };
     fetchData();
-  }, [dispatch]);
+  }, [dispatch, selectedPortfolioId]);
+
+  useEffect(() => {
+    const fetchAssetTypeMap = async () => {
+      try {
+        const data = await assetTypesAPI.getAll();
+        const map: Record<string, { category: string; displayLabel: string }> = {};
+        data.forEach((at: any) => {
+          map[at.name] = { category: at.category, displayLabel: at.display_label };
+        });
+        setAssetTypeMap(map);
+      } catch {
+        // Fallback: chart will show "Other" for unmapped types
+      }
+    };
+    fetchAssetTypeMap();
+  }, []);
 
   const fetchBankAccounts = async () => {
     try {
       setBankAccountsLoading(true);
-      const response = await api.get('/bank-accounts/');
+      const response = await api.get('/bank-accounts/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       setBankAccounts(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load data'));
@@ -151,7 +173,7 @@ const Dashboard: React.FC = () => {
   const fetchDematAccounts = async () => {
     try {
       setDematAccountsLoading(true);
-      const response = await api.get('/demat-accounts/');
+      const response = await api.get('/demat-accounts/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       setDematAccounts(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load data'));
@@ -195,42 +217,75 @@ const Dashboard: React.FC = () => {
   const totalBankBalance = bankAccounts.reduce((sum, a) => sum + a.current_balance, 0);
   const totalDematCash = dematAccounts.reduce((sum, a) => sum + a.cash_balance, 0);
 
-  // Calculate asset allocation data
-  const assetsByType = (assets || []).reduce((acc: any, asset: any) => {
-    const type = asset.asset_type || 'Other';
-    if (!acc[type]) {
-      acc[type] = { value: 0, count: 0, invested: 0 };
-    }
-    acc[type].value += asset.current_value || 0;
-    acc[type].count += 1;
-    acc[type].invested += asset.total_invested || 0;
-    return acc;
-  }, {});
+  // Build category-based allocation data
+  const assetsByCategory: Record<string, { value: number; count: number; invested: number }> = {};
+  const assetsByTypeInCategory: Record<string, Record<string, { value: number; count: number; invested: number }>> = {};
 
-  // Add bank accounts as a separate category
+  (assets || []).forEach((asset: any) => {
+    const type = asset.asset_type || 'other';
+    const category = assetTypeMap[type]?.category || 'Other';
+
+    if (!assetsByCategory[category]) {
+      assetsByCategory[category] = { value: 0, count: 0, invested: 0 };
+    }
+    assetsByCategory[category].value += asset.current_value || 0;
+    assetsByCategory[category].count += 1;
+    assetsByCategory[category].invested += asset.total_invested || 0;
+
+    if (!assetsByTypeInCategory[category]) {
+      assetsByTypeInCategory[category] = {};
+    }
+    if (!assetsByTypeInCategory[category][type]) {
+      assetsByTypeInCategory[category][type] = { value: 0, count: 0, invested: 0 };
+    }
+    assetsByTypeInCategory[category][type].value += asset.current_value || 0;
+    assetsByTypeInCategory[category][type].count += 1;
+    assetsByTypeInCategory[category][type].invested += asset.total_invested || 0;
+  });
+
+  // Add bank accounts and demat cash
   if (bankAccounts.length > 0) {
-    assetsByType['Bank Accounts'] = {
+    assetsByCategory['Bank Accounts'] = {
       value: totalBankBalance,
       count: bankAccounts.length,
       invested: totalBankBalance,
     };
   }
 
-  // Add demat cash balance as a separate category
   const dematWithCash = dematAccounts.filter(a => a.cash_balance > 0);
   if (dematWithCash.length > 0) {
-    assetsByType['Demat Cash'] = {
+    assetsByCategory['Demat Cash'] = {
       value: totalDematCash,
       count: dematWithCash.length,
       invested: totalDematCash,
     };
   }
 
-  const totalValue = Object.values(assetsByType).reduce((sum: number, item: any) => sum + item.value, 0);
-  
-  const allocationData = Object.entries(assetsByType)
-    .map(([type, data]: [string, any]) => ({
-      type,
+  // Get display name for an asset type key
+  const getDisplayName = (type: string) => {
+    return assetTypeMap[type]?.displayLabel || type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
+
+  // Determine current view data based on drill-down state
+  const isShowingCategories = !selectedCategory;
+  const currentViewData = selectedCategory && assetsByTypeInCategory[selectedCategory]
+    ? assetsByTypeInCategory[selectedCategory]
+    : assetsByCategory;
+
+  const totalValue = Object.values(currentViewData).reduce((sum, item) => sum + item.value, 0);
+
+  const chartData = Object.entries(currentViewData)
+    .map(([key, data]) => ({
+      name: isShowingCategories ? key : getDisplayName(key),
+      value: data.value,
+    }))
+    .filter(item => item.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  const allocationData = Object.entries(currentViewData)
+    .map(([key, data]) => ({
+      type: key,
+      displayName: isShowingCategories ? key : getDisplayName(key),
       value: data.value,
       count: data.count,
       invested: data.invested,
@@ -240,40 +295,9 @@ const Dashboard: React.FC = () => {
     }))
     .sort((a, b) => b.value - a.value);
 
-  const formatAssetType = (type: string) => {
-    // Map specific asset types to their full names
-    const assetTypeMap: { [key: string]: string } = {
-      'ppf': 'Public Provident Fund',
-      'pf': 'Provident Fund',
-      'nps': 'National Pension System',
-      'ssy': 'Sukanya Samriddhi Yojana',
-      'gratuity': 'Gratuity',
-      'insurance_policy': 'Insurance',
-      'us_stock': 'US Stocks',
-      'equity_mutual_fund': 'Equity Mutual Funds',
-      'debt_mutual_fund': 'Debt Mutual Funds',
-      'fixed_deposit': 'Fixed Deposit',
-      'recurring_deposit': 'Recurring Deposit',
-      'real_estate': 'Real Estate',
-      'savings_account': 'Savings Account',
-      'nsc': 'National Savings Certificate',
-      'kvp': 'Kisan Vikas Patra',
-      'scss': 'Senior Citizens Savings Scheme',
-      'mis': 'Monthly Income Scheme',
-      'corporate_bond': 'Corporate Bonds',
-      'rbi_bond': 'RBI Bonds',
-      'tax_saving_bond': 'Tax Saving Bonds',
-      'reit': 'REITs',
-      'invit': 'InvITs',
-      'sovereign_gold_bond': 'Sovereign Gold Bonds',
-    };
-    
-    // Return mapped name if exists, otherwise format the type
-    if (assetTypeMap[type.toLowerCase()]) {
-      return assetTypeMap[type.toLowerCase()];
-    }
-    
-    return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  const handleCategoryClick = (categoryName: string) => {
+    if (categoryName === 'Bank Accounts' || categoryName === 'Demat Cash') return;
+    setSelectedCategory(categoryName);
   };
 
   return (
@@ -352,21 +376,36 @@ const Dashboard: React.FC = () => {
             <Typography variant="h6" gutterBottom>
               Asset Allocation
             </Typography>
-            <AssetAllocationChart />
+            <AssetAllocationChart
+              data={chartData}
+              selectedCategory={selectedCategory}
+              onSliceClick={handleCategoryClick}
+              onBack={() => setSelectedCategory(null)}
+            />
           </Paper>
         </Grid>
         
         {/* Asset Allocation Table */}
         <Grid item xs={12}>
           <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Asset Allocation Details
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              {selectedCategory && (
+                <IconButton size="small" onClick={() => setSelectedCategory(null)} title="Back to categories">
+                  <ArrowBack fontSize="small" />
+                </IconButton>
+              )}
+              <Typography variant="h6">
+                {selectedCategory ? `${selectedCategory} — Asset Types` : 'Asset Allocation by Category'}
+              </Typography>
+              {selectedCategory && (
+                <Chip label={selectedCategory} size="small" color="primary" variant="outlined" />
+              )}
+            </Box>
             <TableContainer>
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell><strong>Asset Type</strong></TableCell>
+                    <TableCell><strong>{isShowingCategories ? 'Category' : 'Asset Type'}</strong></TableCell>
                     <TableCell align="right"><strong>Count</strong></TableCell>
                     <TableCell align="right"><strong>Current Value</strong></TableCell>
                     <TableCell align="right"><strong>Invested</strong></TableCell>
@@ -387,8 +426,20 @@ const Dashboard: React.FC = () => {
                   ) : (
                     <>
                       {allocationData.map((row) => (
-                        <TableRow key={row.type}>
-                          <TableCell>{formatAssetType(row.type)}</TableCell>
+                        <TableRow
+                          key={row.type}
+                          hover
+                          sx={isShowingCategories && row.type !== 'Bank Accounts' && row.type !== 'Demat Cash'
+                            ? { cursor: 'pointer' }
+                            : {}
+                          }
+                          onClick={() => {
+                            if (isShowingCategories && row.type !== 'Bank Accounts' && row.type !== 'Demat Cash') {
+                              handleCategoryClick(row.type);
+                            }
+                          }}
+                        >
+                          <TableCell>{row.displayName}</TableCell>
                           <TableCell align="right">{hideNumbers ? '•••' : row.count}</TableCell>
                           <TableCell align="right">{formatCurrency(row.value, hideNumbers)}</TableCell>
                           <TableCell align="right">{formatCurrency(row.invested, hideNumbers)}</TableCell>
@@ -415,7 +466,7 @@ const Dashboard: React.FC = () => {
                       ))}
                       <TableRow sx={{ backgroundColor: 'action.hover' }}>
                         <TableCell><strong>Total</strong></TableCell>
-                        <TableCell align="right"><strong>{hideNumbers ? '•••' : (assets || []).length}</strong></TableCell>
+                        <TableCell align="right"><strong>{hideNumbers ? '•••' : allocationData.reduce((sum, row) => sum + row.count, 0)}</strong></TableCell>
                         <TableCell align="right"><strong>{formatCurrency(totalValue, hideNumbers)}</strong></TableCell>
                         <TableCell align="right">
                           <strong>

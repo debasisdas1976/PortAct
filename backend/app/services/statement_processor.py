@@ -124,13 +124,25 @@ def get_or_create_demat_account(
     return demat_account
 
 
-def process_statement(statement_id: int, db: Session):
+def process_statement(statement_id: int, db: Session, portfolio_id: int = None):
     """
-    Main function to process an uploaded statement
+    Main function to process an uploaded statement.
+    If portfolio_id is provided, all created assets will be assigned to that portfolio.
+    Otherwise, they will be assigned to the user's default portfolio.
     """
     statement = db.query(Statement).filter(Statement.id == statement_id).first()
     if not statement:
         return
+
+    # Resolve portfolio_id: use provided value or fall back to user's default
+    if not portfolio_id:
+        from app.models.portfolio import Portfolio
+        default_portfolio = db.query(Portfolio).filter(
+            Portfolio.user_id == statement.user_id,
+            Portfolio.is_default == True
+        ).first()
+        if default_portfolio:
+            portfolio_id = default_portfolio.id
     
     statement.status = StatementStatus.PROCESSING
     statement.processing_started_at = datetime.utcnow()
@@ -147,6 +159,9 @@ def process_statement(statement_id: int, db: Session):
         elif 'pdf' in statement.file_type.lower() and statement.password:
             # PDF with password - likely NSDL CAS or similar
             assets, transactions = parse_nsdl_cas_pdf(statement.file_path, statement, statement.password)
+        # Check for MF Central CAS PDF (non-password-protected)
+        elif 'pdf' in statement.file_type.lower() and is_mf_central_cas_pdf(statement.file_path):
+            assets, transactions = parse_mf_central_cas_pdf(statement.file_path, statement)
         else:
             # Extract data from file
             data = extract_text_from_file(statement.file_path, statement.file_type)
@@ -261,7 +276,11 @@ def process_statement(statement_id: int, db: Session):
             # Add demat_account_id to asset_data if available
             if demat_account:
                 asset_data['demat_account_id'] = demat_account.id
-            
+
+            # Assign portfolio_id to each asset
+            if portfolio_id:
+                asset_data['portfolio_id'] = portfolio_id
+
             # Lookup ISIN if not provided in statement
             if not asset_data.get('isin'):
                 try:
@@ -520,6 +539,151 @@ def parse_nsdl_cas_pdf(file_path: str, statement: Statement, password: str = Non
         raise Exception(f"Failed to parse NSDL CAS PDF: {str(e)}")
     
     return assets, transactions
+
+
+def _classify_mf_scheme(scheme_name: str) -> str:
+    """Classify a mutual fund scheme as equity, debt, or commodity based on its name."""
+    upper = scheme_name.upper()
+    # Gold/Silver ETFs and commodity funds
+    if any(kw in upper for kw in ['GOLD', 'SILVER', 'COMMODITY']):
+        return AssetType.COMMODITY.value
+    # Debt fund keywords
+    if any(kw in upper for kw in [
+        'GILT', 'LIQUID', 'OVERNIGHT', 'MONEY MARKET', 'FLOATING RATE',
+        'SAVINGS', 'FLEXI DEBT', 'DYNAMIC BOND', 'DEBT', 'SHORT DURATION',
+        'MEDIUM DURATION', 'LONG DURATION', 'ULTRA SHORT', 'LOW DURATION',
+        'CORPORATE BOND', 'BANKING & PSU', 'CREDIT RISK',
+    ]):
+        return AssetType.DEBT_MUTUAL_FUND.value
+    return AssetType.EQUITY_MUTUAL_FUND.value
+
+
+def parse_mf_central_cas_pdf(file_path: str, statement: Statement, password: str = None) -> tuple:
+    """
+    Parse MF Central Consolidated Account Summary (CAS) PDF.
+    Handles both SoA Holdings and Demat Holdings sections using table extraction.
+    Returns (assets, transactions) tuple.
+    """
+    if not PDFPLUMBER_AVAILABLE:
+        raise Exception("pdfplumber library is required for MF Central CAS parsing. Install with: pip install pdfplumber")
+
+    assets = []
+    transactions = []
+
+    try:
+        open_kwargs = {"password": password} if password else {}
+        with pdfplumber.open(file_path, **open_kwargs) as pdf:
+            logger.info(f"Processing MF Central CAS PDF with {len(pdf.pages)} pages")
+
+            for page_num, page in enumerate(pdf.pages, 1):
+                tables = page.extract_tables()
+                if not tables:
+                    continue
+
+                for table in tables:
+                    if not table or len(table) < 2:
+                        continue
+
+                    header = table[0]
+                    if not header:
+                        continue
+
+                    # Normalise header strings for matching
+                    norm_header = [str(h).replace('\n', ' ').strip().lower() if h else '' for h in header]
+
+                    # Identify the table type by header keywords
+                    has_scheme = any('scheme' in h for h in norm_header)
+                    has_units = any('unit' in h for h in norm_header)
+                    if not (has_scheme and has_units):
+                        continue
+
+                    # Determine column indices
+                    id_col = 0  # Folio No. or Client Id
+                    scheme_col = next((i for i, h in enumerate(norm_header) if 'scheme' in h), 1)
+                    invested_col = next((i for i, h in enumerate(norm_header) if 'invested' in h), 2)
+                    units_col = next((i for i, h in enumerate(norm_header) if 'unit' in h), 3)
+                    nav_date_col = next((i for i, h in enumerate(norm_header) if 'nav date' in h), 4)
+                    nav_col = next((i for i, h in enumerate(norm_header) if h == 'nav'), 5)
+                    market_val_col = next((i for i, h in enumerate(norm_header) if 'market' in h), 6)
+
+                    is_soa = 'folio' in norm_header[0]
+
+                    for row in table[1:]:
+                        try:
+                            if not row or len(row) <= market_val_col:
+                                continue
+
+                            folio_or_client = str(row[id_col] or '').strip()
+                            scheme = str(row[scheme_col] or '').replace('\n', ' ').strip()
+                            if not scheme:
+                                continue
+
+                            def parse_indian_number(s: str) -> float:
+                                return float(str(s).replace(',', '').strip()) if s and str(s).strip() else 0.0
+
+                            invested = parse_indian_number(row[invested_col])
+                            units = parse_indian_number(row[units_col])
+                            nav = parse_indian_number(row[nav_col])
+                            market_value = parse_indian_number(row[market_val_col])
+
+                            if units == 0 and market_value == 0:
+                                continue
+
+                            # Calculate NAV from market value if NAV is 0
+                            if nav == 0 and units > 0 and market_value > 0:
+                                nav = market_value / units
+
+                            # If invested value is 0 (Demat section), use market value as fallback
+                            if invested == 0:
+                                invested = market_value
+
+                            asset_type = _classify_mf_scheme(scheme)
+                            section = 'SoA' if is_soa else 'Demat'
+                            account_id = f"MFCentral-{section}-{folio_or_client}"
+
+                            asset_data = {
+                                'asset_type': asset_type,
+                                'name': scheme[:100],
+                                'symbol': folio_or_client,
+                                'quantity': units,
+                                'purchase_price': nav,
+                                'current_price': nav,
+                                'current_value': market_value,
+                                'total_invested': invested,
+                                'account_id': account_id,
+                                'broker_name': 'mf_central',
+                                'statement_id': statement.id,
+                            }
+                            assets.append(asset_data)
+                            logger.info(f"  [{section}] {scheme[:50]} — {units} units, ₹{market_value:,.2f}")
+
+                        except (ValueError, IndexError):
+                            continue
+
+            logger.info(f"MF Central CAS: extracted {len(assets)} holdings")
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error parsing MF Central CAS PDF: {e}")
+        traceback.print_exc()
+        raise Exception(f"Failed to parse MF Central CAS PDF: {e}")
+
+    return assets, transactions
+
+
+def is_mf_central_cas_pdf(file_path: str, password: str = None) -> bool:
+    """Check if a PDF is an MF Central Consolidated Account Summary."""
+    if not PDFPLUMBER_AVAILABLE:
+        return False
+    try:
+        open_kwargs = {"password": password} if password else {}
+        with pdfplumber.open(file_path, **open_kwargs) as pdf:
+            if pdf.pages:
+                text = pdf.pages[0].extract_text() or ''
+                return 'MFCentral' in text or 'Consolidated Account Summary' in text
+    except Exception:
+        pass
+    return False
 
 
 def parse_nsdl_demat_holdings(text: str, statement: Statement, broker_name: str) -> List[Dict]:

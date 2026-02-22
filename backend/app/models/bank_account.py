@@ -21,6 +21,9 @@ class BankAccount(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
+    # Portfolio association
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=True)
+
     # Account details
     bank_name = Column(String(50), nullable=False, index=True)  # References banks.name
     account_type = Column(Enum(BankType), nullable=False, index=True)
@@ -49,6 +52,7 @@ class BankAccount(Base):
     
     # Relationships
     user = relationship("User", back_populates="bank_accounts")
+    portfolio = relationship("Portfolio", foreign_keys=[portfolio_id])
     expenses = relationship("Expense", back_populates="bank_account", cascade="all, delete-orphan")
 
 # Made with Bob

@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { assetsAPI } from '../../services/api';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 interface AssetsState {
   assets: any[];
@@ -15,12 +16,14 @@ const initialState: AssetsState = {
 
 export const fetchAssets = createAsyncThunk(
   'assets/fetchAll',
-  async (_, { rejectWithValue }) => {
+  async (portfolioId: number | null | undefined, { rejectWithValue }) => {
     try {
-      const response = await assetsAPI.getAll();
+      const params: any = {};
+      if (portfolioId) params.portfolio_id = portfolioId;
+      const response = await assetsAPI.getAll(params);
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch assets');
+      return rejectWithValue(getErrorMessage(error, 'Failed to load assets.'));
     }
   }
 );

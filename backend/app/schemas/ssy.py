@@ -27,7 +27,7 @@ class SSYAccountBase(BaseModel):
 
 class SSYAccountCreate(SSYAccountBase):
     """Schema for creating an SSY account"""
-    pass
+    portfolio_id: Optional[int] = None
 
 
 class SSYAccountUpdate(BaseModel):
@@ -80,9 +80,14 @@ class SSYAccountResponse(SSYAccountBase):
     id: int
     user_id: int
     asset_id: int
+    # Override base fields to allow incomplete data in responses
+    account_number: str = ""
+    bank_name: str = ""
+    girl_name: str = ""
+    guardian_name: str = ""
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 

@@ -33,9 +33,10 @@ import {
 import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, AccountBalance, Refresh, Delete, Warning, Edit, CheckCircle, CameraAlt, Error as ErrorIcon } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchAssets } from '../store/slices/assetsSlice';
-import api, { assetsAPI } from '../services/api';
+import api, { assetsAPI, assetTypesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
 interface Asset {
   id: number;
@@ -114,37 +115,13 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-const ASSET_TYPES = [
-  { value: 'stock', label: 'Stock' },
-  { value: 'us_stock', label: 'US Stock' },
-  { value: 'equity_mutual_fund', label: 'Equity Mutual Fund' },
-  { value: 'debt_mutual_fund', label: 'Debt Mutual Fund' },
-  { value: 'commodity', label: 'Commodity' },
-  { value: 'crypto', label: 'Crypto' },
-  { value: 'cash', label: 'Cash' },
-  { value: 'savings_account', label: 'Savings Account' },
-  { value: 'fixed_deposit', label: 'Fixed Deposit' },
-  { value: 'recurring_deposit', label: 'Recurring Deposit' },
-  { value: 'real_estate', label: 'Real Estate' },
-  { value: 'ppf', label: 'PPF' },
-  { value: 'pf', label: 'PF' },
-  { value: 'nps', label: 'NPS' },
-  { value: 'nsc', label: 'NSC' },
-  { value: 'kvp', label: 'KVP' },
-  { value: 'scss', label: 'SCSS' },
-  { value: 'mis', label: 'MIS' },
-  { value: 'corporate_bond', label: 'Corporate Bond' },
-  { value: 'rbi_bond', label: 'RBI Bond' },
-  { value: 'tax_saving_bond', label: 'Tax Saving Bond' },
-  { value: 'reit', label: 'REIT' },
-  { value: 'invit', label: 'InvIT' },
-  { value: 'sovereign_gold_bond', label: 'Sovereign Gold Bond' },
-];
+// Asset types will be fetched dynamically from the AssetTypeMaster API
 
 const Assets: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { assets, loading, error } = useSelector((state: RootState) => state.assets);
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [currentTab, setCurrentTab] = useState(0);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -163,12 +140,25 @@ const Assets: React.FC = () => {
   const [editingPriceUsd, setEditingPriceUsd] = useState<number>(0);
   const [editingPurchasePriceUsd, setEditingPurchasePriceUsd] = useState<number>(0);
   const [usdToInrRate, setUsdToInrRate] = useState<number>(85);
+  const [assetTypes, setAssetTypes] = useState<{ value: string; label: string }[]>([]);
 
   useEffect(() => {
-    dispatch(fetchAssets());
+    dispatch(fetchAssets(selectedPortfolioId));
     fetchBankAccounts();
     fetchDematAccounts();
-  }, [dispatch]);
+    fetchAssetTypes();
+  }, [dispatch, selectedPortfolioId]);
+
+  const fetchAssetTypes = async () => {
+    try {
+      const data = await assetTypesAPI.getAll({ is_active: true });
+      setAssetTypes(
+        Array.isArray(data) ? data.map((t: any) => ({ value: t.name, label: t.display_label })) : []
+      );
+    } catch {
+      setAssetTypes([]);
+    }
+  };
 
   const handleRefreshPrices = async () => {
     try {
@@ -179,7 +169,7 @@ const Assets: React.FC = () => {
 
       // Refresh assets after a short delay to show updated prices
       setTimeout(() => {
-        dispatch(fetchAssets());
+        dispatch(fetchAssets(selectedPortfolioId));
       }, 3000);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to refresh prices'));
@@ -207,7 +197,7 @@ const Assets: React.FC = () => {
   const fetchBankAccounts = async () => {
     try {
       setBankAccountsLoading(true);
-      const response = await api.get('/bank-accounts/');
+      const response = await api.get('/bank-accounts/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       setBankAccounts(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load bank accounts'));
@@ -219,7 +209,7 @@ const Assets: React.FC = () => {
   const fetchDematAccounts = async () => {
     try {
       setDematAccountsLoading(true);
-      const response = await api.get('/demat-accounts/');
+      const response = await api.get('/demat-accounts/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
       setDematAccounts(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load demat accounts'));
@@ -253,7 +243,7 @@ const Assets: React.FC = () => {
   };
 
   const getAssetTypeLabel = (type: string) => {
-    const assetType = ASSET_TYPES.find(t => t.value === type.toLowerCase());
+    const assetType = assetTypes.find(t => t.value === type.toLowerCase());
     return assetType ? assetType.label : type;
   };
 
@@ -1113,7 +1103,7 @@ const Assets: React.FC = () => {
         open={Boolean(anchorEl)}
         onClose={handleAssetTypeMenuClose}
       >
-        {ASSET_TYPES.map((type) => (
+        {assetTypes.map((type) => (
           <MenuItem
             key={type.value}
             onClick={() => handleAssetTypeChange(type.value)}

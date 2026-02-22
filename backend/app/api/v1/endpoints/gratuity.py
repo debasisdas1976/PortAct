@@ -8,7 +8,7 @@ Eligibility requires a minimum of 5 completed years of service.
 """
 import math
 from datetime import date, datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
@@ -50,15 +50,23 @@ def _compute_gratuity(basic_pay: float, date_of_joining: date) -> dict:
 
 def _asset_to_response(asset: Asset) -> GratuityAccountResponse:
     details = asset.details or {}
-    date_of_joining = date.fromisoformat(details["date_of_joining"])
-    basic_pay = details.get("basic_pay", 0.0)
+    # date_of_joining may be in details or derived from purchase_date
+    doj_str = details.get("date_of_joining")
+    if doj_str:
+        date_of_joining = date.fromisoformat(doj_str)
+    elif asset.purchase_date:
+        date_of_joining = asset.purchase_date.date() if hasattr(asset.purchase_date, 'date') else asset.purchase_date
+    else:
+        date_of_joining = date.today()
+    # basic_pay may be stored as basic_pay or last_drawn_salary
+    basic_pay = details.get("basic_pay") or details.get("last_drawn_salary", 0.0)
     computed = _compute_gratuity(basic_pay, date_of_joining)
     return GratuityAccountResponse(
         id=asset.id,
         user_id=asset.user_id,
         asset_id=asset.id,
         nickname=asset.name,
-        employer_name=asset.broker_name or "",
+        employer_name=asset.broker_name or details.get("employer_name", ""),
         employee_name=asset.account_holder_name or "",
         date_of_joining=date_of_joining,
         basic_pay=basic_pay,
@@ -72,27 +80,35 @@ def _asset_to_response(asset: Asset) -> GratuityAccountResponse:
 
 @router.get("/", response_model=List[GratuityAccountResponse])
 async def get_gratuity_accounts(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Get all gratuity accounts for the current user."""
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.GRATUITY,
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     return [_asset_to_response(a) for a in assets]
 
 
 @router.get("/summary", response_model=GratuitySummary)
 async def get_gratuity_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Get gratuity portfolio summary."""
-    assets = db.query(Asset).filter(
+    query = db.query(Asset).filter(
         Asset.user_id == current_user.id,
         Asset.asset_type == AssetType.GRATUITY,
-    ).all()
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     accounts = [_asset_to_response(a) for a in assets]
     return GratuitySummary(
         total_accounts=len(accounts),
@@ -122,6 +138,7 @@ async def get_gratuity_account(
 @router.post("/", response_model=GratuityAccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_gratuity_account(
     data: GratuityAccountCreate,
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -141,6 +158,7 @@ async def create_gratuity_account(
             total_invested=0.0,
             current_value=computed["gratuity_amount"],
             purchase_date=datetime.combine(data.date_of_joining, datetime.min.time()),
+            portfolio_id=portfolio_id or data.portfolio_id,
             is_active=data.is_active,
             notes=data.notes,
             details={

@@ -60,6 +60,7 @@ async def create_broker(
         display_label=data.display_label.strip(),
         broker_type=data.broker_type,
         supported_markets=data.supported_markets,
+        website=data.website,
         is_active=data.is_active,
         sort_order=data.sort_order,
     )

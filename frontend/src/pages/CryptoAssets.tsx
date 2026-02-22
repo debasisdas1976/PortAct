@@ -33,7 +33,10 @@ import {
   KeyboardArrowRight,
 } from '@mui/icons-material';
 import api, { cryptoExchangesAPI } from '../services/api';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 import { useNotification } from '../contexts/NotificationContext';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import { getErrorMessage } from '../utils/errorUtils';
 
 interface CryptoAsset {
@@ -84,6 +87,8 @@ const CryptoAssets: React.FC = () => {
   const [cryptoLabelMap, setCryptoLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
 
   // Add/Edit dialog
   const [openDialog, setOpenDialog] = useState(false);
@@ -96,6 +101,7 @@ const CryptoAssets: React.FC = () => {
     total_invested: 0,
     current_price: 0,
     crypto_account_id: '' as number | '',
+    portfolio_id: '' as number | '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -113,7 +119,7 @@ const CryptoAssets: React.FC = () => {
     try {
       setLoading(true);
       const [assetsRes, cryptoRes, exchangesData] = await Promise.all([
-        api.get('/assets/'),
+        api.get('/assets/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} }),
         api.get('/crypto-accounts/'),
         cryptoExchangesAPI.getAll(),
       ]);
@@ -142,7 +148,7 @@ const CryptoAssets: React.FC = () => {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [selectedPortfolioId]);
 
   // ── Add / Edit ──────────────────────────────────────────────────────────
   const handleOpenDialog = (asset?: CryptoAsset) => {
@@ -156,10 +162,11 @@ const CryptoAssets: React.FC = () => {
         total_invested: asset.total_invested,
         current_price: asset.current_price,
         crypto_account_id: asset.crypto_account_id || '',
+        portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '',
       });
     } else {
       setEditingAsset(null);
-      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, crypto_account_id: '' });
+      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, crypto_account_id: '', portfolio_id: selectedPortfolioId || '' });
     }
     setOpenDialog(true);
   };
@@ -179,6 +186,7 @@ const CryptoAssets: React.FC = () => {
         total_invested: formData.total_invested || formData.quantity * formData.purchase_price,
         current_price: formData.current_price,
         crypto_account_id: formData.crypto_account_id || undefined,
+        portfolio_id: formData.portfolio_id || undefined,
       };
       if (editingAsset) {
         await api.put(`/assets/${editingAsset.id}`, payload);
@@ -402,6 +410,18 @@ const CryptoAssets: React.FC = () => {
               <MenuItem value="">None</MenuItem>
               {cryptoAccounts.map((ca) => (
                 <MenuItem key={ca.id} value={ca.id}>{cryptoLabelMap[ca.id] || `${ca.exchange_name} (${ca.account_id})`}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              label="Portfolio"
+              value={formData.portfolio_id}
+              onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              fullWidth
+            >
+              <MenuItem value="">None</MenuItem>
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
               ))}
             </TextField>
           </Box>

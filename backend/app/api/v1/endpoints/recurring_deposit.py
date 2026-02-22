@@ -1,7 +1,7 @@
 """Recurring Deposit API Endpoints"""
 import calendar
 from datetime import date, datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -107,36 +107,35 @@ def _recalc_rd_value(asset: Asset, db: Session):
 
 @router.get("/", response_model=List[RDAccountResponse])
 async def list_rds(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """List all recurring deposits for the current user."""
-    assets = (
-        db.query(Asset)
-        .filter(
-            Asset.user_id == current_user.id,
-            Asset.asset_type == AssetType.RECURRING_DEPOSIT,
-        )
-        .order_by(Asset.created_at.desc())
-        .all()
+    query = db.query(Asset).filter(
+        Asset.user_id == current_user.id,
+        Asset.asset_type == AssetType.RECURRING_DEPOSIT,
     )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.order_by(Asset.created_at.desc()).all()
     return [_asset_to_rd(a) for a in assets]
 
 
 @router.get("/summary", response_model=RDSummary)
 async def rd_summary(
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Summary statistics for all recurring deposits."""
-    assets = (
-        db.query(Asset)
-        .filter(
-            Asset.user_id == current_user.id,
-            Asset.asset_type == AssetType.RECURRING_DEPOSIT,
-        )
-        .all()
+    query = db.query(Asset).filter(
+        Asset.user_id == current_user.id,
+        Asset.asset_type == AssetType.RECURRING_DEPOSIT,
     )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
     return RDSummary(
         total_accounts=len(assets),
         total_deposited=sum(a.total_invested for a in assets),
@@ -148,12 +147,14 @@ async def rd_summary(
 @router.post("/", response_model=RDAccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_rd(
     data: RDAccountCreate,
+    portfolio_id: Optional[int] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Create a new recurring deposit."""
     asset = Asset(
         user_id=current_user.id,
+        portfolio_id=portfolio_id or data.portfolio_id,
         asset_type=AssetType.RECURRING_DEPOSIT,
         name=data.nickname or data.bank_name,
         account_id=data.account_number,

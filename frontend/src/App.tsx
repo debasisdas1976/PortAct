@@ -60,6 +60,8 @@ import BanksMaster from './pages/BanksMaster';
 import BrokersMaster from './pages/BrokersMaster';
 import Settings from './pages/Settings';
 import Help from './pages/Help';
+import Portfolios from './pages/Portfolios';
+import AssetTypesMaster from './pages/AssetTypesMaster';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -144,9 +146,11 @@ window.location.href = '/login?session_expired=true';
           <Route path="recurring-deposit" element={<RecurringDeposit />} />
           <Route path="debt-funds" element={<DebtFunds />} />
           <Route path="commodities" element={<Commodities />} />
+          <Route path="portfolios" element={<Portfolios />} />
           <Route path="portfolio-admin" element={<PortfolioAdmin />} />
           <Route path="banks-master" element={<BanksMaster />} />
           <Route path="brokers-master" element={<BrokersMaster />} />
+          <Route path="asset-types" element={<AssetTypesMaster />} />
           <Route path="nsc" element={<NSC />} />
           <Route path="kvp" element={<KVP />} />
           <Route path="scss" element={<SCSS />} />
