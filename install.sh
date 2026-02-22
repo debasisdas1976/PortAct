@@ -309,7 +309,7 @@ install_python_macos() {
     if command_exists python3; then
         local py_ver
         py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-        if version_ge "$py_ver" "3.11"; then
+        if version_ge "$py_ver" "3.9"; then
             PYTHON_CMD="python3"
             print_success "Python $py_ver is already installed"
             return 0
@@ -321,8 +321,31 @@ install_python_macos() {
              "Try running 'brew update' and then run this installer again."
     fi
     brew link python@3.11 --overwrite 2>/dev/null || true
-    PYTHON_CMD="python3"
-    print_success "Python 3.11 installed"
+
+    # Verify python3 now points to a suitable version; if brew link failed
+    # silently, fall back to the versioned binary or the full brew prefix path.
+    if command_exists python3; then
+        local py_ver
+        py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        if version_ge "$py_ver" "3.9"; then
+            PYTHON_CMD="python3"
+            print_success "Python $py_ver installed"
+            return 0
+        fi
+    fi
+    if command_exists python3.11; then
+        PYTHON_CMD="python3.11"
+    else
+        local brew_prefix
+        brew_prefix="$(brew --prefix python@3.11 2>/dev/null || true)"
+        if [[ -x "$brew_prefix/bin/python3.11" ]]; then
+            PYTHON_CMD="$brew_prefix/bin/python3.11"
+        else
+            fail "Python was installed but could not be found on the PATH." \
+                 "Try opening a new terminal window and running the installer again."
+        fi
+    fi
+    print_success "Python installed (using $PYTHON_CMD)"
 }
 
 install_python_linux() {
@@ -331,7 +354,7 @@ install_python_linux() {
     if command_exists python3; then
         local py_ver
         py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-        if version_ge "$py_ver" "3.11"; then
+        if version_ge "$py_ver" "3.9"; then
             PYTHON_CMD="python3"
             print_success "Python $py_ver is already installed"
             return 0

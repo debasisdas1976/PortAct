@@ -4,6 +4,7 @@ Background scheduler for periodic tasks (price updates, EOD snapshots).
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
+from typing import Optional
 from loguru import logger
 from sqlalchemy.orm import Session
 
@@ -15,7 +16,7 @@ from app.services.monthly_contribution_service import MonthlyContributionService
 scheduler = BackgroundScheduler()
 
 
-def _get_setting(db: Session | None, key: str, default):
+def _get_setting(db: Optional[Session], key: str, default):
     """Read a single value from app_settings, falling back to *default*."""
     if db is None:
         return default
@@ -33,7 +34,7 @@ def _get_setting(db: Session | None, key: str, default):
     return default
 
 
-def start_scheduler(db: Session | None = None):
+def start_scheduler(db: Optional[Session] = None):
     """Start the background scheduler with all periodic tasks."""
     if scheduler.running:
         logger.info("Background scheduler is already running.")

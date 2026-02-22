@@ -1,7 +1,7 @@
 """
 Application settings CRUD endpoints.
 """
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from loguru import logger
@@ -32,7 +32,7 @@ SCHEDULER_KEYS = {
 MASK_PLACEHOLDER = "***"
 
 
-def _mask_secret(value: str | None) -> str:
+def _mask_secret(value: Optional[str]) -> str:
     """Mask a secret value, showing only a short prefix and suffix."""
     if not value:
         return ""

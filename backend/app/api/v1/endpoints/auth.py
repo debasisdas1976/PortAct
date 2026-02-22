@@ -1,4 +1,5 @@
 from datetime import timedelta
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -174,7 +175,7 @@ async def forgot_password(
     )
 
     try:
-        user: User | None = db.query(User).filter(User.email == request.email).first()
+        user: Optional[User] = db.query(User).filter(User.email == request.email).first()
     except SQLAlchemyError as exc:
         logger.error(f"DB error in forgot-password for {request.email}: {exc}")
         raise HTTPException(

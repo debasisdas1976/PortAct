@@ -10,6 +10,7 @@ Skips users without required salary/PF data or with is_employed=False.
 import calendar
 import math
 from datetime import date, datetime, timezone, timedelta
+from typing import Optional
 from dateutil.relativedelta import relativedelta
 from loguru import logger
 from sqlalchemy.orm import Session
@@ -59,7 +60,7 @@ class MonthlyContributionService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def process_all_users(target_month: date | None = None):
+    def process_all_users(target_month: Optional[date] = None):
         """
         Main entry point called by the scheduler on day 1 of each month.
 
