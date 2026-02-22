@@ -886,13 +886,13 @@ print_summary() {
 
     if [[ "$NO_START" == true ]]; then
         echo -e "  ${BOLD}To start the application:${NC}"
-        echo -e "    Just run: ${CYAN}./install.sh${NC}"
+        echo -e "    Run: ${CYAN}cd $PROJECT_DIR && ./install.sh${NC}"
     else
         echo -e "  ${BOLD}To stop the application:${NC}"
-        echo -e "    Run: ${CYAN}./shutdown_app.sh${NC}"
+        echo -e "    Run: ${CYAN}cd $PROJECT_DIR && ./shutdown_app.sh${NC}"
         echo ""
         echo -e "  ${BOLD}To restart later:${NC}"
-        echo -e "    Just run: ${CYAN}./install.sh${NC}"
+        echo -e "    Run: ${CYAN}cd $PROJECT_DIR && ./install.sh${NC}"
     fi
 
     echo ""
