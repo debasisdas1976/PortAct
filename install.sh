@@ -885,11 +885,11 @@ print_summary() {
     echo ""
 
     if [[ "$NO_START" == true ]]; then
-        echo -e "  ${BOLD}To start the application later:${NC}"
+        echo -e "  ${BOLD}To start the application:${NC}"
         echo -e "    Just run: ${CYAN}./install.sh${NC}"
     else
         echo -e "  ${BOLD}To stop the application:${NC}"
-        echo -e "    Press ${BOLD}Ctrl+C${NC} in this terminal"
+        echo -e "    Run: ${CYAN}./shutdown_app.sh${NC}"
         echo ""
         echo -e "  ${BOLD}To restart later:${NC}"
         echo -e "    Just run: ${CYAN}./install.sh${NC}"
@@ -897,13 +897,7 @@ print_summary() {
 
     echo ""
     echo -e "${GREEN}$(printf '═%.0s' $(seq 1 $width))${NC}"
-
-    if [[ "$NO_START" == false ]]; then
-        echo ""
-        echo -e "  The app is running. Press ${BOLD}Ctrl+C${NC} to stop."
-        echo ""
-        wait
-    fi
+    echo ""
 }
 
 # ── Main ────────────────────────────────────────────────────────────────────
