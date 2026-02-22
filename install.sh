@@ -938,19 +938,19 @@ main() {
     setup_database
     ((step++))
 
-    # Step 4: Backend Setup
+    # Step 4: Directories (must run before backend/frontend setup – they log to backend/logs/)
+    print_step $step $total_steps "Preparing application folders"
+    create_directories
+    ((step++))
+
+    # Step 5: Backend Setup
     print_step $step $total_steps "Setting up the backend"
     setup_backend
     ((step++))
 
-    # Step 5: Frontend Setup
+    # Step 6: Frontend Setup
     print_step $step $total_steps "Setting up the frontend"
     setup_frontend
-    ((step++))
-
-    # Step 6: Directories
-    print_step $step $total_steps "Preparing application folders"
-    create_directories
     ((step++))
 
     # Step 7: Verification
