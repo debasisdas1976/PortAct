@@ -85,13 +85,18 @@ async def lifespan(app: FastAPI):
     # --- Startup ---
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION} [{settings.ENVIRONMENT}]")
 
-    # Ensure tables exist (idempotent)
-    try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables verified.")
-    except SQLAlchemyError as exc:
-        logger.error(f"Failed to initialise database tables: {exc}")
-        raise
+    # In production (Docker), Alembic manages the schema — skip create_all to
+    # avoid conflicts with migrations.  In development, create_all is a
+    # convenient way to bootstrap tables without running migrations manually.
+    if settings.ENVIRONMENT != "production":
+        try:
+            Base.metadata.create_all(bind=engine)
+            logger.info("Database tables verified.")
+        except SQLAlchemyError as exc:
+            logger.error(f"Failed to initialise database tables: {exc}")
+            raise
+    else:
+        logger.info("Production mode — skipping create_all (Alembic manages schema).")
 
     # Seed default app settings and pass DB session so schedulers read from DB
     _startup_db = SessionLocal()

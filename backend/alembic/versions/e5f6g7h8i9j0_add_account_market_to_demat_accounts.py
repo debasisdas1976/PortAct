@@ -17,8 +17,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create the enum type with uppercase values (matching SQLAlchemy's convention)
-    op.execute("CREATE TYPE accountmarket AS ENUM ('DOMESTIC', 'INTERNATIONAL')")
+    # Create the enum type idempotently (may already exist if create_all ran before migrations)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE accountmarket AS ENUM ('DOMESTIC', 'INTERNATIONAL');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
+    """)
 
     # Add nullable column first, then backfill, then set NOT NULL
     op.add_column(

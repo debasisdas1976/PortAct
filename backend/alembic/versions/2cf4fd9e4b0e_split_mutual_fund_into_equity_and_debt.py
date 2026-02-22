@@ -17,18 +17,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add new enum values to the assettype enum
-    # These need to be done outside of a transaction, so we use execute with proper connection handling
-    connection = op.get_bind()
-    
-    # Add EQUITY_MUTUAL_FUND if it doesn't exist
-    connection.execute(sa.text("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'EQUITY_MUTUAL_FUND'"))
-    connection.commit()
-    
-    # Add DEBT_MUTUAL_FUND if it doesn't exist
-    connection.execute(sa.text("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'DEBT_MUTUAL_FUND'"))
-    connection.commit()
-    
+    # ALTER TYPE ADD VALUE cannot use the new value in the same transaction on
+    # PostgreSQL.  The recommended alembic pattern is: COMMIT the current
+    # transaction, add the enum values outside any transaction, then BEGIN a
+    # new transaction so the remaining DDL/DML (and alembic's version-table
+    # update) lands in a fresh transaction that can reference the new values.
+    op.execute(sa.text("COMMIT"))
+    op.execute(sa.text("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'EQUITY_MUTUAL_FUND'"))
+    op.execute(sa.text("ALTER TYPE assettype ADD VALUE IF NOT EXISTS 'DEBT_MUTUAL_FUND'"))
+    op.execute(sa.text("BEGIN"))
+
     # Now convert existing MUTUAL_FUND assets to EQUITY_MUTUAL_FUND (default)
     op.execute("""
         UPDATE assets
@@ -44,6 +42,6 @@ def downgrade() -> None:
         SET asset_type = 'MUTUAL_FUND'::assettype
         WHERE asset_type IN ('EQUITY_MUTUAL_FUND'::assettype, 'DEBT_MUTUAL_FUND'::assettype)
     """)
-    
+
     # Note: Cannot remove enum values in PostgreSQL without recreating the enum
     # The old MUTUAL_FUND value will remain in the enum

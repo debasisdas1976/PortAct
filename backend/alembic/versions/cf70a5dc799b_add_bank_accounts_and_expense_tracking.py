@@ -7,6 +7,7 @@ Create Date: 2026-02-13 22:57:09.052370
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -17,18 +18,33 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create BankType enum
-    banktype = sa.Enum('savings', 'current', 'credit_card', 'fixed_deposit',
-                       'recurring_deposit', name='banktype')
-    banktype.create(op.get_bind(), checkfirst=True)
+    # Create enums idempotently (may already exist if create_all ran before migrations)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE banktype AS ENUM ('savings', 'current', 'credit_card', 'fixed_deposit', 'recurring_deposit');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE expensetype AS ENUM ('debit', 'credit', 'transfer');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE paymentmethod AS ENUM ('cash', 'debit_card', 'credit_card', 'upi', 'net_banking', 'cheque', 'wallet', 'other');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
+    """)
 
-    # Create bank_accounts table
+    # Create bank_accounts table (use postgresql.ENUM with create_type=False since types already exist)
     op.create_table(
         'bank_accounts',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=False),
         sa.Column('bank_name', sa.String(50), nullable=False),
-        sa.Column('account_type', sa.Enum('savings', 'current', 'credit_card',
+        sa.Column('account_type', postgresql.ENUM('savings', 'current', 'credit_card',
                   'fixed_deposit', 'recurring_deposit', name='banktype',
                   create_type=False), nullable=False),
         sa.Column('account_number', sa.String(), nullable=False),
@@ -52,18 +68,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_bank_accounts_bank_name'), 'bank_accounts', ['bank_name'], unique=False)
     op.create_index(op.f('ix_bank_accounts_account_type'), 'bank_accounts', ['account_type'], unique=False)
 
-    # Create ExpenseType and PaymentMethod enums
-    expensetype = sa.Enum('debit', 'credit', 'transfer', name='expensetype')
-    expensetype.create(op.get_bind(), checkfirst=True)
-
-    paymentmethod = sa.Enum('cash', 'debit_card', 'credit_card', 'upi',
-                            'net_banking', 'cheque', 'wallet', 'other',
-                            name='paymentmethod')
-    paymentmethod.create(op.get_bind(), checkfirst=True)
-
     # Create expenses table
-    # Note: category_id column included but FK to expense_categories deferred
-    # (that table is created in a later migration)
     op.create_table(
         'expenses',
         sa.Column('id', sa.Integer(), nullable=False),
@@ -72,14 +77,14 @@ def upgrade() -> None:
         sa.Column('category_id', sa.Integer(), nullable=True),
         sa.Column('statement_id', sa.Integer(), nullable=True),
         sa.Column('transaction_date', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('transaction_type', sa.Enum('debit', 'credit', 'transfer',
+        sa.Column('transaction_type', postgresql.ENUM('debit', 'credit', 'transfer',
                   name='expensetype', create_type=False), nullable=False),
         sa.Column('amount', sa.Float(), nullable=False),
         sa.Column('balance_after', sa.Float(), nullable=True),
         sa.Column('description', sa.Text(), nullable=False),
         sa.Column('merchant_name', sa.String(), nullable=True),
         sa.Column('reference_number', sa.String(), nullable=True),
-        sa.Column('payment_method', sa.Enum('cash', 'debit_card', 'credit_card',
+        sa.Column('payment_method', postgresql.ENUM('cash', 'debit_card', 'credit_card',
                   'upi', 'net_banking', 'cheque', 'wallet', 'other',
                   name='paymentmethod', create_type=False), nullable=True),
         sa.Column('is_categorized', sa.Boolean(), nullable=True, server_default='false'),
@@ -113,6 +118,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_bank_accounts_id'), table_name='bank_accounts')
     op.drop_table('bank_accounts')
 
-    sa.Enum(name='paymentmethod').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='expensetype').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='banktype').drop(op.get_bind(), checkfirst=True)
+    op.execute("DROP TYPE IF EXISTS paymentmethod")
+    op.execute("DROP TYPE IF EXISTS expensetype")
+    op.execute("DROP TYPE IF EXISTS banktype")

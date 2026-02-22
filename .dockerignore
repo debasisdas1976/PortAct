@@ -13,5 +13,13 @@ logs/
 uploads/
 backend/test_*.py
 backend/.venv
+backend/venv
 frontend/build
+frontend/node_modules
 .claude
+infrastructure/
+docs/
+statements/
+*.log
+backend.log
+frontend.log
