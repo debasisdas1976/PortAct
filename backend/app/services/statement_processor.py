@@ -10,6 +10,7 @@ from datetime import datetime
 import PyPDF2
 import pandas as pd
 import re
+import hashlib
 import logging
 from typing import List, Dict, Any, Optional
 try:
@@ -23,6 +24,7 @@ from app.services.vested_parser import VestedParser
 from app.services.indmoney_parser import INDMoneyParser
 from app.services.currency_converter import convert_usd_to_inr, get_usd_to_inr_rate
 from app.services.isin_lookup import lookup_isin_for_asset
+from app.api.dependencies import get_default_portfolio_id
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +35,18 @@ def get_or_create_demat_account(
     account_id: str,
     account_holder_name: Optional[str],
     db: Session,
-    cash_balance_usd: Optional[float] = None
+    cash_balance_usd: Optional[float] = None,
+    portfolio_id: Optional[int] = None
 ) -> Optional[DematAccount]:
     """
     Get existing demat account or create a new one
     """
     from app.services.currency_converter import get_usd_to_inr_rate
-    
+
+    # Ensure portfolio_id is always resolved
+    if not portfolio_id:
+        portfolio_id = get_default_portfolio_id(user_id, db)
+
     # Map broker display names to master table name keys
     broker_mapping = {
         'zerodha': 'zerodha',
@@ -61,6 +68,7 @@ def get_or_create_demat_account(
         'iifl': 'iifl_securities',
         'indmoney': 'indmoney',
         'vested': 'vested',
+        'mf_central': 'mf_central',
     }
 
     broker_name_lower = broker_name.lower() if broker_name else ''
@@ -98,7 +106,8 @@ def get_or_create_demat_account(
             currency=currency,
             cash_balance=cash_balance,
             cash_balance_usd=cash_balance_usd_val,
-            is_active=True
+            is_active=True,
+            portfolio_id=portfolio_id,
         )
         db.add(demat_account)
         db.flush()  # Get the ID
@@ -107,6 +116,10 @@ def get_or_create_demat_account(
         demat_account.last_statement_date = datetime.utcnow()
         if account_holder_name and not demat_account.account_holder_name:
             demat_account.account_holder_name = account_holder_name
+
+        # Assign portfolio if the account doesn't have one yet
+        if portfolio_id and not demat_account.portfolio_id:
+            demat_account.portfolio_id = portfolio_id
 
         # Ensure currency is correct for US brokers (may be wrong for old accounts)
         if is_us_broker and demat_account.currency != 'USD':
@@ -124,11 +137,195 @@ def get_or_create_demat_account(
     return demat_account
 
 
-def process_statement(statement_id: int, db: Session, portfolio_id: int = None):
+def _process_bank_statement_via_parser(statement: Statement, db: Session, portfolio_id: int = None) -> dict:
+    """
+    Process a bank statement using the dedicated bank statement parser.
+    Creates Expense records from the parsed transactions.
+    Auto-creates the bank account if it doesn't exist, using header info from the PDF.
+    Returns a dict with: total_found, imported, duplicates.
+    """
+    from app.services.bank_statement_parser import get_parser
+    from app.models.bank_account import BankAccount, BankType
+    from app.models.expense import Expense
+    from app.services.expense_categorizer import ExpenseCategorizer
+
+    # Map institution_name to parser key
+    bank_name_map = {
+        'icici_bank': 'ICICI',
+        'hdfc_bank': 'HDFC',
+        'idfc_first_bank': 'IDFC_FIRST',
+        'state_bank_of_india': 'SBI',
+        'kotak_mahindra_bank': 'KOTAK',
+        'axis_bank': 'AXIS',
+    }
+
+    institution = (statement.institution_name or '').lower().strip()
+    parser_key = bank_name_map.get(institution)
+    if not parser_key:
+        raise Exception(
+            f"Bank statement parsing is not yet supported for '{statement.institution_name}'. "
+            f"Supported banks: ICICI, HDFC, IDFC First, SBI, Kotak, Axis."
+        )
+
+    parser = get_parser(parser_key, statement.file_path, password=statement.password)
+    transactions = parser.parse()
+
+    if not transactions:
+        raise Exception(
+            f"Statement was parsed but no transactions were found in this "
+            f"{statement.institution_name} bank statement."
+        )
+
+    # Get account info extracted by the parser (if available)
+    account_info = getattr(parser, 'account_info', {}) or {}
+    acct_number = account_info.get('account_number', '')
+
+    # Try to find existing bank account — match on account number first, then bank name
+    bank_account = None
+    if acct_number:
+        bank_account = db.query(BankAccount).filter(
+            BankAccount.user_id == statement.user_id,
+            BankAccount.bank_name == institution,
+            BankAccount.account_number == acct_number
+        ).first()
+
+    if not bank_account:
+        # Fallback: match by bank name only (user may have created it manually)
+        bank_account = db.query(BankAccount).filter(
+            BankAccount.user_id == statement.user_id,
+            BankAccount.bank_name == institution
+        ).first()
+
+    # Auto-create bank account if none exists
+    if not bank_account:
+        # Determine account type from parser info
+        acct_type_str = account_info.get('account_type', 'savings')
+        acct_type_map = {
+            'savings': BankType.SAVINGS,
+            'current': BankType.CURRENT,
+        }
+        acct_type = acct_type_map.get(acct_type_str, BankType.SAVINGS)
+
+        # Mask account number for display (show last 4 digits)
+        masked_number = acct_number
+        if acct_number and len(acct_number) > 4:
+            masked_number = 'X' * (len(acct_number) - 4) + acct_number[-4:]
+
+        # Resolve portfolio for the new account
+        if not portfolio_id:
+            portfolio_id = get_default_portfolio_id(statement.user_id, db)
+
+        opening_balance = getattr(parser, 'opening_balance', None) or 0.0
+
+        bank_account = BankAccount(
+            user_id=statement.user_id,
+            bank_name=institution,
+            account_type=acct_type,
+            account_number=masked_number or f'{institution.upper()}_{statement.user_id}',
+            account_holder_name=account_info.get('account_holder_name'),
+            ifsc_code=account_info.get('ifsc_code'),
+            current_balance=opening_balance,
+            is_active=True,
+            portfolio_id=portfolio_id,
+        )
+        db.add(bank_account)
+        db.flush()
+        logger.info(
+            f"Auto-created {acct_type.value} bank account for {institution} "
+            f"(account: {masked_number}) from statement upload"
+        )
+
+    # Resolve portfolio
+    if not portfolio_id:
+        portfolio_id = get_default_portfolio_id(statement.user_id, db)
+
+    # Auto-categorize
+    categorizer = ExpenseCategorizer(db, user_id=statement.user_id)
+    transactions = categorizer.bulk_categorize(transactions)
+
+    # Save transactions, skipping duplicates
+    created_count = 0
+    duplicate_count = 0
+    last_error = None
+    for txn in transactions:
+        try:
+            # Check for duplicates
+            dup_query = db.query(Expense).filter(
+                Expense.user_id == statement.user_id,
+                Expense.bank_account_id == bank_account.id,
+                Expense.transaction_date == txn['transaction_date'],
+                Expense.amount == txn['amount'],
+                Expense.description == txn['description']
+            )
+            if dup_query.first():
+                duplicate_count += 1
+                continue
+
+            expense_portfolio_id = portfolio_id or bank_account.portfolio_id
+
+            expense = Expense(
+                user_id=statement.user_id,
+                bank_account_id=bank_account.id,
+                statement_id=statement.id,
+                transaction_date=txn['transaction_date'],
+                description=txn['description'],
+                amount=txn['amount'],
+                transaction_type=txn['transaction_type'],
+                payment_method=txn.get('payment_method'),
+                merchant_name=txn.get('merchant_name'),
+                category_id=txn.get('category_id'),
+                reference_number=txn.get('reference_number'),
+                balance_after=txn.get('balance_after'),
+                is_categorized=txn.get('category_id') is not None,
+                is_reconciled=True,
+                portfolio_id=expense_portfolio_id,
+            )
+            db.add(expense)
+            created_count += 1
+        except Exception as e:
+            import traceback
+            logger.error(
+                f"Error saving bank transaction: {e}\n"
+                f"Transaction data: {txn}\n"
+                f"Traceback: {traceback.format_exc()}"
+            )
+            last_error = e
+            continue
+
+    db.flush()
+
+    # If no transactions were created and none were duplicates, something went wrong
+    if created_count == 0 and duplicate_count == 0 and transactions:
+        error_msg = f"Failed to save any of the {len(transactions)} parsed transactions."
+        if last_error:
+            error_msg += f" Last error: {last_error}"
+        raise Exception(error_msg)
+
+    # Update bank account balance from the last transaction
+    if transactions and transactions[-1].get('balance_after'):
+        bank_account.current_balance = transactions[-1]['balance_after']
+    bank_account.last_statement_date = datetime.utcnow()
+
+    logger.info(
+        f"Bank statement processed: {len(transactions)} parsed, "
+        f"{created_count} imported, {duplicate_count} duplicates"
+    )
+
+    return {
+        'total_found': len(transactions),
+        'imported': created_count,
+        'duplicates': duplicate_count,
+    }
+
+
+def process_statement(statement_id: int, db: Session, portfolio_id: int = None, expected_institution: str = None):
     """
     Main function to process an uploaded statement.
     If portfolio_id is provided, all created assets will be assigned to that portfolio.
     Otherwise, they will be assigned to the user's default portfolio.
+    If expected_institution is provided, the extracted broker/institution from the
+    parsed statement will be validated against it. A mismatch causes the statement
+    to be marked as FAILED.
     """
     statement = db.query(Statement).filter(Statement.id == statement_id).first()
     if not statement:
@@ -136,19 +333,28 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None):
 
     # Resolve portfolio_id: use provided value or fall back to user's default
     if not portfolio_id:
-        from app.models.portfolio import Portfolio
-        default_portfolio = db.query(Portfolio).filter(
-            Portfolio.user_id == statement.user_id,
-            Portfolio.is_default == True
-        ).first()
-        if default_portfolio:
-            portfolio_id = default_portfolio.id
+        portfolio_id = get_default_portfolio_id(statement.user_id, db)
     
     statement.status = StatementStatus.PROCESSING
     statement.processing_started_at = datetime.utcnow()
     db.commit()
     
     try:
+        # Handle bank statements via dedicated bank statement parser
+        if statement.statement_type == StatementType.BANK_STATEMENT:
+            result = _process_bank_statement_via_parser(statement, db, portfolio_id)
+            statement.assets_found = 0
+            statement.transactions_found = result['total_found']
+            statement.status = StatementStatus.PROCESSED
+            statement.processing_completed_at = datetime.utcnow()
+            # Store import details for the endpoint to use
+            if result['duplicates'] > 0:
+                statement.error_message = (
+                    f"{result['imported']} new, {result['duplicates']} duplicate(s) skipped"
+                )
+            db.commit()
+            return
+
         # Check for US broker statements (Vested, INDMoney)
         cash_balance_usd = None
         if statement.statement_type == StatementType.VESTED_STATEMENT:
@@ -236,10 +442,40 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None):
                 text = data if isinstance(data, str) else str(data)
                 assets, transactions = parse_generic_statement(text, statement)
         
+        # Validate extracted institution against expected (if provided)
+        if expected_institution and assets and len(assets) > 0:
+            extracted_broker = assets[0].get('broker_name', '')
+            if extracted_broker:
+                # Normalize both names using the same broker_mapping from get_or_create_demat_account
+                broker_mapping = {
+                    'zerodha': 'zerodha', 'groww': 'groww', 'upstox': 'upstox',
+                    'angel one': 'angel_one', 'angel': 'angel_one',
+                    'icici direct': 'icici_direct', 'icici': 'icici_direct',
+                    'hdfc securities': 'hdfc_securities', 'hdfc': 'hdfc_securities',
+                    'kotak securities': 'kotak_securities', 'kotak': 'kotak_securities',
+                    'axis direct': 'axis_direct', 'axis': 'axis_direct',
+                    'sharekhan': 'sharekhan', 'motilal oswal': 'motilal_oswal',
+                    'iifl securities': 'iifl_securities', 'iifl': 'iifl_securities',
+                    'indmoney': 'indmoney', 'vested': 'vested',
+                    'mf_central': 'mf_central',
+                }
+                normalized_expected = broker_mapping.get(expected_institution.lower(), expected_institution.lower())
+                normalized_extracted = broker_mapping.get(extracted_broker.lower(), extracted_broker.lower())
+                if normalized_expected != normalized_extracted:
+                    statement.status = StatementStatus.FAILED
+                    statement.error_message = (
+                        f"Statement mismatch: this statement is from '{extracted_broker}', "
+                        f"but was uploaded for '{expected_institution}'. "
+                        f"Please use 'Add New Account' if this is a different account."
+                    )
+                    statement.processing_completed_at = datetime.utcnow()
+                    db.commit()
+                    return
+
         # Save assets and transactions
         assets_count = 0
         transactions_count = 0
-        
+
         # Create or get demat account if this is a stock/demat statement
         demat_account = None
         if assets and len(assets) > 0:
@@ -247,7 +483,7 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None):
             broker_name = first_asset.get('broker_name')
             account_id = first_asset.get('account_id')
             account_holder_name = first_asset.get('account_holder_name')
-            
+
             # Only create demat account for stock/mutual fund assets
             asset_type = first_asset.get('asset_type')
             if asset_type in [AssetType.STOCK, AssetType.US_STOCK, AssetType.EQUITY_MUTUAL_FUND,
@@ -259,7 +495,8 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None):
                         account_id,
                         account_holder_name,
                         db,
-                        cash_balance_usd
+                        cash_balance_usd,
+                        portfolio_id=portfolio_id,
                     )
                     
                     # Delete existing assets for this demat account to refresh holdings
@@ -638,13 +875,26 @@ def parse_mf_central_cas_pdf(file_path: str, statement: Statement, password: str
                                 invested = market_value
 
                             asset_type = _classify_mf_scheme(scheme)
-                            section = 'SoA' if is_soa else 'Demat'
-                            account_id = f"MFCentral-{section}-{folio_or_client}"
+
+                            # Use a single consistent account_id for the whole
+                            # MF Central CAS so all holdings end up in one demat
+                            # account regardless of folio/client-id ordering.
+                            account_id = 'MFCentral-CAS'
+
+                            # The symbol must be unique per fund for correct
+                            # frontend grouping.  SoA folios are already unique
+                            # per fund, but Demat client IDs are shared across
+                            # all holdings in the same demat account.
+                            if is_soa:
+                                unique_symbol = folio_or_client
+                            else:
+                                scheme_hash = hashlib.md5(scheme.encode()).hexdigest()[:8]
+                                unique_symbol = f"{folio_or_client}-{scheme_hash}"
 
                             asset_data = {
                                 'asset_type': asset_type,
                                 'name': scheme[:100],
-                                'symbol': folio_or_client,
+                                'symbol': unique_symbol,
                                 'quantity': units,
                                 'purchase_price': nav,
                                 'current_price': nav,
@@ -655,7 +905,7 @@ def parse_mf_central_cas_pdf(file_path: str, statement: Statement, password: str
                                 'statement_id': statement.id,
                             }
                             assets.append(asset_data)
-                            logger.info(f"  [{section}] {scheme[:50]} — {units} units, ₹{market_value:,.2f}")
+                            logger.info(f"  [{'SoA' if is_soa else 'Demat'}] {scheme[:50]} — {units} units, ₹{market_value:,.2f}")
 
                         except (ValueError, IndexError):
                             continue
