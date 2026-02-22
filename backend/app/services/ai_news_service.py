@@ -1,6 +1,6 @@
 """
 AI-powered news and alert service for portfolio assets.
-Supports both Grok (xAI) and OpenAI ChatGPT APIs.
+Supports OpenAI, Grok (xAI), Google Gemini, Anthropic Claude, DeepSeek, and Mistral.
 """
 import httpx
 import json
@@ -19,20 +19,81 @@ from app.services.news_progress_tracker import progress_tracker
 class AINewsService:
     """Service to fetch AI-powered news and insights for portfolio assets."""
 
+    # Provider registry: maps provider name to its DB setting keys, env var names, and API format
+    PROVIDERS = {
+        "openai": {
+            "key_setting": "ai_openai_api_key",
+            "key_env": "OPENAI_API_KEY",
+            "endpoint_setting": "ai_openai_endpoint",
+            "endpoint_env": "OPENAI_API_ENDPOINT",
+            "model_setting": "ai_openai_model",
+            "model_env": "OPENAI_MODEL",
+            "api_format": "openai_compatible",
+            "display_name": "OpenAI",
+        },
+        "grok": {
+            "key_setting": "ai_grok_api_key",
+            "key_env": "GROK_API_KEY",
+            "endpoint_setting": "ai_grok_endpoint",
+            "endpoint_env": "GROK_API_ENDPOINT",
+            "model_setting": "ai_grok_model",
+            "model_env": "GROK_MODEL",
+            "api_format": "openai_compatible",
+            "display_name": "Grok",
+        },
+        "gemini": {
+            "key_setting": "ai_gemini_api_key",
+            "key_env": "GEMINI_API_KEY",
+            "endpoint_setting": "ai_gemini_endpoint",
+            "endpoint_env": "GEMINI_API_ENDPOINT",
+            "model_setting": "ai_gemini_model",
+            "model_env": "GEMINI_MODEL",
+            "api_format": "openai_compatible",
+            "display_name": "Gemini",
+        },
+        "anthropic": {
+            "key_setting": "ai_anthropic_api_key",
+            "key_env": "ANTHROPIC_API_KEY",
+            "endpoint_setting": "ai_anthropic_endpoint",
+            "endpoint_env": "ANTHROPIC_API_ENDPOINT",
+            "model_setting": "ai_anthropic_model",
+            "model_env": "ANTHROPIC_MODEL",
+            "api_format": "anthropic",
+            "display_name": "Anthropic",
+        },
+        "deepseek": {
+            "key_setting": "ai_deepseek_api_key",
+            "key_env": "DEEPSEEK_API_KEY",
+            "endpoint_setting": "ai_deepseek_endpoint",
+            "endpoint_env": "DEEPSEEK_API_ENDPOINT",
+            "model_setting": "ai_deepseek_model",
+            "model_env": "DEEPSEEK_MODEL",
+            "api_format": "openai_compatible",
+            "display_name": "DeepSeek",
+        },
+        "mistral": {
+            "key_setting": "ai_mistral_api_key",
+            "key_env": "MISTRAL_API_KEY",
+            "endpoint_setting": "ai_mistral_endpoint",
+            "endpoint_env": "MISTRAL_API_ENDPOINT",
+            "model_setting": "ai_mistral_model",
+            "model_env": "MISTRAL_MODEL",
+            "api_format": "openai_compatible",
+            "display_name": "Mistral",
+        },
+    }
+
+    SYSTEM_PROMPT = (
+        "You are a knowledgeable financial analyst specializing in "
+        "Indian markets and investments. You ALWAYS provide useful, "
+        "specific insights about any asset or investment topic. "
+        "Never say there is nothing to report — every investment "
+        "has risks, opportunities, or considerations worth highlighting. "
+        "Respond with valid JSON only, no markdown formatting."
+    )
+
     def __init__(self):
-        self.openai_api_key = settings.OPENAI_API_KEY
-        self.grok_api_key = settings.GROK_API_KEY
-        self.ai_provider = settings.AI_NEWS_PROVIDER.lower()
-
-        # API endpoints from config (overridable for proxies / staging)
-        self.openai_endpoint = settings.OPENAI_API_ENDPOINT
-        self.grok_endpoint = settings.GROK_API_ENDPOINT
-
-        # Model selection from config
-        self.openai_model = settings.OPENAI_MODEL
-        self.grok_model = settings.GROK_MODEL
-
-        # Request tuning from config
+        # Request tuning (operational params, not provider-specific)
         self.timeout = settings.AI_REQUEST_TIMEOUT
         self.request_delay = settings.AI_REQUEST_DELAY
         self.max_retries = settings.AI_MAX_RETRIES
@@ -316,29 +377,89 @@ class AINewsService:
             return 0
 
     # ------------------------------------------------------------------
+    # Provider configuration
+    # ------------------------------------------------------------------
+
+    def _get_provider_config(self) -> dict:
+        """
+        Resolve the active provider's API key, endpoint, and model.
+        Priority: DB setting > env var > None.
+
+        Returns:
+            {"provider": str, "api_key": str, "endpoint": str,
+             "model": str, "api_format": str, "display_name": str}
+        """
+        from app.core.database import SessionLocal
+        from app.models.app_settings import AppSettings
+
+        db = SessionLocal()
+        try:
+            ai_rows = db.query(AppSettings).filter(AppSettings.category == "ai").all()
+            db_settings = {row.key: row.value for row in ai_rows}
+        finally:
+            db.close()
+
+        provider = (db_settings.get("ai_news_provider") or settings.AI_NEWS_PROVIDER).lower()
+
+        if provider not in self.PROVIDERS:
+            logger.warning(f"Unknown AI provider '{provider}', falling back to openai.")
+            provider = "openai"
+
+        prov_conf = self.PROVIDERS[provider]
+
+        # Resolve: DB value > env var fallback
+        api_key = (
+            db_settings.get(prov_conf["key_setting"])
+            or getattr(settings, prov_conf["key_env"], None)
+        )
+        endpoint = (
+            db_settings.get(prov_conf["endpoint_setting"])
+            or getattr(settings, prov_conf["endpoint_env"], "")
+        )
+        model = (
+            db_settings.get(prov_conf["model_setting"])
+            or getattr(settings, prov_conf["model_env"], "")
+        )
+
+        return {
+            "provider": provider,
+            "api_key": api_key,
+            "endpoint": endpoint,
+            "model": model,
+            "api_format": prov_conf["api_format"],
+            "display_name": prov_conf["display_name"],
+        }
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     async def _query_ai(self, prompt: str) -> Optional[str]:
-        """Route the prompt to the configured AI provider."""
-        if self.ai_provider == "grok" and self.grok_api_key:
-            return await self._query_provider(
-                endpoint=self.grok_endpoint,
-                api_key=self.grok_api_key,
-                model=self.grok_model,
-                prompt=prompt,
-                provider_name="Grok",
+        """Route the prompt to the currently configured AI provider."""
+        config = self._get_provider_config()
+
+        if not config["api_key"]:
+            logger.warning(
+                f"No API key configured for provider '{config['display_name']}'. "
+                "Cannot fetch news."
             )
-        if self.openai_api_key:
-            return await self._query_provider(
-                endpoint=self.openai_endpoint,
-                api_key=self.openai_api_key,
-                model=self.openai_model,
+            return None
+
+        if config["api_format"] == "anthropic":
+            return await self._query_anthropic(
+                endpoint=config["endpoint"],
+                api_key=config["api_key"],
+                model=config["model"],
                 prompt=prompt,
-                provider_name="OpenAI",
             )
-        logger.warning("No AI API key configured. Cannot fetch news.")
-        return None
+        else:
+            return await self._query_provider(
+                endpoint=config["endpoint"],
+                api_key=config["api_key"],
+                model=config["model"],
+                prompt=prompt,
+                provider_name=config["display_name"],
+            )
 
     async def _query_provider(
         self,
@@ -349,7 +470,7 @@ class AINewsService:
         prompt: str,
         provider_name: str,
     ) -> Optional[str]:
-        """Generic AI API caller with retry logic."""
+        """Generic OpenAI-compatible API caller with retry logic."""
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -359,14 +480,7 @@ class AINewsService:
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You are a knowledgeable financial analyst specializing in "
-                        "Indian markets and investments. You ALWAYS provide useful, "
-                        "specific insights about any asset or investment topic. "
-                        "Never say there is nothing to report — every investment "
-                        "has risks, opportunities, or considerations worth highlighting. "
-                        "Respond with valid JSON only, no markdown formatting."
-                    ),
+                    "content": self.SYSTEM_PROMPT,
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -426,6 +540,80 @@ class AINewsService:
             except Exception as exc:
                 logger.error(
                     f"{provider_name} unexpected error "
+                    f"(attempt {attempt}/{self.max_retries}): {exc}"
+                )
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.retry_delay * attempt)
+                    continue
+                return None
+
+        return None
+
+    async def _query_anthropic(
+        self,
+        *,
+        endpoint: str,
+        api_key: str,
+        model: str,
+        prompt: str,
+    ) -> Optional[str]:
+        """Anthropic Messages API caller with retry logic."""
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "max_tokens": self.max_tokens,
+            "system": self.SYSTEM_PROMPT,
+            "messages": [
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": self.temperature,
+        }
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(endpoint, headers=headers, json=payload)
+
+                if response.status_code == 200:
+                    resp_data = response.json()
+                    content_blocks = resp_data.get("content", [])
+                    text_parts = [b["text"] for b in content_blocks if b.get("type") == "text"]
+                    return "".join(text_parts)
+
+                if response.status_code == 429:
+                    if attempt < self.max_retries:
+                        wait = self.retry_delay * attempt
+                        logger.warning(
+                            f"Anthropic rate-limited. "
+                            f"Retrying in {wait}s (attempt {attempt}/{self.max_retries})."
+                        )
+                        await asyncio.sleep(wait)
+                        continue
+                    logger.error("Anthropic rate limit exceeded after all retries.")
+                    return None
+
+                logger.error(
+                    f"Anthropic API error {response.status_code}: {response.text}"
+                )
+                return None
+
+            except httpx.TimeoutException:
+                logger.warning(
+                    f"Anthropic request timed out "
+                    f"(attempt {attempt}/{self.max_retries})."
+                )
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.retry_delay * attempt)
+                    continue
+                return None
+
+            except Exception as exc:
+                logger.error(
+                    f"Anthropic unexpected error "
                     f"(attempt {attempt}/{self.max_retries}): {exc}"
                 )
                 if attempt < self.max_retries:

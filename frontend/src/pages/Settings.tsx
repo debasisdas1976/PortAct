@@ -3,9 +3,10 @@ import {
   Box, Card, CardContent, Typography, TextField, Button, Grid, Alert,
   CircularProgress, Snackbar, Tabs, Tab, MenuItem, Select,
   FormControl, FormControlLabel, Switch, InputLabel, InputAdornment, Paper, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow,
+  TableCell, TableContainer, TableHead, TableRow, IconButton,
+  Accordion, AccordionSummary, AccordionDetails,
 } from '@mui/material';
-import { Save, RestartAlt } from '@mui/icons-material';
+import { Save, RestartAlt, Visibility, VisibilityOff, ExpandMore } from '@mui/icons-material';
 import { authAPI, settingsAPI } from '../services/api';
 
 /* ─────────────────── types ─────────────────── */
@@ -42,6 +43,26 @@ interface AppSetting {
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
 
+/* ─────────────────── constants ─────────────────── */
+
+const AI_PROVIDERS = [
+  { value: 'openai', label: 'OpenAI (GPT)' },
+  { value: 'grok', label: 'Grok (xAI)' },
+  { value: 'gemini', label: 'Google Gemini' },
+  { value: 'anthropic', label: 'Anthropic Claude' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'mistral', label: 'Mistral AI' },
+];
+
+const API_KEY_FIELDS = [
+  { key: 'ai_openai_api_key', label: 'OpenAI API Key', provider: 'openai' },
+  { key: 'ai_grok_api_key', label: 'Grok API Key', provider: 'grok' },
+  { key: 'ai_gemini_api_key', label: 'Google Gemini API Key', provider: 'gemini' },
+  { key: 'ai_anthropic_api_key', label: 'Anthropic Claude API Key', provider: 'anthropic' },
+  { key: 'ai_deepseek_api_key', label: 'DeepSeek API Key', provider: 'deepseek' },
+  { key: 'ai_mistral_api_key', label: 'Mistral API Key', provider: 'mistral' },
+];
+
 /* ─────────────────── component ─────────────────── */
 
 const Settings: React.FC = () => {
@@ -62,6 +83,13 @@ const Settings: React.FC = () => {
   const [settingsForm, setSettingsForm] = useState<Record<string, string>>({});
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+
+  // API key visibility toggles
+  const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
+
+  const toggleApiKeyVisibility = (key: string) => {
+    setShowApiKeys(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   /* ── fetch ── */
   const fetchAll = useCallback(async () => {
@@ -154,7 +182,7 @@ const Settings: React.FC = () => {
   };
 
   const handleResetSettings = async () => {
-    if (!window.confirm('Reset all application settings to their defaults?')) return;
+    if (!window.confirm('Reset all application settings to their defaults? This will also clear any saved API keys.')) return;
     setResetting(true);
     try {
       const updated = await settingsAPI.reset();
@@ -189,8 +217,7 @@ const Settings: React.FC = () => {
     return d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
-  const aiSettings = appSettings.filter(s => s.category === 'ai');
-  const generalSettings = appSettings.filter(s => s.category === 'general');
+  const selectedProvider = settingsForm['ai_news_provider'] ?? 'openai';
 
   if (loading) return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh' }}>
@@ -493,43 +520,109 @@ const Settings: React.FC = () => {
           </Card>
 
           {/* AI Configuration */}
-          {aiSettings.length > 0 && (
-            <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 2 }}>AI Configuration</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>AI News Provider</InputLabel>
-                      <Select value={settingsForm['ai_news_provider'] ?? 'openai'} label="AI News Provider"
-                        onChange={e => setSettingsForm({ ...settingsForm, ai_news_provider: e.target.value })}>
-                        <MenuItem value="openai">OpenAI (GPT)</MenuItem>
-                        <MenuItem value="grok">Grok (xAI)</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2 }}>AI Configuration</Typography>
+
+              {/* Provider Selection */}
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>AI News Provider</InputLabel>
+                    <Select value={selectedProvider} label="AI News Provider"
+                      onChange={e => setSettingsForm({ ...settingsForm, ai_news_provider: e.target.value })}>
+                      {AI_PROVIDERS.map(p => (
+                        <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 </Grid>
-              </CardContent>
-            </Card>
-          )}
+              </Grid>
+
+              {/* API Keys */}
+              <Typography variant="subtitle2" sx={{ mt: 3, mb: 1 }}>API Keys</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Enter API keys for your AI providers. Leave blank to use keys from the server .env file.
+                Existing keys are masked for security.
+              </Typography>
+              <Grid container spacing={2}>
+                {API_KEY_FIELDS.map(({ key, label, provider }) => (
+                  <Grid item xs={12} sm={6} key={key}>
+                    <TextField
+                      fullWidth size="small" label={label}
+                      type={showApiKeys[key] ? 'text' : 'password'}
+                      value={settingsForm[key] ?? ''}
+                      onChange={e => setSettingsForm({ ...settingsForm, [key]: e.target.value })}
+                      placeholder="Enter API key or leave blank for .env"
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton size="small" onClick={() => toggleApiKeyVisibility(key)} edge="end">
+                              {showApiKeys[key] ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          ...(provider === selectedProvider ? { borderColor: 'primary.main' } : {}),
+                        },
+                      }}
+                      helperText={provider === selectedProvider ? 'Active provider' : undefined}
+                      color={provider === selectedProvider ? 'primary' : undefined}
+                      focused={provider === selectedProvider}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
+
+              {/* Advanced AI Settings */}
+              <Accordion sx={{ mt: 3 }} disableGutters elevation={0} variant="outlined">
+                <AccordionSummary expandIcon={<ExpandMore />}>
+                  <Typography variant="subtitle2">Advanced AI Settings</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Override the model name and API endpoint for the currently selected provider ({AI_PROVIDERS.find(p => p.value === selectedProvider)?.label}).
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth size="small" label="Model Name"
+                        value={settingsForm[`ai_${selectedProvider}_model`] ?? ''}
+                        onChange={e => setSettingsForm({ ...settingsForm, [`ai_${selectedProvider}_model`]: e.target.value })}
+                        helperText="Leave default unless you need a specific model version"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth size="small" label="API Endpoint"
+                        value={settingsForm[`ai_${selectedProvider}_endpoint`] ?? ''}
+                        onChange={e => setSettingsForm({ ...settingsForm, [`ai_${selectedProvider}_endpoint`]: e.target.value })}
+                        helperText="Override for proxies or custom deployments"
+                      />
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            </CardContent>
+          </Card>
 
           {/* Session */}
-          {generalSettings.length > 0 && (
-            <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 2 }}>Session</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <TextField fullWidth size="small" type="number" label="Session Timeout (minutes)"
-                      value={settingsForm['session_timeout_minutes'] ?? ''}
-                      onChange={e => setSettingsForm({ ...settingsForm, session_timeout_minutes: e.target.value })}
-                      inputProps={{ min: 5, max: 1440 }}
-                      helperText="Idle time before requiring re-login" />
-                  </Grid>
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2 }}>Session</Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth size="small" type="number" label="Session Timeout (minutes)"
+                    value={settingsForm['session_timeout_minutes'] ?? ''}
+                    onChange={e => setSettingsForm({ ...settingsForm, session_timeout_minutes: e.target.value })}
+                    inputProps={{ min: 5, max: 1440 }}
+                    helperText="Idle time before requiring re-login" />
                 </Grid>
-              </CardContent>
-            </Card>
-          )}
+              </Grid>
+            </CardContent>
+          </Card>
 
           <Box sx={{ display: 'flex', gap: 2 }}>
             <Button variant="contained" startIcon={settingsSaving ? <CircularProgress size={20} /> : <Save />}

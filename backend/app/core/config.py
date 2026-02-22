@@ -64,12 +64,20 @@ class Settings(BaseSettings):
     # External APIs - keys
     OPENAI_API_KEY: Optional[str] = None
     GROK_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    DEEPSEEK_API_KEY: Optional[str] = None
+    MISTRAL_API_KEY: Optional[str] = None
     AI_NEWS_PROVIDER: str = "openai"
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
 
     # External API endpoints (overridable for proxies / staging mirrors)
     OPENAI_API_ENDPOINT: str = "https://api.openai.com/v1/chat/completions"
     GROK_API_ENDPOINT: str = "https://api.x.ai/v1/chat/completions"
+    GEMINI_API_ENDPOINT: str = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    ANTHROPIC_API_ENDPOINT: str = "https://api.anthropic.com/v1/messages"
+    DEEPSEEK_API_ENDPOINT: str = "https://api.deepseek.com/chat/completions"
+    MISTRAL_API_ENDPOINT: str = "https://api.mistral.ai/v1/chat/completions"
     COINGECKO_API_BASE: str = "https://api.coingecko.com/api/v3"
     NSE_API_BASE: str = "https://www.nseindia.com/api"
     AMFI_NAV_URL: str = "https://www.amfiindia.com/spages/NAVAll.txt"
@@ -83,6 +91,10 @@ class Settings(BaseSettings):
     # AI model selection (overridable without changing code)
     OPENAI_MODEL: str = "gpt-3.5-turbo"
     GROK_MODEL: str = "grok-beta"
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+    MISTRAL_MODEL: str = "mistral-small-latest"
 
     # AI request tuning
     AI_REQUEST_DELAY: float = 2.0       # seconds between successive AI requests
