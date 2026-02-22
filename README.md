@@ -84,37 +84,44 @@ PortAct/
 
 ## Getting Started
 
-### Prerequisites
-- Docker and Docker Compose
-- Node.js 18+ (for local frontend development)
-- Python 3.11+ (for local backend development)
+### One-Command Install (Recommended)
 
-### Quick Start with Docker
+The easiest way to get PortAct up and running. This single command will install all dependencies (Python, Node.js, PostgreSQL), set up the database, and launch the application:
 
-1. Clone the repository
 ```bash
-git clone <repository-url>
-cd PortAct
+git clone https://github.com/debasisdas1976/PortAct.git && cd PortAct && ./install.sh
 ```
 
-2. Set up environment variables
+Or if you've already cloned the repository:
 ```bash
+./install.sh
+```
+
+**Options:**
+- `./install.sh` — Full install and launch
+- `./install.sh --no-start` — Install only, don't launch
+- `./install.sh --seed-demo` — Install with a demo user and sample data
+
+Once complete, open your browser:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+
+### Alternative: Docker Setup
+
+If you prefer running via Docker:
+
+```bash
+git clone https://github.com/debasisdas1976/PortAct.git
+cd PortAct
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
-# Edit the .env files with your configurations
-```
-
-3. Start all services
-```bash
 docker-compose up -d
 ```
 
-4. Access the application
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
+### Alternative: Manual Local Development
 
-### Local Development
+**Prerequisites:** Python 3.11+, Node.js 18+, PostgreSQL 15
 
 #### Backend
 ```bash
