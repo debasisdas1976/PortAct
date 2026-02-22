@@ -15,6 +15,20 @@ from app.models.asset import Asset
 from app.models.transaction import Transaction
 from app.models.alert import Alert
 from app.models.statement import Statement
+from app.models.bank_account import BankAccount
+from app.models.demat_account import DematAccount
+from app.models.crypto_account import CryptoAccount
+from app.models.expense import Expense
+from app.models.expense_category import ExpenseCategory
+from app.models.portfolio import Portfolio
+from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
+from app.models.mutual_fund_holding import MutualFundHolding
+from app.models.bank import BankMaster
+from app.models.broker import BrokerMaster
+from app.models.crypto_exchange import CryptoExchangeMaster
+from app.models.asset_type_master import AssetTypeMaster
+from app.models.institution import InstitutionMaster
+from app.models.app_settings import AppSettings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
