@@ -152,8 +152,8 @@ echo "Application Shutdown Complete!"
 echo "======================================"
 echo ""
 echo "To start the application again, run:"
-echo "  ./run_app.sh     (fresh start with setup)"
-echo "  ./restart_app.sh (quick restart)"
+echo "  ./scripts/run_app.sh     (fresh start with setup)"
+echo "  ./scripts/restart_app.sh (quick restart)"
 echo ""
 
 # Made with Bob

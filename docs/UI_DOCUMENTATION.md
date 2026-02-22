@@ -280,7 +280,7 @@ Creates optimized build in `build/` directory
 
 ### Using the Complete Setup Script
 ```bash
-./run_app.sh
+./scripts/run_app.sh
 ```
 This script:
 1. Checks prerequisites

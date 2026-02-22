@@ -92,7 +92,7 @@ PortAct/
 
 The project includes multiple database initialization scripts for different deployment scenarios:
 
-#### 1. Local Development Setup (`init_database.sh`)
+#### 1. Local Development Setup (`scripts/init_database.sh`)
 
 **Use Case:** Setting up database on local machine with PostgreSQL installed
 
@@ -107,7 +107,7 @@ The project includes multiple database initialization scripts for different depl
 
 **Usage:**
 ```bash
-./init_database.sh
+./scripts/init_database.sh
 ```
 
 **Requirements:**
@@ -274,7 +274,7 @@ cp .env.example .env
 
 # Run application
 cd ..
-./run_app.sh
+./scripts/run_app.sh
 ```
 
 ### 3. Docker Setup
@@ -356,7 +356,7 @@ docker-compose -f infrastructure/docker-compose.yml up -d --build
    cd PortAct
 
    # Setup application
-   ./setup.sh
+   ./scripts/setup.sh
    ```
 
 2. **Configure Nginx:**
@@ -551,7 +551,7 @@ kill -9 <PID>
 
 For issues or questions:
 - Create GitHub issue: https://github.com/debasisdas1976/PortAct/issues
-- Check documentation: README.md, API_DOCUMENTATION.md
+- Check documentation: [README.md](../README.md), [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
 - Review logs: backend.log, frontend.log
 
 ## Version History

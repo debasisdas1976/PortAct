@@ -72,10 +72,13 @@ PortAct/
 │   │   └── utils/          # Utility functions
 │   ├── package.json
 │   └── Dockerfile
+├── docs/                   # Project documentation
+├── scripts/                # Setup and utility scripts
 ├── infrastructure/         # Infrastructure as code
 │   ├── docker-compose.yml
 │   ├── nginx/
 │   └── scripts/
+├── install.sh              # Main installation script
 └── README.md
 ```
 

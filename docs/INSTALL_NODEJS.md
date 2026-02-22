@@ -212,7 +212,7 @@ After installing Node.js and npm, you can use our automated script:
 
 ```bash
 cd /Users/debasis/Debasis/personal/Projects/PortAct
-./run_app.sh
+./scripts/run_app.sh
 ```
 
 This script will:

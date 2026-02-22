@@ -348,6 +348,6 @@ docker container prune
 ## Support
 
 For issues and questions:
-- Check the [README.md](README.md)
+- Check the [README.md](../README.md)
 - Review API documentation at `/docs`
 - Create an issue in the repository

@@ -7,7 +7,7 @@
 Run this single command to install all dependencies and resolve import errors:
 
 ```bash
-./install-dependencies.sh
+./scripts/install-dependencies.sh
 ```
 
 This will:
@@ -35,7 +35,7 @@ This will:
 
 #### Option A: Docker (Recommended - No local setup needed)
 ```bash
-./setup.sh
+./scripts/setup.sh
 ```
 
 #### Option B: Local Development
@@ -62,7 +62,7 @@ npm start
 
 ## 📋 Verification Checklist
 
-After running `./install-dependencies.sh`, verify:
+After running `./scripts/install-dependencies.sh`, verify:
 
 - [ ] No import errors in `backend/app/` files
 - [ ] Python packages installed: `cd backend && source venv/bin/activate && pip list`
@@ -113,8 +113,8 @@ sudo apt-get install -y nodejs
 
 **Solution**:
 ```bash
-chmod +x install-dependencies.sh
-chmod +x setup.sh
+chmod +x scripts/install-dependencies.sh
+chmod +x scripts/setup.sh
 ```
 
 ## 📚 Next Steps
@@ -163,7 +163,7 @@ chmod +x setup.sh
 
 ## 📖 Documentation
 
-- **[README.md](README.md)** - Project overview
+- **[README.md](../README.md)** - Project overview
 - **[INSTALLATION.md](INSTALLATION.md)** - Detailed installation guide
 - **[API_DOCUMENTATION.md](API_DOCUMENTATION.md)** - Complete API reference
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment

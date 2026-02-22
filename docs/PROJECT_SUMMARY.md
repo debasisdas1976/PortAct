@@ -120,7 +120,7 @@ frontend/
 - Load balancing ready
 
 #### Scripts
-- **setup.sh** - Automated setup script with:
+- **scripts/setup.sh** - Automated setup script with:
   - Dependency checking
   - Environment configuration
   - Service startup
@@ -128,10 +128,10 @@ frontend/
 
 ### ✅ Documentation
 
-1. **README.md** - Project overview and quick start
-2. **DEPLOYMENT.md** - Comprehensive deployment guide
-3. **API_DOCUMENTATION.md** - Complete API reference
-4. **PROJECT_SUMMARY.md** - This document
+1. **[README.md](../README.md)** - Project overview and quick start
+2. **[DEPLOYMENT.md](DEPLOYMENT.md)** - Comprehensive deployment guide
+3. **[API_DOCUMENTATION.md](API_DOCUMENTATION.md)** - Complete API reference
+4. **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - This document
 
 ## Key Features Implemented
 
@@ -258,11 +258,13 @@ PortAct/
 │   ├── docker-compose.yml
 │   └── nginx/
 │       └── nginx.conf
-├── README.md
-├── DEPLOYMENT.md
-├── API_DOCUMENTATION.md
-├── PROJECT_SUMMARY.md
-└── setup.sh
+├── docs/
+│   ├── DEPLOYMENT.md
+│   ├── API_DOCUMENTATION.md
+│   └── PROJECT_SUMMARY.md
+├── scripts/
+│   └── setup.sh
+└── README.md
 ```
 
 ## How to Use
@@ -273,8 +275,8 @@ PortAct/
    ```bash
    git clone <repository-url>
    cd PortAct
-   chmod +x setup.sh
-   ./setup.sh
+   chmod +x scripts/setup.sh
+   ./scripts/setup.sh
    ```
 
 2. **Access the Application**
@@ -351,7 +353,7 @@ PortAct/
 ## Deployment Options
 
 ### Local Development
-- Use `setup.sh` for quick setup
+- Use `scripts/setup.sh` for quick setup
 - Docker Compose for all services
 - Hot reload for development
 

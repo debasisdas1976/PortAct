@@ -883,7 +883,7 @@ print_summary() {
         echo -e "    Run: ${CYAN}cd $PROJECT_DIR && ./install.sh${NC}"
     else
         echo -e "  ${BOLD}To stop the application:${NC}"
-        echo -e "    Run: ${CYAN}cd $PROJECT_DIR && ./shutdown_app.sh${NC}"
+        echo -e "    Run: ${CYAN}cd $PROJECT_DIR && ./scripts/shutdown_app.sh${NC}"
         echo ""
         echo -e "  ${BOLD}To restart later:${NC}"
         echo -e "    Run: ${CYAN}cd $PROJECT_DIR && ./install.sh${NC}"

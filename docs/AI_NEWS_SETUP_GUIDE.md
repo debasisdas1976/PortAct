@@ -54,7 +54,7 @@ AI_NEWS_PROVIDER=grok
 # Stop the application if running
 # Then restart it
 cd /Users/debasis/Debasis/personal/Projects/PortAct
-./restart_app.sh
+./scripts/restart_app.sh
 ```
 
 ## Step 5: Test the System

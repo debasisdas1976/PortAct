@@ -159,15 +159,15 @@ git clone https://github.com/YOUR_USERNAME/PortAct.git
 cd PortAct
 
 # 3. Make the setup script executable (Mac/Linux only)
-chmod +x setup.sh
+chmod +x scripts/setup.sh
 
 # 4. Run the setup script
-./setup.sh
+./scripts/setup.sh
 ```
 
-> **Windows users:** If `./setup.sh` doesn't work in Git Bash, run:
+> **Windows users:** If `./scripts/setup.sh` doesn't work in Git Bash, run:
 > ```bash
-> bash setup.sh
+> bash scripts/setup.sh
 > ```
 
 The script will:
