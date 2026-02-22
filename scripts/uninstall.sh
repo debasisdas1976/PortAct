@@ -14,7 +14,7 @@ set -euo pipefail
 # ── Constants ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
-PROJECT_DIR="$SCRIPT_DIR"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 DB_NAME="portact_db"
 DB_USER="portact_user"

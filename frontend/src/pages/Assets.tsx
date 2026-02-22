@@ -140,7 +140,7 @@ const Assets: React.FC = () => {
   const [editingPriceUsd, setEditingPriceUsd] = useState<number>(0);
   const [editingPurchasePriceUsd, setEditingPurchasePriceUsd] = useState<number>(0);
   const [usdToInrRate, setUsdToInrRate] = useState<number>(85);
-  const [assetTypes, setAssetTypes] = useState<{ value: string; label: string }[]>([]);
+  const [assetTypes, setAssetTypes] = useState<{ value: string; label: string; category: string }[]>([]);
 
   useEffect(() => {
     dispatch(fetchAssets(selectedPortfolioId));
@@ -153,7 +153,7 @@ const Assets: React.FC = () => {
     try {
       const data = await assetTypesAPI.getAll({ is_active: true });
       setAssetTypes(
-        Array.isArray(data) ? data.map((t: any) => ({ value: t.name, label: t.display_label })) : []
+        Array.isArray(data) ? data.map((t: any) => ({ value: t.name, label: t.display_label, category: t.category })) : []
       );
     } catch {
       setAssetTypes([]);
@@ -700,6 +700,8 @@ const Assets: React.FC = () => {
               const assetType = group.asset_type.toLowerCase();
               const needsIsin = assetType === 'stock' || assetType === 'equity_mutual_fund' || assetType === 'debt_mutual_fund';
               const missingIsin = needsIsin && !group.instances[0]?.isin;
+              const assetCategory = assetTypes.find(t => t.value.toLowerCase() === assetType)?.category || '';
+              const hideRefreshPrice = ['Other', 'Fixed Income', 'Govt. Schemes'].includes(assetCategory);
 
               return (
                 <React.Fragment key={group.symbol}>
@@ -743,18 +745,20 @@ const Assets: React.FC = () => {
                     <TableCell align="right">
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
                         {formatCurrency(currentPrice)}
-                        {group.instances.some(i => i.price_update_failed) ? (
-                          <Tooltip title={group.instances.find(i => i.price_update_failed)?.price_update_error || "Price update failed"} arrow>
-                            <ErrorIcon fontSize="small" color="error" />
-                          </Tooltip>
-                        ) : group.instances.some(i => i.last_price_update) ? (
-                          <Tooltip title={`Last updated: ${new Date(group.instances[0].last_price_update!).toLocaleString()}`} arrow>
-                            <CheckCircle fontSize="small" color="success" sx={{ opacity: 0.6 }} />
-                          </Tooltip>
-                        ) : (
-                          <Tooltip title="Price never updated - click refresh to update" arrow>
-                            <Warning fontSize="small" sx={{ opacity: 0.4, color: 'grey.500' }} />
-                          </Tooltip>
+                        {!hideRefreshPrice && (
+                          group.instances.some(i => i.price_update_failed) ? (
+                            <Tooltip title={group.instances.find(i => i.price_update_failed)?.price_update_error || "Price update failed"} arrow>
+                              <ErrorIcon fontSize="small" color="error" />
+                            </Tooltip>
+                          ) : group.instances.some(i => i.last_price_update) ? (
+                            <Tooltip title={`Last updated: ${new Date(group.instances[0].last_price_update!).toLocaleString()}`} arrow>
+                              <CheckCircle fontSize="small" color="success" sx={{ opacity: 0.6 }} />
+                            </Tooltip>
+                          ) : (
+                            <Tooltip title="Price never updated - click refresh to update" arrow>
+                              <Warning fontSize="small" sx={{ opacity: 0.4, color: 'grey.500' }} />
+                            </Tooltip>
+                          )
                         )}
                       </Box>
                     </TableCell>
@@ -773,19 +777,21 @@ const Assets: React.FC = () => {
                       <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                         {!hasMultipleInstances && (
                           <>
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => handleManualPriceUpdate(group.instances[0].id, group.symbol)}
-                              disabled={updatingAssetId === group.instances[0].id}
-                              title="Update price"
-                            >
-                              {updatingAssetId === group.instances[0].id ? (
-                                <CircularProgress size={16} />
-                              ) : (
-                                <Refresh fontSize="small" />
-                              )}
-                            </IconButton>
+                            {!hideRefreshPrice && (
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => handleManualPriceUpdate(group.instances[0].id, group.symbol)}
+                                disabled={updatingAssetId === group.instances[0].id}
+                                title="Update price"
+                              >
+                                {updatingAssetId === group.instances[0].id ? (
+                                  <CircularProgress size={16} />
+                                ) : (
+                                  <Refresh fontSize="small" />
+                                )}
+                              </IconButton>
+                            )}
                             <IconButton
                               size="small"
                               color="info"
@@ -870,19 +876,21 @@ const Assets: React.FC = () => {
                                       </TableCell>
                                       <TableCell align="center">
                                         <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                                          <IconButton
-                                            size="small"
-                                            color="primary"
-                                            onClick={() => handleManualPriceUpdate(instance.id, instance.symbol)}
-                                            disabled={updatingAssetId === instance.id}
-                                            title="Update price"
-                                          >
-                                            {updatingAssetId === instance.id ? (
-                                              <CircularProgress size={16} />
-                                            ) : (
-                                              <Refresh fontSize="small" />
-                                            )}
-                                          </IconButton>
+                                          {!hideRefreshPrice && (
+                                            <IconButton
+                                              size="small"
+                                              color="primary"
+                                              onClick={() => handleManualPriceUpdate(instance.id, instance.symbol)}
+                                              disabled={updatingAssetId === instance.id}
+                                              title="Update price"
+                                            >
+                                              {updatingAssetId === instance.id ? (
+                                                <CircularProgress size={16} />
+                                              ) : (
+                                                <Refresh fontSize="small" />
+                                              )}
+                                            </IconButton>
+                                          )}
                                           <IconButton
                                             size="small"
                                             color="info"

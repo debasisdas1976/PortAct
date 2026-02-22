@@ -17,6 +17,7 @@ interface AssetAllocationChartProps {
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Equity': '#1976d2',
+  'Debt Mutual Fund': '#00838f',
   'Fixed Income': '#0097a7',
   'Govt. Schemes': '#388e3c',
   'Commodities': '#f57c00',

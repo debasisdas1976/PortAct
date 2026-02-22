@@ -43,6 +43,7 @@ interface AssetType {
 
 const CATEGORIES = [
   'Equity',
+  'Debt Mutual Fund',
   'Fixed Income',
   'Govt. Schemes',
   'Commodities',
@@ -54,6 +55,7 @@ const CATEGORIES = [
 const getCategoryColor = (category: string): 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' | 'default' => {
   switch (category) {
     case 'Equity': return 'primary';
+    case 'Debt Mutual Fund': return 'info';
     case 'Fixed Income': return 'info';
     case 'Govt. Schemes': return 'success';
     case 'Commodities': return 'warning';
