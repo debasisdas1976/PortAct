@@ -270,6 +270,13 @@ export const statementsAPI = {
   delete: async (id: number) => {
     await api.delete(`/statements/${id}`);
   },
+
+  getPortfolioAccounts: async (portfolioId?: number | null) => {
+    const params: Record<string, any> = {};
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/statements/accounts', { params });
+    return response.data;
+  },
 };
 
 // Crypto Exchanges API

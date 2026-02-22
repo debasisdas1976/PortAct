@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -7,7 +7,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Chip,
@@ -19,55 +18,123 @@ import {
   TextField,
   MenuItem,
   IconButton,
-  Tooltip,
   InputAdornment,
 } from '@mui/material';
-import { Upload, CloudUpload, Delete, Visibility, VisibilityOff } from '@mui/icons-material';
+import {
+  Upload,
+  CloudUpload,
+  AddCircleOutline,
+  Visibility,
+  VisibilityOff,
+  KeyboardArrowDown,
+  KeyboardArrowRight,
+  AccountBalance,
+  AccountBalanceWallet,
+  CurrencyBitcoin,
+  Savings,
+  Shield,
+  Work,
+  ChildCare,
+  TrendingUp,
+  VolunteerActivism,
+} from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-import api, { brokersAPI, banksAPI, cryptoExchangesAPI, institutionsAPI } from '../services/api';
+import api, { brokersAPI, banksAPI, cryptoExchangesAPI, institutionsAPI, statementsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
-interface Statement {
-  id: number;
-  filename: string;
-  uploaded_at: string;
-  status: string;
-  institution_name: string;
-  statement_type: string;
-  assets_found: number;
-  transactions_found: number;
+// --- Types ---
+
+interface UploadConfig {
+  endpoint: string;
+  pre_filled: Record<string, any>;
+  fields_needed: string[];
+  accepts: string;
 }
+
+interface AccountItem {
+  account_source: string;
+  account_id: number;
+  asset_type?: string;
+  display_name: string;
+  institution_name?: string;
+  sub_info?: string;
+  last_statement_date?: string | null;
+  upload_config: UploadConfig;
+}
+
+interface AccountGroup {
+  group_type: string;
+  display_name: string;
+  accounts: AccountItem[];
+}
+
+// --- Icon map ---
+
+const groupIcons: Record<string, React.ReactElement> = {
+  demat_accounts: <AccountBalance />,
+  bank_accounts: <AccountBalanceWallet />,
+  crypto_accounts: <CurrencyBitcoin />,
+  ppf: <Savings />,
+  nps: <VolunteerActivism />,
+  pf: <Work />,
+  ssy: <ChildCare />,
+  insurance: <Shield />,
+  mutual_funds: <TrendingUp />,
+};
+
+// --- Component ---
 
 const Statements: React.FC = () => {
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
   const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
-  const [statements, setStatements] = useState<Statement[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [statementToDelete, setStatementToDelete] = useState<Statement | null>(null);
+
+  // Account groups state
+  const [groups, setGroups] = useState<AccountGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  // Simplified upload dialog (existing account)
+  const [simpleUploadOpen, setSimpleUploadOpen] = useState(false);
+  const [uploadTarget, setUploadTarget] = useState<AccountItem | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [broker, setBroker] = useState('');
-  const [statementType, setStatementType] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+
+  // Full upload dialog (Add New Account)
+  const [fullUploadOpen, setFullUploadOpen] = useState(false);
+  const [fullStatementType, setFullStatementType] = useState('');
+  const [fullBroker, setFullBroker] = useState('');
+  const [fullPassword, setFullPassword] = useState('');
+  const [showFullPassword, setShowFullPassword] = useState(false);
+  const [fullFile, setFullFile] = useState<File | null>(null);
+  const [fullUploading, setFullUploading] = useState(false);
   const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
+
+  // Master data for full upload dialog
   const [brokersList, setBrokersList] = useState<{ value: string; label: string }[]>([]);
   const [banksList, setBanksList] = useState<{ value: string; label: string }[]>([]);
   const [exchangesList, setExchangesList] = useState<{ value: string; label: string }[]>([]);
   const [npsCraList, setNpsCraList] = useState<{ value: string; label: string }[]>([]);
   const [insuranceList, setInsuranceList] = useState<{ value: string; label: string }[]>([]);
 
-  useEffect(() => {
-    fetchStatements();
-    fetchMasterData();
-  }, []);
+  // --- Data fetching ---
+
+  const fetchAccountGroups = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await statementsAPI.getPortfolioAccounts(selectedPortfolioId);
+      setGroups(data.groups || []);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load accounts'));
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedPortfolioId]);
 
   const fetchMasterData = async () => {
     try {
@@ -94,62 +161,73 @@ const Statements: React.FC = () => {
         Array.isArray(insuranceProviders) ? insuranceProviders.map((i: any) => ({ value: i.name, label: i.display_label })) : []
       );
     } catch (err) {
-      // Non-critical: dropdowns will just be empty; user can still select "other"
       console.error('Failed to fetch master data for dropdowns', err);
     }
   };
 
-  const fetchStatements = async () => {
-    try {
-      setLoading(true);
-      const response = await api.get('/statements/');
-      setStatements(response.data);
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to fetch statements'));
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    fetchAccountGroups();
+  }, [fetchAccountGroups]);
+
+  useEffect(() => {
+    fetchMasterData();
+  }, []);
+
+  // --- Group collapse toggle ---
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // --- Simplified upload (existing account) ---
+
+  const openSimplifiedUpload = (account: AccountItem) => {
+    setUploadTarget(account);
+    setSelectedFile(null);
+    setPassword('');
+    setShowPassword(false);
+    setSimpleUploadOpen(true);
+  };
+
+  const handleSimpleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       setSelectedFile(event.target.files[0]);
     }
   };
 
-  const handleUpload = async () => {
-    if (!selectedFile || !broker || !statementType) {
-      notify.error('Please fill all fields and select a file');
-      return;
+  const handleSimplifiedUpload = async () => {
+    if (!selectedFile || !uploadTarget) return;
+
+    const { upload_config } = uploadTarget;
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    // Add all pre-filled values
+    for (const [key, value] of Object.entries(upload_config.pre_filled)) {
+      formData.append(key, String(value));
+    }
+
+    // Add password if the field is needed and provided
+    if (upload_config.fields_needed.includes('password') && password) {
+      formData.append('password', password);
     }
 
     try {
       setUploading(true);
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('institution_name', broker);
-      formData.append('statement_type', statementType);
-      if (password) {
-        formData.append('password', password);
-      }
-      if (uploadPortfolioId) {
-        formData.append('portfolio_id', String(uploadPortfolioId));
-      }
-
-      await api.post('/statements/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      const response = await api.post(upload_config.endpoint, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
-
-      setUploadDialogOpen(false);
+      notify.success(response.data?.message || 'Statement uploaded successfully');
+      setSimpleUploadOpen(false);
       setSelectedFile(null);
-      setBroker('');
-      setStatementType('');
       setPassword('');
-      setUploadPortfolioId('');
-      notify.success('Statement uploaded successfully');
-      fetchStatements();
+      setUploadTarget(null);
+      fetchAccountGroups();
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to upload statement'));
     } finally {
@@ -157,136 +235,274 @@ const Statements: React.FC = () => {
     }
   };
 
-  const handleDeleteClick = (statement: Statement) => {
-    setStatementToDelete(statement);
-    setDeleteDialogOpen(true);
+  // --- Full upload (Add New Account) ---
+
+  const openFullUpload = () => {
+    setFullFile(null);
+    setFullStatementType('');
+    setFullBroker('');
+    setFullPassword('');
+    setShowFullPassword(false);
+    setUploadPortfolioId(selectedPortfolioId || '');
+    setFullUploadOpen(true);
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!statementToDelete) return;
+  const handleFullFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      setFullFile(event.target.files[0]);
+    }
+  };
+
+  const handleFullUpload = async () => {
+    if (!fullFile || !fullBroker || !fullStatementType) {
+      notify.error('Please fill all fields and select a file');
+      return;
+    }
 
     try {
-      setDeleting(true);
-      await api.delete(`/statements/${statementToDelete.id}`);
-      notify.success(`Statement "${statementToDelete.filename}" deleted successfully`);
-      setDeleteDialogOpen(false);
-      setStatementToDelete(null);
-      fetchStatements();
+      setFullUploading(true);
+      const formData = new FormData();
+      formData.append('file', fullFile);
+      formData.append('institution_name', fullBroker);
+      formData.append('statement_type', fullStatementType);
+      if (fullPassword) {
+        formData.append('password', fullPassword);
+      }
+      if (uploadPortfolioId) {
+        formData.append('portfolio_id', String(uploadPortfolioId));
+      }
+
+      const response = await api.post('/statements/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setFullUploadOpen(false);
+      notify.success(response.data?.message || 'Statement uploaded and account created successfully');
+      fetchAccountGroups();
     } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to delete statement'));
+      notify.error(getErrorMessage(err, 'Failed to upload statement'));
+      setFullUploadOpen(false);
+      fetchAccountGroups();
     } finally {
-      setDeleting(false);
+      setFullUploading(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'processed':
-        return 'success';
-      case 'processing':
-        return 'warning';
-      case 'failed':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
+  // --- Helpers ---
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return 'Never';
     return new Date(dateString).toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     });
   };
 
+  // --- Render ---
+
   return (
     <Box>
+      {/* Page header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">Statements</Typography>
+        <Typography variant="h4">Accounts & Statements</Typography>
         <Button
           variant="contained"
-          startIcon={<CloudUpload />}
-          onClick={() => { setUploadPortfolioId(selectedPortfolioId || ''); setUploadDialogOpen(true); }}
+          startIcon={<AddCircleOutline />}
+          onClick={openFullUpload}
         >
-          Upload Statement
+          Add New Account
         </Button>
       </Box>
 
-      <Paper>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Filename</TableCell>
-                <TableCell>Broker</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Upload Date</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
+      {/* Loading state */}
+      {loading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      {/* Empty state */}
+      {!loading && groups.length === 0 && (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            No accounts found for this portfolio.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Upload your first statement to create an account and import your holdings.
+          </Typography>
+          <Button
+            variant="outlined"
+            startIcon={<CloudUpload />}
+            onClick={openFullUpload}
+          >
+            Upload First Statement
+          </Button>
+        </Paper>
+      )}
+
+      {/* Account groups */}
+      {!loading && groups.map((group) => (
+        <Paper key={group.group_type} sx={{ mb: 2, overflow: 'hidden' }}>
+          {/* Group header */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              p: 2,
+              cursor: 'pointer',
+              bgcolor: 'action.hover',
+              '&:hover': { bgcolor: 'action.selected' },
+              userSelect: 'none',
+            }}
+            onClick={() => toggleGroup(group.group_type)}
+          >
+            {collapsedGroups.has(group.group_type)
+              ? <KeyboardArrowRight sx={{ color: 'text.secondary' }} />
+              : <KeyboardArrowDown sx={{ color: 'text.secondary' }} />
+            }
+            <Box sx={{ ml: 1, mr: 1, display: 'flex', alignItems: 'center', color: 'primary.main' }}>
+              {groupIcons[group.group_type] || <AccountBalance />}
+            </Box>
+            <Typography variant="h6" sx={{ flexGrow: 1 }}>
+              {group.display_name}
+            </Typography>
+            <Chip
+              label={group.accounts.length}
+              size="small"
+              color="primary"
+              variant="outlined"
+            />
+          </Box>
+
+          {/* Account list (when expanded) */}
+          {!collapsedGroups.has(group.group_type) && (
+            <Table size="small">
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={5} align="center">
-                    <CircularProgress />
-                  </TableCell>
+                  <TableCell>Account</TableCell>
+                  <TableCell>Details</TableCell>
+                  <TableCell>Last Statement</TableCell>
+                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
-              ) : statements.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} align="center">
-                    <Typography color="text.secondary">
-                      No statements uploaded yet. Upload your first statement to get started.
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                statements.map((statement) => (
-                  <TableRow key={statement.id}>
-                    <TableCell>{statement.filename}</TableCell>
-                    <TableCell>{statement.institution_name || 'N/A'}</TableCell>
-                    <TableCell>{statement.statement_type.replace(/_/g, ' ')}</TableCell>
-                    <TableCell>{formatDate(statement.uploaded_at)}</TableCell>
+              </TableHead>
+              <TableBody>
+                {group.accounts.map((account) => (
+                  <TableRow
+                    key={`${account.account_source}-${account.account_id}`}
+                    hover
+                    sx={{ '&:last-child td': { borderBottom: 0 } }}
+                  >
                     <TableCell>
-                      <Chip
-                        label={statement.status}
-                        color={getStatusColor(statement.status)}
-                        size="small"
-                      />
+                      <Typography variant="body2" fontWeight={500}>
+                        {account.display_name}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {account.sub_info}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatDate(account.last_statement_date)}
+                      </Typography>
                     </TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Delete statement and associated assets">
-                        <IconButton
-                          color="error"
-                          size="small"
-                          onClick={() => handleDeleteClick(statement)}
-                        >
-                          <Delete />
-                        </IconButton>
-                      </Tooltip>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<CloudUpload />}
+                        onClick={() => openSimplifiedUpload(account)}
+                      >
+                        Upload Statement
+                      </Button>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </Paper>
+      ))}
 
-      {/* Upload Dialog */}
-      <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Upload Statement</DialogTitle>
+      {/* ========== Simplified Upload Dialog (existing account) ========== */}
+      <Dialog open={simpleUploadOpen} onClose={() => setSimpleUploadOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Upload Statement for {uploadTarget?.display_name}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Button
+              variant="outlined"
+              component="label"
+              fullWidth
+              startIcon={<Upload />}
+              sx={{ mb: 2 }}
+            >
+              {selectedFile ? selectedFile.name : 'Select File'}
+              <input
+                type="file"
+                hidden
+                accept={uploadTarget?.upload_config.accepts || '.pdf,.csv,.xlsx'}
+                onChange={handleSimpleFileSelect}
+              />
+            </Button>
+
+            {/* Password field — only when the field is needed and file is a PDF */}
+            {uploadTarget?.upload_config.fields_needed.includes('password') &&
+             selectedFile?.name.toLowerCase().endsWith('.pdf') && (
+              <TextField
+                fullWidth
+                type={showPassword ? 'text' : 'password'}
+                label="PDF Password (if encrypted)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Leave empty if not password-protected"
+                helperText="Required for encrypted PDFs (e.g., NSDL CAS, passbook PDFs)"
+                sx={{ mb: 2 }}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            )}
+
+            {selectedFile && (
+              <Typography variant="body2" color="text.secondary">
+                Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(2)} KB)
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSimpleUploadOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleSimplifiedUpload}
+            variant="contained"
+            disabled={!selectedFile || uploading}
+          >
+            {uploading ? <CircularProgress size={24} /> : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== Full Upload Dialog (Add New Account) ========== */}
+      <Dialog open={fullUploadOpen} onClose={() => setFullUploadOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Upload Statement for New Account</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
             <TextField
               select
               fullWidth
               label="Statement Type"
-              value={statementType}
-              onChange={(e) => { setStatementType(e.target.value); setBroker(''); }}
+              value={fullStatementType}
+              onChange={(e) => { setFullStatementType(e.target.value); setFullBroker(''); }}
               sx={{ mb: 2 }}
             >
               <MenuItem value="broker_statement">Broker Statement (Equity/Stocks)</MenuItem>
@@ -308,89 +524,72 @@ const Statements: React.FC = () => {
               select
               fullWidth
               label="Institution/Broker"
-              value={broker}
-              onChange={(e) => setBroker(e.target.value)}
+              value={fullBroker}
+              onChange={(e) => setFullBroker(e.target.value)}
               sx={{ mb: 2 }}
               helperText={
-                !statementType ? 'Select a statement type first' :
-                statementType === 'ppf_statement' || statementType === 'ssy_statement' ? 'Select bank or post office' :
-                statementType === 'nps_statement' ? 'Select CRA or fund manager' :
-                statementType === 'pf_statement' ? 'EPFO or employer name' :
-                statementType === 'bank_statement' ? 'Select your bank' :
-                statementType === 'insurance_statement' ? 'Select insurance provider' :
+                !fullStatementType ? 'Select a statement type first' :
+                fullStatementType === 'ppf_statement' || fullStatementType === 'ssy_statement' ? 'Select bank or post office' :
+                fullStatementType === 'nps_statement' ? 'Select CRA or fund manager' :
+                fullStatementType === 'pf_statement' ? 'EPFO or employer name' :
+                fullStatementType === 'bank_statement' ? 'Select your bank' :
+                fullStatementType === 'insurance_statement' ? 'Select insurance provider' :
                 'Select broker or institution'
               }
-              disabled={!statementType}
+              disabled={!fullStatementType}
             >
-              {/* Brokers — for broker/MF/demat statements */}
-              {['broker_statement', 'mutual_fund_statement', 'demat_statement'].includes(statementType) &&
+              {['broker_statement', 'mutual_fund_statement', 'demat_statement'].includes(fullStatementType) &&
                 brokersList.map((b) => (
                   <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>
                 ))
               }
-
-              {/* Crypto exchanges — for crypto statements */}
-              {statementType === 'crypto_statement' &&
+              {fullStatementType === 'crypto_statement' &&
                 exchangesList.map((e) => (
                   <MenuItem key={e.value} value={e.value}>{e.label}</MenuItem>
                 ))
               }
-
-              {/* US Stock Brokers */}
-              {statementType === 'vested_statement' && (
+              {fullStatementType === 'vested_statement' && (
                 <MenuItem value="vested">Vested</MenuItem>
               )}
-              {statementType === 'indmoney_statement' && (
+              {fullStatementType === 'indmoney_statement' && (
                 <MenuItem value="indmoney">INDMoney</MenuItem>
               )}
-
-              {/* Banks — for bank/PPF/SSY statements */}
-              {['bank_statement', 'ppf_statement', 'ssy_statement'].includes(statementType) &&
+              {['bank_statement', 'ppf_statement', 'ssy_statement'].includes(fullStatementType) &&
                 banksList.map((b) => (
                   <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>
                 ))
               }
-
-              {/* NPS CRAs */}
-              {statementType === 'nps_statement' &&
+              {fullStatementType === 'nps_statement' &&
                 npsCraList.map((c) => (
                   <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>
                 ))
               }
-
-              {/* EPFO for PF */}
-              {statementType === 'pf_statement' && (
+              {fullStatementType === 'pf_statement' && (
                 <MenuItem value="epfo">EPFO (Employees' Provident Fund Organisation)</MenuItem>
               )}
-
-              {/* Insurance providers */}
-              {statementType === 'insurance_statement' &&
+              {fullStatementType === 'insurance_statement' &&
                 insuranceList.map((i) => (
                   <MenuItem key={i.value} value={i.value}>{i.label}</MenuItem>
                 ))
               }
-
               <MenuItem value="other">Other</MenuItem>
             </TextField>
 
-            {selectedFile && selectedFile.name.toLowerCase().endsWith('.pdf') && (
+            {fullFile && fullFile.name.toLowerCase().endsWith('.pdf') && (
               <TextField
                 fullWidth
-                type={showPassword ? 'text' : 'password'}
+                type={showFullPassword ? 'text' : 'password'}
                 label="PDF Password (if encrypted)"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={fullPassword}
+                onChange={(e) => setFullPassword(e.target.value)}
                 placeholder="Leave empty if not password-protected"
                 helperText="Required for NSDL CAS and other encrypted PDFs"
                 sx={{ mb: 2 }}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowPassword(!showPassword)}
-                        edge="end"
-                      >
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      <IconButton onClick={() => setShowFullPassword(!showFullPassword)} edge="end">
+                        {showFullPassword ? <VisibilityOff /> : <Visibility />}
                       </IconButton>
                     </InputAdornment>
                   ),
@@ -420,56 +619,30 @@ const Statements: React.FC = () => {
               startIcon={<Upload />}
               sx={{ mb: 2 }}
             >
-              {selectedFile ? selectedFile.name : 'Select File'}
+              {fullFile ? fullFile.name : 'Select File'}
               <input
                 type="file"
                 hidden
                 accept=".pdf,.csv,.xlsx"
-                onChange={handleFileSelect}
+                onChange={handleFullFileSelect}
               />
             </Button>
 
-            {selectedFile && (
+            {fullFile && (
               <Typography variant="body2" color="text.secondary">
-                Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(2)} KB)
+                Selected: {fullFile.name} ({(fullFile.size / 1024).toFixed(2)} KB)
               </Typography>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setFullUploadOpen(false)}>Cancel</Button>
           <Button
-            onClick={handleUpload}
+            onClick={handleFullUpload}
             variant="contained"
-            disabled={!selectedFile || !broker || !statementType || uploading}
+            disabled={!fullFile || !fullBroker || !fullStatementType || fullUploading}
           >
-            {uploading ? <CircularProgress size={24} /> : 'Upload'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
-        <DialogTitle>Delete Statement</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to delete "{statementToDelete?.filename}"?
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            This will also delete all associated assets and transactions that were created from this statement.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleDeleteConfirm}
-            color="error"
-            variant="contained"
-            disabled={deleting}
-          >
-            {deleting ? <CircularProgress size={24} /> : 'Delete'}
+            {fullUploading ? <CircularProgress size={24} /> : 'Upload'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -478,5 +651,3 @@ const Statements: React.FC = () => {
 };
 
 export default Statements;
-
-// Made with Bob

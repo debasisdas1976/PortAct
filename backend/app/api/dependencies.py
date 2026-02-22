@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.user import User
 from app.schemas.user import TokenData
+from app.models.portfolio import Portfolio
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -73,5 +74,27 @@ async def get_current_superuser(
             detail="Not enough privileges"
         )
     return current_user
+
+def get_default_portfolio_id(user_id: int, db: Session) -> int:
+    """
+    Return the user's default portfolio ID.
+    Every user gets a default portfolio at registration, so this should
+    always find one.  Falls back to the first active portfolio if needed.
+    """
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.user_id == user_id,
+        Portfolio.is_default == True,
+    ).first()
+    if portfolio:
+        return portfolio.id
+    # Fallback: pick any active portfolio
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.user_id == user_id,
+        Portfolio.is_active == True,
+    ).first()
+    if portfolio:
+        return portfolio.id
+    return None
+
 
 # Made with Bob

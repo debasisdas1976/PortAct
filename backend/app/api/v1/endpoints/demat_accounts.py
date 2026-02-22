@@ -89,7 +89,7 @@ async def get_demat_accounts_summary(
     if portfolio_id is not None:
         query = query.filter(DematAccount.portfolio_id == portfolio_id)
     accounts = query.all()
-    
+
     total_cash_balance = sum(acc.cash_balance for acc in accounts)
     
     # Get asset statistics for all demat accounts
@@ -217,15 +217,20 @@ async def create_demat_account(
     else:
         account_dict['currency'] = 'INR'
     
+    # Auto-assign to default portfolio if not specified
+    if not account_dict.get('portfolio_id'):
+        from app.api.dependencies import get_default_portfolio_id
+        account_dict['portfolio_id'] = get_default_portfolio_id(current_user.id, db)
+
     account = DematAccount(
         **account_dict,
         user_id=current_user.id
     )
-    
+
     db.add(account)
     db.commit()
     db.refresh(account)
-    
+
     return account
 
 

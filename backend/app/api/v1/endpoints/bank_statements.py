@@ -140,6 +140,7 @@ async def upload_bank_statement(
                 'idfc_first_bank': 'IDFC_FIRST',
                 'state_bank_of_india': 'SBI',
                 'kotak_mahindra_bank': 'KOTAK',
+                'axis_bank': 'AXIS',
             }
             parser_bank_name = bank_name_map.get(bank_account.bank_name)
 
@@ -153,7 +154,42 @@ async def upload_bank_statement(
         # Parse the statement (pass password for encrypted files, e.g. SBI)
         parser = get_parser(parser_bank_name, file_path, password=password)
         transactions = parser.parse()
-        
+
+        # Validate that the parsed statement matches the selected account
+        extracted_info = getattr(parser, 'account_info', {})
+        extracted_acct_num = extracted_info.get('account_number', '')
+        if extracted_acct_num:
+            existing_num = bank_account.account_number or ''
+            # Strip masking characters to compare the meaningful digits
+            existing_digits = existing_num.replace('X', '').replace('x', '').strip()
+            if existing_digits:
+                # Check if the extracted account number ends with the same digits
+                extracted_suffix = extracted_acct_num[-len(existing_digits):]
+                if extracted_suffix != existing_digits:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=(
+                            f"Statement mismatch: the uploaded statement is for account "
+                            f"{extracted_acct_num}, but you selected "
+                            f"{bank_account.bank_name} account {bank_account.account_number}. "
+                            f"Please use 'Add New Account' if this is a different account."
+                        )
+                    )
+
+        extracted_holder = extracted_info.get('account_holder_name') or extracted_info.get('account_holder', '')
+        if extracted_holder and bank_account.account_holder_name:
+            # Case-insensitive comparison — reject only if clearly different
+            if extracted_holder.strip().lower() != bank_account.account_holder_name.strip().lower():
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"Statement mismatch: the uploaded statement belongs to "
+                        f"'{extracted_holder.strip()}', but the selected account is held by "
+                        f"'{bank_account.account_holder_name}'. "
+                        f"Please use 'Add New Account' if this is a different account."
+                    )
+                )
+
         if not transactions:
             # Update balance from opening balance if the parser extracted one
             opening_balance = getattr(parser, 'opening_balance', None)
@@ -364,6 +400,7 @@ async def reprocess_statement(
             'idfc_first_bank': 'IDFC_FIRST',
             'state_bank_of_india': 'SBI',
             'kotak_mahindra_bank': 'KOTAK',
+            'axis_bank': 'AXIS',
         }
 
         parser_bank_name = bank_name_map.get(bank_account.bank_name)

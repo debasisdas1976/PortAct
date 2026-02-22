@@ -1154,6 +1154,143 @@ class KotakBankParser(BankStatementParser):
         return transactions
 
 
+class AxisBankParser(BankStatementParser):
+    """Parser for Axis Bank statements (PDF)"""
+
+    def parse(self) -> List[Dict[str, Any]]:
+        if self.file_path.lower().endswith('.pdf'):
+            return self._parse_pdf()
+        else:
+            raise ValueError("Unsupported file format for Axis Bank. Only PDF files are supported.")
+
+    def _extract_account_info(self, first_page_text: str) -> Dict[str, str]:
+        """Extract account details from the first page header."""
+        info: Dict[str, str] = {}
+
+        # Account holder name — first non-empty line
+        lines = first_page_text.split('\n')
+        if lines:
+            info['account_holder_name'] = lines[0].strip()
+
+        # Account number — "Statement of Axis Account No: 915010034176403"
+        m = re.search(r'Account\s*No[:\s]*(\d+)', first_page_text)
+        if m:
+            info['account_number'] = m.group(1)
+
+        # IFSC Code
+        m = re.search(r'IFSC\s*Code[:\s]*(\S+)', first_page_text)
+        if m:
+            info['ifsc_code'] = m.group(1)
+
+        # Account type from Scheme line — "SB-..." = Savings, "CA-..." = Current
+        m = re.search(r'Scheme[:\s]*(\S+)', first_page_text)
+        if m:
+            scheme = m.group(1).upper()
+            if scheme.startswith('SB'):
+                info['account_type'] = 'savings'
+            elif scheme.startswith('CA'):
+                info['account_type'] = 'current'
+            else:
+                info['account_type'] = 'savings'
+
+        return info
+
+    def _parse_pdf(self) -> List[Dict[str, Any]]:
+        """Parse Axis Bank PDF statement using pdfplumber table extraction."""
+        import pdfplumber
+
+        transactions: List[Dict[str, Any]] = []
+        self.opening_balance: Optional[float] = None
+        self.account_info: Dict[str, str] = {}
+
+        date_formats = ['%d-%m-%Y', '%d/%m/%Y', '%d-%b-%Y']
+
+        with pdfplumber.open(self.file_path) as pdf:
+            # Extract account info from first page header
+            if pdf.pages:
+                first_page_text = pdf.pages[0].extract_text() or ''
+                self.account_info = self._extract_account_info(first_page_text)
+
+            for page in pdf.pages:
+                tables = page.extract_tables()
+
+                for table in tables:
+                    if not table or len(table) < 2:
+                        continue
+
+                    # Find header row: look for 'Tran Date' and 'Particulars'
+                    header_row_idx = None
+                    for idx, row in enumerate(table):
+                        row_text = ' '.join(str(cell or '') for cell in row).lower()
+                        if 'tran date' in row_text and 'particulars' in row_text and 'balance' in row_text:
+                            header_row_idx = idx
+                            break
+
+                    if header_row_idx is None:
+                        continue
+
+                    for row in table[header_row_idx + 1:]:
+                        try:
+                            if len(row) < 6:
+                                continue
+
+                            date_str = str(row[0] or '').strip()
+                            chq_no = str(row[1] or '').strip()
+                            description = str(row[2] or '').replace('\n', ' ').strip()
+
+                            if not description:
+                                continue
+
+                            desc_lower = description.lower()
+
+                            # Capture opening balance
+                            if 'opening balance' in desc_lower:
+                                bal_str = str(row[5] or '').strip()
+                                if bal_str:
+                                    self.opening_balance = self._clean_amount(bal_str)
+                                continue
+
+                            # Skip summary rows
+                            if 'transaction total' in desc_lower or 'closing balance' in desc_lower:
+                                continue
+
+                            # Must have a date
+                            if not date_str:
+                                continue
+
+                            transaction_date = self._parse_date(date_str, date_formats)
+                            if not transaction_date:
+                                continue
+
+                            debit_str = str(row[3] or '').strip()
+                            credit_str = str(row[4] or '').strip()
+                            balance_str = str(row[5] or '').strip()
+
+                            debit = self._clean_amount(debit_str) if debit_str else 0.0
+                            credit = self._clean_amount(credit_str) if credit_str else 0.0
+                            balance = self._clean_amount(balance_str) if balance_str else 0.0
+
+                            if debit == 0.0 and credit == 0.0:
+                                continue
+
+                            ref_no = chq_no if chq_no and chq_no != '-' else None
+
+                            transactions.append({
+                                'transaction_date': transaction_date,
+                                'description': description,
+                                'amount': debit if debit > 0 else credit,
+                                'transaction_type': self._detect_transaction_type(description, debit, credit),
+                                'payment_method': self._detect_payment_method(description),
+                                'merchant_name': self._extract_merchant_name(description),
+                                'reference_number': ref_no,
+                                'balance_after': balance,
+                            })
+                        except Exception:
+                            continue
+
+        return transactions
+
+
 def get_parser(bank_name: str, file_path: str, password: str = None) -> BankStatementParser:
     """Factory function to get appropriate parser based on bank name"""
     parsers = {
@@ -1165,6 +1302,7 @@ def get_parser(bank_name: str, file_path: str, password: str = None) -> BankStat
         'IDFC_FIRST_CC': IDFCFirstCreditCardParser,
         'SBI': SBIBankParser,
         'KOTAK': KotakBankParser,
+        'AXIS': AxisBankParser,
     }
 
     parser_class = parsers.get(bank_name.upper())

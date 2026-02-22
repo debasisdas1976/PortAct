@@ -42,7 +42,7 @@ async def get_all_ssy_accounts(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
-    
+
     ssy_accounts = []
     for asset in assets:
         ssy_account = SSYAccountResponse(
@@ -88,7 +88,7 @@ async def get_ssy_summary(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
-    
+
     total_accounts = len(assets)
     total_balance = sum(asset.current_value for asset in assets)
     total_deposits = sum(asset.total_invested for asset in assets)
@@ -202,6 +202,10 @@ async def create_ssy_account(
         from dateutil.relativedelta import relativedelta
         maturity_date = ssy_data.opening_date + relativedelta(years=21)
     
+    # Resolve portfolio: parameter > schema > user default
+    from app.api.dependencies import get_default_portfolio_id
+    resolved_portfolio_id = portfolio_id or ssy_data.portfolio_id or get_default_portfolio_id(current_user.id, db)
+
     # Create asset
     asset = Asset(
         user_id=current_user.id,
@@ -218,7 +222,7 @@ async def create_ssy_account(
         total_invested=ssy_data.total_deposits,
         profit_loss=ssy_data.total_interest_earned,
         notes=ssy_data.notes,
-        portfolio_id=portfolio_id or ssy_data.portfolio_id,
+        portfolio_id=resolved_portfolio_id,
         details={
             'girl_dob': ssy_data.girl_dob.strftime('%Y-%m-%d'),
             'guardian_name': ssy_data.guardian_name,

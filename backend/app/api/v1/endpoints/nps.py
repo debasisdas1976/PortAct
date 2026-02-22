@@ -42,7 +42,7 @@ async def get_all_nps_accounts(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
-    
+
     nps_accounts = []
     for asset in assets:
         nps_account = NPSAccountResponse(
@@ -88,7 +88,7 @@ async def get_nps_summary(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
-    
+
     total_accounts = len(assets)
     total_balance = sum(asset.current_value for asset in assets)
     total_contributions = sum(asset.total_invested for asset in assets)
@@ -201,6 +201,10 @@ async def create_nps_account(
     """
     Create a new NPS account manually
     """
+    # Resolve portfolio: parameter > schema > user default
+    from app.api.dependencies import get_default_portfolio_id
+    resolved_portfolio_id = portfolio_id or nps_data.portfolio_id or get_default_portfolio_id(current_user.id, db)
+
     # Create asset
     asset = Asset(
         user_id=current_user.id,
@@ -217,7 +221,7 @@ async def create_nps_account(
         total_invested=nps_data.total_contributions,
         profit_loss=nps_data.total_returns,
         notes=nps_data.notes,
-        portfolio_id=portfolio_id or nps_data.portfolio_id,
+        portfolio_id=resolved_portfolio_id,
         details={
             'date_of_birth': nps_data.date_of_birth.strftime('%Y-%m-%d'),
             'sector_type': nps_data.sector_type,
@@ -477,7 +481,36 @@ async def upload_nps_statement(
         # Parse statement
         parser = NPSStatementParser(content, password)
         account_data, transactions = parser.parse()
-        
+
+        # Validate that the statement matches the selected NPS account
+        extracted_holder = (account_data.get('account_holder_name') or
+                            account_data.get('account_holder', '')).strip()
+        existing_holder = (asset.account_holder_name or '').strip()
+        if extracted_holder and existing_holder:
+            if extracted_holder.lower() != existing_holder.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"Statement mismatch: this statement belongs to '{extracted_holder}', "
+                        f"but the selected NPS account is held by '{existing_holder}'. "
+                        f"Please use 'Add New Account' if this is a different account."
+                    )
+                )
+
+        extracted_pran = (account_data.get('pran_number') or
+                          account_data.get('account_number') or '').strip()
+        existing_acct_id = (asset.account_id or '').strip()
+        if extracted_pran and existing_acct_id:
+            if extracted_pran != existing_acct_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"Statement mismatch: this statement is for PRAN {extracted_pran}, "
+                        f"but you selected account {existing_acct_id}. "
+                        f"Please use 'Add New Account' if this is a different account."
+                    )
+                )
+
         # Update asset with parsed data
         if account_data.get('current_balance'):
             asset.current_value = account_data['current_balance']

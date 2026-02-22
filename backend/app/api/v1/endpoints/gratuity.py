@@ -143,6 +143,9 @@ async def create_gratuity_account(
     db: Session = Depends(get_db),
 ):
     """Create a new gratuity account."""
+    from app.api.dependencies import get_default_portfolio_id
+    resolved_portfolio_id = portfolio_id or data.portfolio_id or get_default_portfolio_id(current_user.id, db)
+
     computed = _compute_gratuity(data.basic_pay, data.date_of_joining)
     try:
         asset = Asset(
@@ -158,7 +161,7 @@ async def create_gratuity_account(
             total_invested=0.0,
             current_value=computed["gratuity_amount"],
             purchase_date=datetime.combine(data.date_of_joining, datetime.min.time()),
-            portfolio_id=portfolio_id or data.portfolio_id,
+            portfolio_id=resolved_portfolio_id,
             is_active=data.is_active,
             notes=data.notes,
             details={

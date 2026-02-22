@@ -44,12 +44,12 @@ async def get_ppf_accounts(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
-    
+
     # Calculate current metrics
     for asset in assets:
         asset.calculate_metrics()
     db.commit()
-    
+
     # Convert to PPF account response format
     ppf_accounts = []
     for asset in assets:
@@ -94,7 +94,7 @@ async def get_ppf_summary(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
-    
+
     # Calculate metrics
     for asset in assets:
         asset.calculate_metrics()
@@ -238,6 +238,10 @@ async def create_ppf_account(
         from dateutil.relativedelta import relativedelta
         maturity_date = ppf_data.opening_date + relativedelta(years=15)
     
+    # Resolve portfolio: parameter > schema > user default
+    from app.api.dependencies import get_default_portfolio_id
+    resolved_portfolio_id = portfolio_id or ppf_data.portfolio_id or get_default_portfolio_id(current_user.id, db)
+
     # Create asset record
     new_asset = Asset(
         user_id=current_user.id,
@@ -253,7 +257,7 @@ async def create_ppf_account(
         total_invested=ppf_data.total_deposits,
         current_value=ppf_data.current_balance,
         purchase_date=datetime.combine(ppf_data.opening_date, datetime.min.time()),
-        portfolio_id=portfolio_id or ppf_data.portfolio_id,
+        portfolio_id=resolved_portfolio_id,
         details={
             'maturity_date': maturity_date.isoformat() if maturity_date else None,
             'interest_rate': ppf_data.interest_rate,
@@ -470,9 +474,49 @@ async def upload_ppf_statement(
             
             parser = PPFStatementParser()
             parsed_data = parser.parse_statement(file_path, password)
-            
-            # Parse and update the existing account
+
+            # Validate that the statement matches the selected PPF account
             account_details = parsed_data.get('account_details', {})
+            extracted_holder = (account_details.get('account_holder_name') or
+                                account_details.get('account_holder', '')).strip()
+            existing_holder = (asset.account_holder_name or '').strip()
+            if extracted_holder and existing_holder:
+                if extracted_holder.lower() != existing_holder.lower():
+                    statement.status = StatementStatus.FAILED
+                    statement.error_message = (
+                        f"Statement mismatch: this statement belongs to '{extracted_holder}', "
+                        f"but the selected account is held by '{existing_holder}'."
+                    )
+                    statement.processing_completed_at = datetime.now()
+                    db.commit()
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=(
+                            f"Statement mismatch: this statement belongs to '{extracted_holder}', "
+                            f"but the selected PPF account is held by '{existing_holder}'. "
+                            f"Please use 'Add New Account' if this is a different account."
+                        )
+                    )
+
+            extracted_acct_num = (account_details.get('account_number') or '').strip()
+            existing_acct_id = (asset.account_id or '').strip()
+            if extracted_acct_num and existing_acct_id:
+                if extracted_acct_num != existing_acct_id:
+                    statement.status = StatementStatus.FAILED
+                    statement.error_message = (
+                        f"Statement mismatch: statement is for account {extracted_acct_num}, "
+                        f"but the selected account is {existing_acct_id}."
+                    )
+                    statement.processing_completed_at = datetime.now()
+                    db.commit()
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=(
+                            f"Statement mismatch: this statement is for PPF account {extracted_acct_num}, "
+                            f"but you selected account {existing_acct_id}. "
+                            f"Please use 'Add New Account' if this is a different account."
+                        )
+                    )
             
             # Update asset with parsed data (if available)
             if account_details.get('current_balance'):

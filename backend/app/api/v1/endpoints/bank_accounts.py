@@ -166,15 +166,22 @@ async def create_bank_account(
             BankAccount.is_primary == True
         ).update({"is_primary": False})
     
+    account_dict = account_data.model_dump()
+
+    # Auto-assign to default portfolio if not specified
+    if not account_dict.get('portfolio_id'):
+        from app.api.dependencies import get_default_portfolio_id
+        account_dict['portfolio_id'] = get_default_portfolio_id(current_user.id, db)
+
     account = BankAccount(
-        **account_data.model_dump(),
+        **account_dict,
         user_id=current_user.id
     )
-    
+
     db.add(account)
     db.commit()
     db.refresh(account)
-    
+
     return account
 
 

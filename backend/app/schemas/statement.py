@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.models.statement import StatementStatus, StatementType
 
@@ -64,4 +64,33 @@ class StatementUploadResponse(BaseModel):
     status: str
     message: str
 
-# Made with Bob
+class UploadConfig(BaseModel):
+    """Configuration for uploading a statement to an existing account"""
+    endpoint: str
+    pre_filled: Dict[str, Any] = {}
+    fields_needed: List[str] = ["file"]
+    accepts: str = ".pdf,.csv,.xlsx"
+
+
+class AccountItem(BaseModel):
+    """A single account entry in the grouped accounts response"""
+    account_source: str  # "demat_account", "bank_account", "crypto_account", "asset"
+    account_id: int
+    asset_type: Optional[str] = None
+    display_name: str
+    institution_name: Optional[str] = None
+    sub_info: Optional[str] = None
+    last_statement_date: Optional[datetime] = None
+    upload_config: UploadConfig
+
+
+class AccountGroup(BaseModel):
+    """A group of accounts of the same type"""
+    group_type: str
+    display_name: str
+    accounts: List[AccountItem]
+
+
+class PortfolioAccountsResponse(BaseModel):
+    """Response for GET /statements/accounts"""
+    groups: List[AccountGroup]

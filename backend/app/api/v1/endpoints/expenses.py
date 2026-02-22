@@ -680,16 +680,23 @@ async def create_expense(
             detail="Bank account not found"
         )
     
+    expense_dict = expense_data.model_dump()
+
+    # Auto-assign to default portfolio if not specified
+    if not expense_dict.get('portfolio_id'):
+        from app.api.dependencies import get_default_portfolio_id
+        expense_dict['portfolio_id'] = get_default_portfolio_id(current_user.id, db)
+
     expense = Expense(
-        **expense_data.model_dump(),
+        **expense_dict,
         user_id=current_user.id,
         is_categorized=expense_data.category_id is not None
     )
-    
+
     db.add(expense)
     db.commit()
     db.refresh(expense)
-    
+
     return expense
 
 

@@ -1,13 +1,22 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func as sqla_func
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
 from app.models.statement import Statement, StatementStatus, StatementType
+from app.models.asset import Asset, AssetType
+from app.models.bank_account import BankAccount
+from app.models.demat_account import DematAccount
+from app.models.crypto_account import CryptoAccount
 from app.schemas.statement import (
     Statement as StatementSchema,
-    StatementUploadResponse
+    StatementUploadResponse,
+    PortfolioAccountsResponse,
+    AccountGroup,
+    AccountItem,
+    UploadConfig,
 )
 from app.services.statement_processor import process_statement
 import os
@@ -33,6 +42,318 @@ async def get_statements(
     ).order_by(Statement.uploaded_at.desc()).all()
     
     return statements
+
+
+@router.get("/accounts", response_model=PortfolioAccountsResponse)
+async def get_portfolio_accounts(
+    portfolio_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all accounts for a portfolio grouped by type.
+    Each account includes upload configuration for statement uploads.
+    """
+    groups: List[AccountGroup] = []
+
+    # --- Demat Accounts ---
+    demat_query = db.query(DematAccount).filter(
+        DematAccount.user_id == current_user.id,
+        DematAccount.is_active == True
+    )
+    if portfolio_id is not None:
+        demat_query = demat_query.filter(DematAccount.portfolio_id == portfolio_id)
+    demat_accounts = demat_query.order_by(DematAccount.broker_name).all()
+
+    if demat_accounts:
+        demat_items = []
+        for da in demat_accounts:
+            asset_count = db.query(sqla_func.count(Asset.id)).filter(
+                Asset.demat_account_id == da.id, Asset.is_active == True
+            ).scalar() or 0
+            total_value = db.query(sqla_func.coalesce(sqla_func.sum(Asset.current_value), 0)).filter(
+                Asset.demat_account_id == da.id, Asset.is_active == True
+            ).scalar()
+
+            # Determine statement type based on broker
+            broker_lower = (da.broker_name or "").lower()
+            if broker_lower == "vested":
+                stmt_type = "vested_statement"
+            elif broker_lower == "indmoney":
+                stmt_type = "indmoney_statement"
+            else:
+                stmt_type = "broker_statement"
+
+            display = da.nickname or da.broker_name or "Demat Account"
+            if da.account_id:
+                display += f" ({da.account_id})"
+            if da.account_holder_name:
+                display += f" — {da.account_holder_name}"
+
+            currency = da.currency or "INR"
+            if currency == "USD":
+                sub = f"{asset_count} holdings | Value: ${total_value:,.0f}"
+            else:
+                sub = f"{asset_count} holdings | Value: \u20b9{total_value:,.0f}"
+
+            demat_items.append(AccountItem(
+                account_source="demat_account",
+                account_id=da.id,
+                display_name=display,
+                institution_name=da.broker_name,
+                sub_info=sub,
+                last_statement_date=da.last_statement_date,
+                upload_config=UploadConfig(
+                    endpoint="/statements/upload",
+                    pre_filled={
+                        "statement_type": stmt_type,
+                        "institution_name": da.broker_name,
+                        **({"portfolio_id": da.portfolio_id} if da.portfolio_id else {}),
+                    },
+                    fields_needed=["file", "password"],
+                    accepts=".pdf,.csv,.xlsx",
+                ),
+            ))
+        groups.append(AccountGroup(
+            group_type="demat_accounts",
+            display_name="Demat Accounts",
+            accounts=demat_items,
+        ))
+
+    # --- Bank Accounts ---
+    bank_query = db.query(BankAccount).filter(
+        BankAccount.user_id == current_user.id,
+        BankAccount.is_active == True
+    )
+    if portfolio_id is not None:
+        bank_query = bank_query.filter(BankAccount.portfolio_id == portfolio_id)
+    bank_accounts = bank_query.order_by(BankAccount.bank_name).all()
+
+    if bank_accounts:
+        bank_items = []
+        for ba in bank_accounts:
+            acct_type_label = (ba.account_type.value if ba.account_type else "account").replace("_", " ").title()
+            display = ba.nickname or f"{ba.bank_name} - {acct_type_label}"
+            if ba.account_number:
+                display += f" ({ba.account_number})"
+
+            sub = f"Balance: \u20b9{ba.current_balance:,.0f}"
+
+            bank_items.append(AccountItem(
+                account_source="bank_account",
+                account_id=ba.id,
+                display_name=display,
+                institution_name=ba.bank_name,
+                sub_info=sub,
+                last_statement_date=ba.last_statement_date,
+                upload_config=UploadConfig(
+                    endpoint="/bank-statements/upload",
+                    pre_filled={"bank_account_id": ba.id},
+                    fields_needed=["file", "password"],
+                    accepts=".pdf,.xlsx,.xls",
+                ),
+            ))
+        groups.append(AccountGroup(
+            group_type="bank_accounts",
+            display_name="Bank Accounts",
+            accounts=bank_items,
+        ))
+
+    # --- Crypto Accounts (no portfolio filter) ---
+    crypto_accounts = db.query(CryptoAccount).filter(
+        CryptoAccount.user_id == current_user.id,
+        CryptoAccount.is_active == True
+    ).order_by(CryptoAccount.exchange_name).all()
+
+    if crypto_accounts:
+        crypto_items = []
+        for ca in crypto_accounts:
+            asset_count = db.query(sqla_func.count(Asset.id)).filter(
+                Asset.crypto_account_id == ca.id, Asset.is_active == True
+            ).scalar() or 0
+
+            display = ca.nickname or ca.exchange_name or "Crypto Account"
+            if ca.account_id:
+                display += f" ({ca.account_id})"
+
+            sub = f"{asset_count} assets | Value: ${ca.total_value_usd:,.0f}"
+
+            crypto_items.append(AccountItem(
+                account_source="crypto_account",
+                account_id=ca.id,
+                display_name=display,
+                institution_name=ca.exchange_name,
+                sub_info=sub,
+                last_statement_date=ca.last_sync_date,
+                upload_config=UploadConfig(
+                    endpoint="/statements/upload",
+                    pre_filled={
+                        "statement_type": "crypto_statement",
+                        "institution_name": ca.exchange_name,
+                    },
+                    fields_needed=["file"],
+                    accepts=".pdf,.csv,.xlsx",
+                ),
+            ))
+        groups.append(AccountGroup(
+            group_type="crypto_accounts",
+            display_name="Crypto Accounts",
+            accounts=crypto_items,
+        ))
+
+    # --- Asset-based account types (PPF, NPS, PF, SSY, Insurance, Mutual Funds) ---
+    asset_type_configs = [
+        {
+            "asset_type": AssetType.PPF,
+            "group_type": "ppf",
+            "display_name": "PPF Accounts",
+            "endpoint_template": "/ppf/{id}/upload",
+            "per_account": True,
+            "fields_needed": ["file", "password"],
+            "accepts": ".pdf",
+        },
+        {
+            "asset_type": AssetType.NPS,
+            "group_type": "nps",
+            "display_name": "NPS Accounts",
+            "endpoint_template": "/nps/{id}/upload",
+            "per_account": True,
+            "fields_needed": ["file", "password"],
+            "accepts": ".pdf",
+        },
+        {
+            "asset_type": AssetType.PF,
+            "group_type": "pf",
+            "display_name": "PF/EPF Accounts",
+            "endpoint_template": "/pf/upload",
+            "per_account": False,
+            "fields_needed": ["file", "password"],
+            "accepts": ".pdf",
+        },
+        {
+            "asset_type": AssetType.SSY,
+            "group_type": "ssy",
+            "display_name": "SSY Accounts",
+            "endpoint_template": "/ssy/upload",
+            "per_account": False,
+            "fields_needed": ["file", "password"],
+            "accepts": ".pdf",
+        },
+        {
+            "asset_type": AssetType.INSURANCE_POLICY,
+            "group_type": "insurance",
+            "display_name": "Insurance Policies",
+            "endpoint_template": "/statements/upload",
+            "per_account": False,
+            "statement_type": "insurance_statement",
+            "fields_needed": ["file", "password"],
+            "accepts": ".pdf,.xlsx,.xls,.csv",
+        },
+    ]
+
+    for config in asset_type_configs:
+        query = db.query(Asset).filter(
+            Asset.user_id == current_user.id,
+            Asset.asset_type == config["asset_type"],
+            Asset.is_active == True
+        )
+        if portfolio_id is not None:
+            query = query.filter(Asset.portfolio_id == portfolio_id)
+        assets = query.order_by(Asset.name).all()
+
+        if not assets:
+            continue
+
+        items = []
+        for asset in assets:
+            display = asset.name or f"{config['display_name']}"
+            if asset.broker_name and asset.broker_name.lower() not in display.lower():
+                display += f" — {asset.broker_name}"
+
+            sub = f"Value: \u20b9{asset.current_value:,.0f}"
+
+            # Build upload config
+            if config["per_account"]:
+                endpoint = config["endpoint_template"].replace("{id}", str(asset.id))
+                pre_filled = {}
+            else:
+                endpoint = config["endpoint_template"]
+                pre_filled = {}
+                if config.get("statement_type"):
+                    pre_filled["statement_type"] = config["statement_type"]
+                    if asset.broker_name:
+                        pre_filled["institution_name"] = asset.broker_name
+
+            items.append(AccountItem(
+                account_source="asset",
+                account_id=asset.id,
+                asset_type=config["asset_type"].value,
+                display_name=display,
+                institution_name=asset.broker_name,
+                sub_info=sub,
+                last_statement_date=asset.last_updated,
+                upload_config=UploadConfig(
+                    endpoint=endpoint,
+                    pre_filled=pre_filled,
+                    fields_needed=config["fields_needed"],
+                    accepts=config["accepts"],
+                ),
+            ))
+
+        groups.append(AccountGroup(
+            group_type=config["group_type"],
+            display_name=config["display_name"],
+            accounts=items,
+        ))
+
+    # --- Mutual Fund Holdings (group by demat account) ---
+    mf_query = db.query(Asset).filter(
+        Asset.user_id == current_user.id,
+        Asset.asset_type.in_([AssetType.EQUITY_MUTUAL_FUND, AssetType.DEBT_MUTUAL_FUND]),
+        Asset.is_active == True
+    )
+    if portfolio_id is not None:
+        mf_query = mf_query.filter(Asset.portfolio_id == portfolio_id)
+    mf_assets = mf_query.all()
+
+    if mf_assets:
+        # Group by broker/demat account for display
+        mf_by_source = {}
+        for asset in mf_assets:
+            key = asset.broker_name or "Unknown"
+            if key not in mf_by_source:
+                mf_by_source[key] = {"count": 0, "total_value": 0.0, "broker": key}
+            mf_by_source[key]["count"] += 1
+            mf_by_source[key]["total_value"] += asset.current_value or 0
+
+        mf_items = []
+        for key, info in sorted(mf_by_source.items()):
+            mf_items.append(AccountItem(
+                account_source="mutual_fund",
+                account_id=0,
+                asset_type="mutual_fund",
+                display_name=f"Mutual Funds — {info['broker']}",
+                institution_name=info["broker"],
+                sub_info=f"{info['count']} funds | Value: \u20b9{info['total_value']:,.0f}",
+                upload_config=UploadConfig(
+                    endpoint="/statements/upload",
+                    pre_filled={
+                        "statement_type": "mutual_fund_statement",
+                        "institution_name": info["broker"],
+                    },
+                    fields_needed=["file", "password"],
+                    accepts=".pdf,.csv,.xlsx",
+                ),
+            ))
+
+        if mf_items:
+            groups.append(AccountGroup(
+                group_type="mutual_funds",
+                display_name="Mutual Funds",
+                accounts=mf_items,
+            ))
+
+    return PortfolioAccountsResponse(groups=groups)
 
 
 @router.get("/{statement_id}", response_model=StatementSchema)
@@ -134,7 +455,8 @@ async def upload_statement(
     
     # Process statement asynchronously (in a real app, use Celery or similar)
     try:
-        process_statement(new_statement.id, db, portfolio_id=portfolio_id)
+        process_statement(new_statement.id, db, portfolio_id=portfolio_id,
+                          expected_institution=institution_name)
     except Exception as e:
         logger.error(f"Error processing statement {new_statement.id}: {e}")
         new_statement.status = StatementStatus.FAILED
@@ -147,10 +469,40 @@ async def upload_statement(
     # Build response message based on processing outcome
     if new_statement.status == StatementStatus.FAILED:
         message = f"Statement uploaded but processing failed: {new_statement.error_message or 'Unknown error'}"
-    elif new_statement.assets_found and new_statement.assets_found > 0:
-        message = f"Statement processed successfully. {new_statement.assets_found} asset(s) extracted."
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=message
+        )
+
+    # Bank statements produce transactions (not assets)
+    is_bank_stmt = statement_type == StatementType.BANK_STATEMENT
+    records_found = new_statement.transactions_found if is_bank_stmt else new_statement.assets_found
+
+    if records_found and records_found > 0:
+        record_label = "transaction(s)" if is_bank_stmt else "asset(s)"
+        # Include import details (e.g. "3 new, 0 duplicate(s) skipped") if available
+        import_details = new_statement.error_message if (
+            is_bank_stmt and new_statement.status == StatementStatus.PROCESSED
+            and new_statement.error_message
+        ) else None
+        if import_details:
+            message = f"Statement processed successfully. {records_found} {record_label} found ({import_details})."
+            # Clear the error_message since this isn't actually an error
+            new_statement.error_message = None
+            db.commit()
+            db.refresh(new_statement)
+        else:
+            message = f"Statement processed successfully. {records_found} {record_label} extracted."
     else:
-        message = "Statement uploaded and processed, but no assets could be extracted. Please check the file format and try again."
+        message = (
+            f"Statement uploaded but no records could be extracted from this {institution_name or ''} "
+            f"{statement_type.value.replace('_', ' ')}. "
+            "This format may not be supported yet. Please check the file and try again."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=message
+        )
 
     return StatementUploadResponse(
         statement_id=new_statement.id,

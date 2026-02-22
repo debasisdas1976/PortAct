@@ -672,12 +672,6 @@ setup_backend() {
     fi
     print_success "Database tables are ready"
 
-    # Seed expense categories (idempotent)
-    if [[ -f "$BACKEND_DIR/seed_categories.py" ]]; then
-        print_info "Loading default categories..."
-        python "$BACKEND_DIR/seed_categories.py" 2>/dev/null || true
-    fi
-
     # Seed demo user if requested
     if [[ "$SEED_DEMO" == true ]] && [[ -f "$BACKEND_DIR/seed_demo_user.py" ]]; then
         CURRENT_STEP="creating demo user account"

@@ -143,6 +143,9 @@ async def create_insurance_policy(
     db: Session = Depends(get_db),
 ):
     """Create a new insurance policy."""
+    from app.api.dependencies import get_default_portfolio_id
+    resolved_portfolio_id = portfolio_id or data.portfolio_id or get_default_portfolio_id(current_user.id, db)
+
     current_value = data.current_value or 0.0
     try:
         asset = Asset(
@@ -159,7 +162,7 @@ async def create_insurance_policy(
             total_invested=data.total_premium_paid or 0.0,
             current_value=current_value,
             purchase_date=datetime.combine(data.policy_start_date, datetime.min.time()),
-            portfolio_id=portfolio_id or data.portfolio_id,
+            portfolio_id=resolved_portfolio_id,
             is_active=data.is_active,
             notes=data.notes,
             details={

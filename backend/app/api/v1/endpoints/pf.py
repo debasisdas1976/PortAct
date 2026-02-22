@@ -39,7 +39,7 @@ async def get_all_pf_accounts(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
-    
+
     pf_accounts = []
     for asset in assets:
         # Ensure required fields have valid values
@@ -96,7 +96,7 @@ async def get_pf_summary(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
-    
+
     total_accounts = len(assets)
     active_accounts = sum(1 for asset in assets if asset.details.get('is_active', True))
     total_balance = sum(asset.current_value for asset in assets)
@@ -208,6 +208,9 @@ async def create_pf_account(
     db: Session = Depends(get_db)
 ):
     """Create a new PF account manually"""
+    from app.api.dependencies import get_default_portfolio_id
+    resolved_portfolio_id = portfolio_id or pf_data.portfolio_id or get_default_portfolio_id(current_user.id, db)
+
     asset = Asset(
         user_id=current_user.id,
         asset_type=AssetType.PF,
@@ -223,7 +226,7 @@ async def create_pf_account(
         total_invested=pf_data.employee_contribution + pf_data.employer_contribution,
         profit_loss=pf_data.total_interest_earned,
         notes=pf_data.notes,
-        portfolio_id=portfolio_id or pf_data.portfolio_id,
+        portfolio_id=resolved_portfolio_id,
         details={
             'uan_number': pf_data.uan_number,
             'date_of_joining': pf_data.date_of_joining.strftime('%Y-%m-%d'),

@@ -152,9 +152,12 @@ async def create_rd(
     db: Session = Depends(get_db),
 ):
     """Create a new recurring deposit."""
+    from app.api.dependencies import get_default_portfolio_id
+    resolved_portfolio_id = portfolio_id or data.portfolio_id or get_default_portfolio_id(current_user.id, db)
+
     asset = Asset(
         user_id=current_user.id,
-        portfolio_id=portfolio_id or data.portfolio_id,
+        portfolio_id=resolved_portfolio_id,
         asset_type=AssetType.RECURRING_DEPOSIT,
         name=data.nickname or data.bank_name,
         account_id=data.account_number,

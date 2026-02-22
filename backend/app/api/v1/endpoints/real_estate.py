@@ -145,9 +145,14 @@ async def create_property(
     profit_loss = data.current_market_value - data.purchase_price
     profit_loss_pct = (profit_loss / data.purchase_price * 100) if data.purchase_price else 0
 
+    # Resolve portfolio for the new property
+    from app.api.dependencies import get_default_portfolio_id
+    resolved_portfolio_id = get_default_portfolio_id(current_user.id, db)
+
     asset = Asset(
         user_id=current_user.id,
         asset_type=AssetType.REAL_ESTATE,
+        portfolio_id=resolved_portfolio_id,
         name=data.nickname,
         symbol=data.property_type.upper(),
         quantity=1,

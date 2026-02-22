@@ -232,6 +232,7 @@ async def restore_portfolio(
         else:
             obj = BankAccount(
                 user_id=uid,
+                portfolio_id=portfolio_map.get(r.get("portfolio_id")) or default_portfolio.id,
                 bank_name=r.get("bank_name"),
                 account_type=r.get("account_type"),
                 account_number=r.get("account_number"),
@@ -270,10 +271,12 @@ async def restore_portfolio(
         else:
             obj = DematAccount(
                 user_id=uid,
+                portfolio_id=portfolio_map.get(r.get("portfolio_id")) or default_portfolio.id,
                 broker_name=r.get("broker_name"),
                 account_id=r.get("account_id"),
                 account_holder_name=r.get("account_holder_name"),
                 demat_account_number=r.get("demat_account_number"),
+                account_market=r.get("account_market"),
                 cash_balance=r.get("cash_balance", 0),
                 cash_balance_usd=r.get("cash_balance_usd"),
                 currency=r.get("currency", "INR"),
@@ -533,6 +536,7 @@ async def restore_portfolio(
         else:
             obj = Expense(
                 user_id=uid,
+                portfolio_id=portfolio_map.get(r.get("portfolio_id")) or default_portfolio.id,
                 bank_account_id=new_ba_id,
                 category_id=new_cat_id,
                 transaction_date=txn_date,

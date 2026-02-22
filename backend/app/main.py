@@ -15,6 +15,68 @@ from app.services.news_scheduler import news_scheduler
 import app.models.app_settings as _app_settings_model  # noqa: F401 – register for create_all
 import app.models.crypto_exchange as _crypto_exchange_model  # noqa: F401 – register for create_all
 import app.models.institution as _institution_model  # noqa: F401 – register for create_all
+import app.models.expense_category as _expense_category_model  # noqa: F401 – register for create_all
+
+
+def _fix_null_portfolio_ids(db):
+    """
+    One-time data fix: assign every asset, demat account, bank account,
+    and expense that has portfolio_id=NULL to its owner's default portfolio.
+    Runs on every startup but is a fast no-op once all records are fixed.
+    """
+    from app.models.asset import Asset
+    from app.models.demat_account import DematAccount
+    from app.models.bank_account import BankAccount
+    from app.models.expense import Expense
+    from app.models.portfolio import Portfolio
+    from app.models.user import User
+
+    users_with_orphans = set()
+
+    # Collect user IDs that have orphaned records
+    for Model in (Asset, DematAccount, BankAccount, Expense):
+        if not hasattr(Model, 'portfolio_id'):
+            continue
+        user_ids = (
+            db.query(Model.user_id)
+            .filter(Model.portfolio_id == None)
+            .distinct()
+            .all()
+        )
+        for (uid,) in user_ids:
+            users_with_orphans.add(uid)
+
+    if not users_with_orphans:
+        return
+
+    total_fixed = 0
+    for uid in users_with_orphans:
+        default = db.query(Portfolio).filter(
+            Portfolio.user_id == uid,
+            Portfolio.is_default == True,
+        ).first()
+        if not default:
+            default = db.query(Portfolio).filter(
+                Portfolio.user_id == uid,
+                Portfolio.is_active == True,
+            ).first()
+        if not default:
+            logger.warning(f"User {uid} has no portfolio — skipping orphan fix")
+            continue
+
+        for Model in (Asset, DematAccount, BankAccount, Expense):
+            if not hasattr(Model, 'portfolio_id'):
+                continue
+            count = (
+                db.query(Model)
+                .filter(Model.user_id == uid, Model.portfolio_id == None)
+                .update({Model.portfolio_id: default.id}, synchronize_session=False)
+            )
+            total_fixed += count
+
+    if total_fixed:
+        db.commit()
+        logger.info(f"Fixed {total_fixed} records with NULL portfolio_id across {len(users_with_orphans)} user(s).")
 
 
 @asynccontextmanager
@@ -115,6 +177,65 @@ async def lifespan(app: FastAPI):
                 _startup_db.add(InstitutionMaster(**inst))
             _startup_db.commit()
             logger.info(f"Seeded {len(new_institutions)} new institutions.")
+
+        # Seed default system expense categories
+        from app.models.expense_category import ExpenseCategory
+        existing_system_cats = {
+            r.name for r in _startup_db.query(ExpenseCategory.name).filter(
+                ExpenseCategory.is_system == True
+            ).all()
+        }
+        DEFAULT_EXPENSE_CATEGORIES = [
+            {"name": "Groceries", "description": "Food and household items", "icon": "🛒", "color": "#4CAF50", "is_income": False,
+             "keywords": "grocery,supermarket,walmart,target,costco,whole foods,trader joe,safeway,kroger,food,vegetables,fruits,meat,dairy"},
+            {"name": "Dining & Restaurants", "description": "Eating out, restaurants, cafes", "icon": "🍽️", "color": "#FF9800", "is_income": False,
+             "keywords": "restaurant,cafe,coffee,starbucks,mcdonald,burger,pizza,food delivery,uber eats,doordash,grubhub,zomato,swiggy,dining,eatery"},
+            {"name": "Transportation", "description": "Fuel, public transport, ride-sharing", "icon": "🚗", "color": "#2196F3", "is_income": False,
+             "keywords": "uber,lyft,taxi,cab,fuel,gas,petrol,diesel,metro,bus,train,parking,toll,transport,ola"},
+            {"name": "Utilities", "description": "Electricity, water, gas, internet", "icon": "💡", "color": "#FFC107", "is_income": False,
+             "keywords": "electricity,water,gas,internet,broadband,wifi,phone bill,mobile,utility,power,energy"},
+            {"name": "Rent & Mortgage", "description": "Housing payments", "icon": "🏠", "color": "#9C27B0", "is_income": False,
+             "keywords": "rent,mortgage,housing,lease,landlord,property,apartment"},
+            {"name": "Healthcare & Medical", "description": "Doctor visits, medicines, insurance", "icon": "⚕️", "color": "#F44336", "is_income": False,
+             "keywords": "doctor,hospital,clinic,pharmacy,medicine,medical,health,insurance,dental,prescription,lab test"},
+            {"name": "Entertainment", "description": "Movies, games, hobbies", "icon": "🎬", "color": "#E91E63", "is_income": False,
+             "keywords": "movie,cinema,netflix,spotify,amazon prime,disney,gaming,xbox,playstation,entertainment,concert,theater"},
+            {"name": "Shopping & Clothing", "description": "Clothes, accessories, personal items", "icon": "👕", "color": "#673AB7", "is_income": False,
+             "keywords": "clothing,clothes,fashion,shoes,accessories,mall,amazon,flipkart,myntra,shopping,apparel"},
+            {"name": "Education", "description": "Tuition, books, courses", "icon": "📚", "color": "#3F51B5", "is_income": False,
+             "keywords": "school,college,university,tuition,books,course,education,training,udemy,coursera,learning"},
+            {"name": "Fitness & Gym", "description": "Gym membership, sports, fitness", "icon": "💪", "color": "#FF5722", "is_income": False,
+             "keywords": "gym,fitness,yoga,sports,workout,exercise,trainer,membership,health club"},
+            {"name": "Travel & Vacation", "description": "Hotels, flights, vacation expenses", "icon": "✈️", "color": "#00BCD4", "is_income": False,
+             "keywords": "hotel,flight,airline,booking,airbnb,travel,vacation,trip,tourism,resort"},
+            {"name": "Insurance", "description": "Life, health, car insurance", "icon": "🛡️", "color": "#607D8B", "is_income": False,
+             "keywords": "insurance,premium,policy,life insurance,health insurance,car insurance"},
+            {"name": "Personal Care", "description": "Salon, spa, grooming", "icon": "💇", "color": "#E91E63", "is_income": False,
+             "keywords": "salon,spa,haircut,beauty,grooming,cosmetics,skincare,barber"},
+            {"name": "Subscriptions", "description": "Monthly subscriptions and memberships", "icon": "📱", "color": "#9E9E9E", "is_income": False,
+             "keywords": "subscription,membership,monthly,recurring,netflix,spotify,amazon prime,youtube premium"},
+            {"name": "Gifts & Donations", "description": "Gifts, charity, donations", "icon": "🎁", "color": "#FF4081", "is_income": False,
+             "keywords": "gift,donation,charity,present,contribution,ngo"},
+            {"name": "Pet Care", "description": "Pet food, vet, supplies", "icon": "🐾", "color": "#795548", "is_income": False,
+             "keywords": "pet,dog,cat,vet,veterinary,pet food,pet supplies,grooming"},
+            {"name": "Home Maintenance", "description": "Repairs, cleaning, maintenance", "icon": "🔧", "color": "#607D8B", "is_income": False,
+             "keywords": "repair,maintenance,plumber,electrician,cleaning,handyman,home improvement"},
+            {"name": "Taxes", "description": "Income tax, property tax", "icon": "📋", "color": "#455A64", "is_income": False,
+             "keywords": "tax,income tax,property tax,tds,gst,irs"},
+            {"name": "Salary & Income", "description": "Salary, wages, income", "icon": "💰", "color": "#4CAF50", "is_income": True,
+             "keywords": "salary,wage,income,payment,paycheck,earnings,compensation"},
+            {"name": "Investments & Returns", "description": "Investment returns, dividends, interest", "icon": "📈", "color": "#009688", "is_income": True,
+             "keywords": "dividend,interest,investment,returns,profit,capital gain,mutual fund"},
+        ]
+        new_categories = [c for c in DEFAULT_EXPENSE_CATEGORIES if c["name"] not in existing_system_cats]
+        if new_categories:
+            for cat in new_categories:
+                _startup_db.add(ExpenseCategory(**cat, is_system=True, is_active=True, user_id=None))
+            _startup_db.commit()
+            logger.info(f"Seeded {len(new_categories)} new system expense categories.")
+
+        # Fix any records with NULL portfolio_id by assigning to user's default portfolio
+        _fix_null_portfolio_ids(_startup_db)
 
         start_scheduler(_startup_db)
     finally:
