@@ -16,6 +16,8 @@ COPY frontend/package*.json ./
 RUN npm ci || npm install
 
 COPY frontend/ ./
+ENV REACT_APP_API_URL=/api/v1 \
+    CI=false
 RUN npm run build
 
 
