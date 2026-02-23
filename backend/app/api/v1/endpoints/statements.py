@@ -17,7 +17,15 @@ from app.schemas.statement import (
     AccountGroup,
     AccountItem,
     UploadConfig,
+    UnmatchedMF,
+    UnmatchedMFSuggestion,
+    UnmatchedMFsResponse,
+    ResolveMFsRequest,
+    ResolveMFsResponse,
 )
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from app.services.statement_processor import process_statement
 import os
 import shutil
@@ -111,7 +119,7 @@ async def get_portfolio_accounts(
                         **({"portfolio_id": da.portfolio_id} if da.portfolio_id else {}),
                     },
                     fields_needed=["file", "password"],
-                    accepts=".pdf,.csv,.xlsx",
+                    accepts=".pdf,.csv,.xlsx,.xls",
                 ),
             ))
         groups.append(AccountGroup(
@@ -192,7 +200,7 @@ async def get_portfolio_accounts(
                         "institution_name": ca.exchange_name,
                     },
                     fields_needed=["file"],
-                    accepts=".pdf,.csv,.xlsx",
+                    accepts=".pdf,.csv,.xlsx,.xls",
                 ),
             ))
         groups.append(AccountGroup(
@@ -342,7 +350,7 @@ async def get_portfolio_accounts(
                         "institution_name": info["broker"],
                     },
                     fields_needed=["file", "password"],
-                    accepts=".pdf,.csv,.xlsx",
+                    accepts=".pdf,.csv,.xlsx,.xls",
                 ),
             ))
 
@@ -504,11 +512,34 @@ async def upload_statement(
             detail=message
         )
 
+    # Check for orphaned assets (demat/crypto types without an account link)
+    SELF_ACCOUNT_TYPES = [
+        AssetType.PPF, AssetType.NPS, AssetType.PF, AssetType.SSY,
+        AssetType.INSURANCE_POLICY, AssetType.SAVINGS_ACCOUNT,
+        AssetType.FIXED_DEPOSIT, AssetType.RECURRING_DEPOSIT,
+        AssetType.REAL_ESTATE, AssetType.GRATUITY, AssetType.CASH,
+    ]
+    orphan_count = db.query(Asset).filter(
+        Asset.statement_id == new_statement.id,
+        Asset.demat_account_id.is_(None),
+        Asset.crypto_account_id.is_(None),
+        Asset.asset_type.notin_(SELF_ACCOUNT_TYPES),
+    ).count()
+
+    # Count MF assets without ISIN (unmatched in AMFI)
+    unmatched_mf_count = db.query(Asset).filter(
+        Asset.statement_id == new_statement.id,
+        Asset.isin.is_(None),
+        Asset.asset_type.in_([AssetType.EQUITY_MUTUAL_FUND, AssetType.DEBT_MUTUAL_FUND]),
+    ).count()
+
     return StatementUploadResponse(
         statement_id=new_statement.id,
         filename=file.filename,
         status=new_statement.status.value,
-        message=message
+        message=message,
+        needs_account_link=orphan_count > 0,
+        unmatched_mf_count=unmatched_mf_count,
     )
 
 
@@ -544,23 +575,33 @@ async def delete_statement(
             detail="Statement not found"
         )
     
-    # Delete all assets that were created from this statement
-    # This includes assets that may have been reclassified by the user
-    assets_to_delete = db.query(Asset).filter(
+    # Collect asset IDs that will be deleted
+    asset_ids = [a.id for a in db.query(Asset.id).filter(
         Asset.statement_id == statement_id
-    ).all()
-    
-    for asset in assets_to_delete:
-        db.delete(asset)
-    
+    ).all()]
+
+    if asset_ids:
+        # Clear FK references that lack ON DELETE CASCADE/SET NULL in the DB
+        db.query(Alert).filter(Alert.asset_id.in_(asset_ids)).update(
+            {Alert.asset_id: None}, synchronize_session=False
+        )
+        db.query(AssetSnapshot).filter(AssetSnapshot.asset_id.in_(asset_ids)).update(
+            {AssetSnapshot.asset_id: None}, synchronize_session=False
+        )
+        db.query(MutualFundHolding).filter(MutualFundHolding.asset_id.in_(asset_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Transaction).filter(Transaction.asset_id.in_(asset_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Asset).filter(Asset.id.in_(asset_ids)).delete(
+            synchronize_session=False
+        )
+
     # Delete all transactions linked to this statement
-    # (cascade should handle this, but being explicit)
-    transactions = db.query(Transaction).filter(
+    db.query(Transaction).filter(
         Transaction.statement_id == statement_id
-    ).all()
-    
-    for transaction in transactions:
-        db.delete(transaction)
+    ).delete(synchronize_session=False)
     
     # Delete file if it exists
     if os.path.exists(statement.file_path):
@@ -572,7 +613,106 @@ async def delete_statement(
     # Delete the statement record
     db.delete(statement)
     db.commit()
-    
+
     return None
+
+
+@router.get("/{statement_id}/unmatched-mfs", response_model=UnmatchedMFsResponse)
+async def get_unmatched_mfs(
+    statement_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get unmatched mutual funds for a statement with fuzzy match suggestions.
+    Unmatched = MF assets from this statement with isin IS NULL.
+    """
+    statement = db.query(Statement).filter(
+        Statement.id == statement_id,
+        Statement.user_id == current_user.id,
+    ).first()
+    if not statement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Statement not found",
+        )
+
+    # Find unmatched MF assets from this statement
+    unmatched_assets = db.query(Asset).filter(
+        Asset.statement_id == statement_id,
+        Asset.user_id == current_user.id,
+        Asset.isin.is_(None),
+        Asset.asset_type.in_([AssetType.EQUITY_MUTUAL_FUND, AssetType.DEBT_MUTUAL_FUND]),
+    ).all()
+
+    from app.services.amfi_fuzzy_match import fuzzy_search_amfi
+
+    results = []
+    for asset in unmatched_assets:
+        # Use asset name as the primary search query
+        suggestions = fuzzy_search_amfi(asset.name, top_n=5)
+        results.append(UnmatchedMF(
+            asset_id=asset.id,
+            asset_name=asset.name,
+            asset_symbol=asset.symbol or '',
+            asset_type=asset.asset_type.value,
+            suggestions=[UnmatchedMFSuggestion(**s) for s in suggestions],
+        ))
+
+    return UnmatchedMFsResponse(
+        statement_id=statement_id,
+        unmatched_count=len(results),
+        unmatched_mfs=results,
+    )
+
+
+@router.post("/{statement_id}/resolve-mfs", response_model=ResolveMFsResponse)
+async def resolve_unmatched_mfs(
+    statement_id: int,
+    body: ResolveMFsRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Apply user-selected AMFI scheme matches to unmatched MF assets.
+    Updates isin and api_symbol on each asset.
+    """
+    statement = db.query(Statement).filter(
+        Statement.id == statement_id,
+        Statement.user_id == current_user.id,
+    ).first()
+    if not statement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Statement not found",
+        )
+
+    resolved = 0
+    failed = 0
+    errors = []
+
+    for resolution in body.resolutions:
+        asset = db.query(Asset).filter(
+            Asset.id == resolution.asset_id,
+            Asset.user_id == current_user.id,
+            Asset.statement_id == statement_id,
+        ).first()
+        if not asset:
+            errors.append(f"Asset {resolution.asset_id} not found")
+            failed += 1
+            continue
+
+        asset.isin = resolution.selected_isin
+        # Extract base fund name for api_symbol (before first " - ")
+        api_symbol = resolution.selected_scheme_name.split(' - ')[0].strip()
+        asset.api_symbol = api_symbol
+        resolved += 1
+
+    db.commit()
+    return ResolveMFsResponse(
+        resolved_count=resolved,
+        failed_count=failed,
+        errors=errors,
+    )
 
 # Made with Bob

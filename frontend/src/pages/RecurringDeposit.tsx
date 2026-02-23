@@ -215,7 +215,7 @@ const RecurringDeposit: React.FC = () => {
     }
   };
 
-  const openAddRd = () => setRdDlg({ open: true, mode: 'add', data: { ...EMPTY_RD, portfolio_id: selectedPortfolioId || undefined } });
+  const openAddRd = () => setRdDlg({ open: true, mode: 'add', data: { ...EMPTY_RD, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : undefined) } });
   const openEditRd = (rd: RDAccount) =>
     setRdDlg({ open: true, mode: 'edit', data: { ...rd } });
   const closeRdDlg = () => setRdDlg((p) => ({ ...p, open: false }));
@@ -380,8 +380,8 @@ const RecurringDeposit: React.FC = () => {
           { label: 'Current Value', value: fmt(totalValue) },
           { label: 'Total Interest Earned', value: fmt(totalInterest) },
         ].map(({ label, value }) => (
-          <Grid item xs={12} sm={6} md={3} key={label}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} key={label} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="text.secondary" variant="body2">
                   {label}
@@ -657,7 +657,6 @@ const RecurringDeposit: React.FC = () => {
                 value={rdDlg.data.portfolio_id || ''}
                 onChange={(e) => setRdDlg(p => ({ ...p, data: { ...p.data, portfolio_id: e.target.value ? Number(e.target.value) : undefined } }))}
               >
-                <MenuItem value="">None</MenuItem>
                 {portfolios.map((p: any) => (
                   <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                 ))}

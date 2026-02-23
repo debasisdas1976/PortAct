@@ -1,10 +1,12 @@
 """
 PF (Provident Fund/EPF) Account API Endpoints
 """
+import logging
 from datetime import date, datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.dependencies import get_current_active_user, get_db, get_default_portfolio_id
 from app.models.user import User
@@ -20,7 +22,12 @@ from app.schemas.pf import (
     PFStatementUpload,
     PFSummary,
 )
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from app.services.pf_parser import PFStatementParser
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -368,11 +375,24 @@ async def delete_pf_account(
     
     if not asset:
         raise HTTPException(status_code=404, detail="PF account not found")
-    
-    db.query(Transaction).filter(Transaction.asset_id == asset.id).delete()
+
+    # Clear FK references that lack ON DELETE CASCADE/SET NULL in the DB
+    db.query(Alert).filter(Alert.asset_id == asset.id).update(
+        {Alert.asset_id: None}, synchronize_session=False
+    )
+    db.query(AssetSnapshot).filter(AssetSnapshot.asset_id == asset.id).update(
+        {AssetSnapshot.asset_id: None}, synchronize_session=False
+    )
+    db.query(MutualFundHolding).filter(MutualFundHolding.asset_id == asset.id).delete(
+        synchronize_session=False
+    )
+    db.query(Transaction).filter(Transaction.asset_id == asset.id).delete(
+        synchronize_session=False
+    )
+
     db.delete(asset)
     db.commit()
-    
+
     return None
 
 
@@ -462,6 +482,7 @@ async def add_pf_transaction(
 async def upload_pf_statement(
     file: UploadFile = File(...),
     password: Optional[str] = Form(None),
+    portfolio_id: Optional[int] = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -474,6 +495,9 @@ async def upload_pf_statement(
         parser = PFStatementParser(content, password)
         account_data, transactions = parser.parse()
         
+        # Resolve portfolio: use provided value or fall back to user's default
+        resolved_portfolio_id = portfolio_id or get_default_portfolio_id(current_user.id, db)
+
         existing_asset = None
         if account_data.get('uan_number'):
             # Find existing PF account by UAN number
@@ -481,20 +505,21 @@ async def upload_pf_statement(
                 Asset.user_id == current_user.id,
                 Asset.asset_type == AssetType.PF
             ).all()
-            
+
             for asset_item in all_pf_assets:
                 if asset_item.details.get('uan_number') == account_data['uan_number']:
                     existing_asset = asset_item
                     break
-        
+
         if existing_asset:
             asset = existing_asset
         else:
             date_of_joining = datetime.strptime(account_data.get('date_of_joining', date.today().strftime('%Y-%m-%d')), '%Y-%m-%d')
-            
+
             asset = Asset(
                 user_id=current_user.id,
                 asset_type=AssetType.PF,
+                portfolio_id=resolved_portfolio_id,
                 name=f"PF - {account_data.get('employer_name', 'Account')}",
                 broker_name=account_data.get('employer_name', ''),
                 account_id=account_data.get('pf_number', ''),
@@ -522,6 +547,46 @@ async def upload_pf_statement(
             db.commit()
             db.refresh(asset)
         
+        # Separate interest from contributions:
+        # The passbook's Employee Share / Employer Share totals include interest.
+        # Sum up interest transactions and subtract from share totals so that
+        # contributions reflect only actual deposits.
+        total_employee_interest = sum(
+            t['amount'] for t in transactions if t['transaction_type'] == 'employee_interest'
+        )
+        total_employer_interest = sum(
+            t['amount'] for t in transactions if t['transaction_type'] == 'employer_interest'
+        )
+        total_interest = total_employee_interest + total_employer_interest
+
+        if total_interest > 0:
+            emp_share = account_data.get('employee_contribution', 0)
+            er_share = account_data.get('employer_contribution', 0)
+            # Subtract interest from share totals to get pure contributions.
+            # The passbook balance (current_value) stays as-is since
+            # Employee Share + Employer Share is the most reliable number.
+            emp_contrib = emp_share - total_employee_interest if emp_share >= total_employee_interest else emp_share
+            er_contrib = er_share - total_employer_interest if er_share >= total_employer_interest else er_share
+
+            logger.info(
+                f"PF interest split: emp_share={emp_share}, er_share={er_share}, "
+                f"emp_interest={total_employee_interest}, er_interest={total_employer_interest}, "
+                f"emp_contrib={emp_contrib}, er_contrib={er_contrib}, "
+                f"total_interest={total_interest}, balance={asset.current_value}"
+            )
+
+            # Reassign the whole dict so SQLAlchemy detects the change
+            updated_details = dict(asset.details)
+            updated_details['employee_contribution'] = emp_contrib
+            updated_details['employer_contribution'] = er_contrib
+            asset.details = updated_details
+            flag_modified(asset, 'details')
+
+            asset.total_invested = emp_contrib + er_contrib
+            asset.profit_loss = total_interest
+
+            db.flush()
+
         for trans_data in transactions:
             trans_type_map = {
                 'employee_contribution': TransactionType.DEPOSIT,

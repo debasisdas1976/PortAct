@@ -33,8 +33,7 @@ import {
   Upload as UploadIcon,
   Visibility as ViewIcon
 } from '@mui/icons-material';
-import axios from 'axios';
-import { banksAPI } from '../services/api';
+import api, { banksAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelector } from 'react-redux';
@@ -111,7 +110,7 @@ const PPF: React.FC = () => {
   });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPassword, setUploadPassword] = useState('');
-  const [uploadAccountId, setUploadAccountId] = useState<number | null>(null);
+  const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
   const [loading, setLoading] = useState(false);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
@@ -138,9 +137,7 @@ const PPF: React.FC = () => {
 
   const fetchAccounts = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/ppf/', {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await api.get('/ppf/', {
         params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {}
       });
       setAccounts(response.data);
@@ -156,9 +153,7 @@ const PPF: React.FC = () => {
 
   const fetchSummary = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/ppf/summary', {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await api.get('/ppf/summary', {
         params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {}
       });
       setSummary(response.data);
@@ -169,10 +164,7 @@ const PPF: React.FC = () => {
 
   const fetchAccountTransactions = async (accountId: number) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:8000/api/v1/ppf/${accountId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get(`/ppf/${accountId}`);
       setTransactions(response.data.transactions || []);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to fetch transactions'));
@@ -183,7 +175,7 @@ const PPF: React.FC = () => {
     if (account) {
       setEditingAccount(account);
       setFormData({
-        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
         nickname: account.nickname,
         account_number: account.account_number,
         bank_name: account.bank_name,
@@ -200,7 +192,7 @@ const PPF: React.FC = () => {
     } else {
       setEditingAccount(null);
       setFormData({
-        portfolio_id: selectedPortfolioId || '',
+        portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
         nickname: '',
         account_number: '',
         bank_name: '',
@@ -226,21 +218,12 @@ const PPF: React.FC = () => {
   const handleSubmit = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      
+
       if (editingAccount) {
-        await axios.put(
-          `http://localhost:8000/api/v1/ppf/${editingAccount.id}`,
-          {...formData, portfolio_id: formData.portfolio_id || undefined},
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.put(`/ppf/${editingAccount.id}`, {...formData, portfolio_id: formData.portfolio_id || undefined});
         notify.success('Account updated successfully');
       } else {
-        await axios.post(
-          'http://localhost:8000/api/v1/ppf/',
-          {...formData, portfolio_id: formData.portfolio_id || undefined},
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.post('/ppf/', {...formData, portfolio_id: formData.portfolio_id || undefined});
         notify.success('Account added successfully');
       }
 
@@ -260,10 +243,7 @@ const PPF: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:8000/api/v1/ppf/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/ppf/${id}`);
       notify.success('Account deleted successfully');
       fetchAccounts();
       fetchSummary();
@@ -303,12 +283,7 @@ const PPF: React.FC = () => {
 
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      await axios.post(
-        `http://localhost:8000/api/v1/ppf/${selectedAccount.id}/transactions`,
-        transactionFormData,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.post(`/ppf/${selectedAccount.id}/transactions`, transactionFormData);
       notify.success('Transaction added successfully');
       handleCloseTransactionDialog();
       fetchAccountTransactions(selectedAccount.id);
@@ -322,13 +297,10 @@ const PPF: React.FC = () => {
   };
 
   const handleOpenUploadDialog = () => {
-    if (accounts.length === 0) {
-      notify.error('Please create a PPF account first before uploading a statement');
-      return;
-    }
     setUploadFile(null);
     setUploadPassword('');
-    setUploadAccountId(null);
+    const defaultPortfolio = portfolios.find((p: any) => p.is_default);
+    setUploadPortfolioId(selectedPortfolioId || defaultPortfolio?.id || '');
     setOpenUploadDialog(true);
   };
 
@@ -348,51 +320,35 @@ const PPF: React.FC = () => {
       return;
     }
 
-    if (!uploadAccountId) {
-      notify.error('Please select a PPF account');
-      return;
-    }
-
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const formData = new FormData();
-      formData.append('file', uploadFile);
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', uploadFile);
       if (uploadPassword) {
-        formData.append('password', uploadPassword);
+        uploadFormData.append('password', uploadPassword);
+      }
+      if (uploadPortfolioId) {
+        uploadFormData.append('portfolio_id', String(uploadPortfolioId));
       }
 
-      await axios.post(
-        `http://localhost:8000/api/v1/ppf/${uploadAccountId}/upload`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
+      const response = await api.post('/ppf/upload', uploadFormData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
 
       notify.success('Statement uploaded successfully');
       handleCloseUploadDialog();
 
-      // Refresh accounts and summary
       await fetchAccounts();
       await fetchSummary();
 
-      // Fetch the uploaded account with transactions
       try {
-        const accountResponse = await axios.get(
-          `http://localhost:8000/api/v1/ppf/${uploadAccountId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        );
-
-        // Set the account and transactions
-        setSelectedAccount(accountResponse.data);
-        setTransactions(accountResponse.data.transactions || []);
-        setTabValue(1); // Switch to Transactions tab
+        const accountId = response.data.id || response.data.asset_id;
+        if (accountId) {
+          const accountResponse = await api.get(`/ppf/${accountId}`);
+          setSelectedAccount(accountResponse.data);
+          setTransactions(accountResponse.data.transactions || []);
+          setTabValue(1);
+        }
       } catch (err) {
         notify.error(getErrorMessage(err, 'Failed to fetch transactions after upload'));
       }
@@ -444,8 +400,8 @@ const PPF: React.FC = () => {
       {/* Summary Cards */}
       {summary && (
         <Grid container spacing={3} mb={3}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Accounts
@@ -454,8 +410,8 @@ const PPF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Balance
@@ -464,8 +420,8 @@ const PPF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Deposits
@@ -474,8 +430,8 @@ const PPF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Interest
@@ -657,7 +613,6 @@ const PPF: React.FC = () => {
                 value={formData.portfolio_id}
                 onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
               >
-                <MenuItem value="">None</MenuItem>
                 {portfolios.map((p: any) => (
                   <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                 ))}
@@ -873,52 +828,60 @@ const PPF: React.FC = () => {
         <DialogTitle>Upload PPF Statement</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="textSecondary" gutterBottom>
-              Select the PPF account for this statement
-            </Typography>
-            <TextField
+            <Button
+              variant="outlined"
+              component="label"
               fullWidth
-              select
-              label="PPF Account"
-              value={uploadAccountId || ''}
-              onChange={(e) => setUploadAccountId(Number(e.target.value))}
-              sx={{ mt: 2, mb: 2 }}
-              required
+              startIcon={<UploadIcon />}
+              sx={{ mb: 2 }}
             >
-              {accounts.map((account) => (
-                <MenuItem key={account.id} value={account.id}>
-                  {account.account_number} - {account.bank_name}
-                </MenuItem>
-              ))}
-            </TextField>
-            <Typography variant="body2" color="textSecondary" gutterBottom>
-              Supported formats: PDF, Excel (.xlsx, .xls), CSV
-            </Typography>
-            <input
-              type="file"
-              accept=".pdf,.xlsx,.xls,.csv"
-              onChange={handleFileChange}
-              style={{ marginTop: '16px', marginBottom: '16px' }}
-            />
+              {uploadFile ? uploadFile.name : 'Select Statement File'}
+              <input
+                type="file"
+                hidden
+                accept=".pdf,.xlsx,.xls,.csv"
+                onChange={handleFileChange}
+              />
+            </Button>
             {uploadFile && (
-              <Typography variant="body2" color="primary">
-                Selected: {uploadFile.name}
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(2)} KB)
               </Typography>
             )}
             <TextField
               fullWidth
               type="password"
-              label="Password (if PDF is encrypted)"
+              label="Password (if encrypted)"
               value={uploadPassword}
               onChange={(e) => setUploadPassword(e.target.value)}
-              sx={{ mt: 2 }}
+              placeholder="Leave empty if not password-protected"
+              helperText="Required for password-protected statements"
+              sx={{ mb: 2 }}
             />
+            <TextField
+              select
+              fullWidth
+              label="Portfolio"
+              value={uploadPortfolioId}
+              onChange={(e) => setUploadPortfolioId(e.target.value ? Number(e.target.value) : '')}
+              helperText="The PPF account will be assigned to the selected portfolio"
+            >
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name}{p.is_default ? ' (Default)' : ''}
+                </MenuItem>
+              ))}
+            </TextField>
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseUploadDialog}>Cancel</Button>
-          <Button onClick={handleUploadStatement} variant="contained" disabled={loading || !uploadFile || !uploadAccountId}>
-            {loading ? <CircularProgress size={24} /> : 'Upload'}
+          <Button
+            onClick={handleUploadStatement}
+            variant="contained"
+            disabled={!uploadFile || loading}
+          >
+            {loading ? <CircularProgress size={24} /> : 'Upload & Process'}
           </Button>
         </DialogActions>
       </Dialog>

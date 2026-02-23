@@ -107,7 +107,7 @@ def upgrade() -> None:
         ('sharekhan',        'Sharekhan',          'full_service',  'domestic',       true, 9),
         ('motilal_oswal',    'Motilal Oswal',      'full_service',  'domestic',       true, 10),
         ('iifl_securities',  'IIFL Securities',    'full_service',  'domestic',       true, 11),
-        ('indmoney',         'INDmoney',           'discount',      'international', true, 12),
+        ('indmoney',         'INDmoney',           'international', 'international', true, 12),
         ('vested',           'Vested',             'international', 'international', true, 13),
         ('other',            'Other',              'discount',      'domestic',       true, 99)
         ON CONFLICT (name) DO NOTHING

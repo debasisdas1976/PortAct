@@ -21,6 +21,9 @@ from app.schemas.ssy import (
     SSYStatementUpload,
     SSYSummary,
 )
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from app.services.ssy_parser import SSYStatementParser
 
 router = APIRouter()
@@ -350,14 +353,24 @@ async def delete_ssy_account(
     
     if not asset:
         raise HTTPException(status_code=404, detail="SSY account not found")
-    
-    # Delete associated transactions
-    db.query(Transaction).filter(Transaction.asset_id == asset.id).delete()
-    
-    # Delete asset
+
+    # Clear FK references that lack ON DELETE CASCADE/SET NULL in the DB
+    db.query(Alert).filter(Alert.asset_id == asset.id).update(
+        {Alert.asset_id: None}, synchronize_session=False
+    )
+    db.query(AssetSnapshot).filter(AssetSnapshot.asset_id == asset.id).update(
+        {AssetSnapshot.asset_id: None}, synchronize_session=False
+    )
+    db.query(MutualFundHolding).filter(MutualFundHolding.asset_id == asset.id).delete(
+        synchronize_session=False
+    )
+    db.query(Transaction).filter(Transaction.asset_id == asset.id).delete(
+        synchronize_session=False
+    )
+
     db.delete(asset)
     db.commit()
-    
+
     return None
 
 
@@ -446,6 +459,7 @@ async def add_ssy_transaction(
 async def upload_ssy_statement(
     file: UploadFile = File(...),
     password: Optional[str] = Form(None),
+    portfolio_id: Optional[int] = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -463,6 +477,9 @@ async def upload_ssy_statement(
         parser = SSYStatementParser(content, password)
         account_data, transactions = parser.parse()
         
+        # Resolve portfolio: use provided value or fall back to user's default
+        resolved_portfolio_id = portfolio_id or get_default_portfolio_id(current_user.id, db)
+
         # Check if account already exists
         existing_asset = None
         if account_data.get('account_number'):
@@ -471,17 +488,18 @@ async def upload_ssy_statement(
                 Asset.asset_type == AssetType.SSY,
                 Asset.account_id == account_data['account_number']
             ).first()
-        
+
         if existing_asset:
             asset = existing_asset
         else:
             # Create new asset
             opening_date = datetime.strptime(account_data.get('opening_date', date.today().strftime('%Y-%m-%d')), '%Y-%m-%d')
             girl_dob = datetime.strptime(account_data.get('girl_dob', date.today().strftime('%Y-%m-%d')), '%Y-%m-%d')
-            
+
             asset = Asset(
                 user_id=current_user.id,
                 asset_type=AssetType.SSY,
+                portfolio_id=resolved_portfolio_id,
                 name=f"SSY - {account_data.get('girl_name', 'Account')}",
                 broker_name=account_data.get('bank_name', ''),
                 account_id=account_data.get('account_number', ''),

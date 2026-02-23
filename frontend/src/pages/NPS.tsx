@@ -33,8 +33,7 @@ import {
   Upload as UploadIcon,
   Visibility as ViewIcon
 } from '@mui/icons-material';
-import axios from 'axios';
-import { institutionsAPI } from '../services/api';
+import api, { institutionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelector } from 'react-redux';
@@ -123,7 +122,7 @@ const NPS: React.FC = () => {
   });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPassword, setUploadPassword] = useState('');
-  const [uploadAccountId, setUploadAccountId] = useState<number | null>(null);
+  const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
   const [loading, setLoading] = useState(false);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
@@ -150,9 +149,7 @@ const NPS: React.FC = () => {
 
   const fetchAccounts = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/nps/', {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await api.get('/nps/', {
         params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {}
       });
       setAccounts(response.data);
@@ -168,9 +165,7 @@ const NPS: React.FC = () => {
 
   const fetchSummary = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/nps/summary', {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await api.get('/nps/summary', {
         params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {}
       });
       setSummary(response.data);
@@ -181,10 +176,7 @@ const NPS: React.FC = () => {
 
   const fetchAccountTransactions = async (accountId: number) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:8000/api/v1/nps/${accountId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get(`/nps/${accountId}`);
       setTransactions(response.data.transactions || []);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to fetch transactions'));
@@ -195,7 +187,7 @@ const NPS: React.FC = () => {
     if (account) {
       setEditingAccount(account);
       setFormData({
-        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
         nickname: account.nickname,
         pran_number: account.pran_number,
         account_holder_name: account.account_holder_name,
@@ -215,7 +207,7 @@ const NPS: React.FC = () => {
     } else {
       setEditingAccount(null);
       setFormData({
-        portfolio_id: selectedPortfolioId || '',
+        portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
         nickname: '',
         pran_number: '',
         account_holder_name: '',
@@ -244,21 +236,12 @@ const NPS: React.FC = () => {
   const handleSubmit = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      
+
       if (editingAccount) {
-        await axios.put(
-          `http://localhost:8000/api/v1/nps/${editingAccount.id}`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.put(`/nps/${editingAccount.id}`, formData);
         notify.success('Account updated successfully');
       } else {
-        await axios.post(
-          'http://localhost:8000/api/v1/nps/',
-          { ...formData, portfolio_id: formData.portfolio_id || undefined },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.post('/nps/', { ...formData, portfolio_id: formData.portfolio_id || undefined });
         notify.success('Account added successfully');
       }
 
@@ -278,10 +261,7 @@ const NPS: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:8000/api/v1/nps/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/nps/${id}`);
       notify.success('Account deleted successfully');
       fetchAccounts();
       fetchSummary();
@@ -323,12 +303,7 @@ const NPS: React.FC = () => {
 
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      await axios.post(
-        `http://localhost:8000/api/v1/nps/${selectedAccount.id}/transactions`,
-        transactionFormData,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.post(`/nps/${selectedAccount.id}/transactions`, transactionFormData);
       notify.success('Transaction added successfully');
       handleCloseTransactionDialog();
       fetchAccountTransactions(selectedAccount.id);
@@ -342,13 +317,10 @@ const NPS: React.FC = () => {
   };
 
   const handleOpenUploadDialog = () => {
-    if (accounts.length === 0) {
-      notify.error('Please create an NPS account first before uploading a statement');
-      return;
-    }
     setUploadFile(null);
     setUploadPassword('');
-    setUploadAccountId(null);
+    const defaultPortfolio = portfolios.find((p: any) => p.is_default);
+    setUploadPortfolioId(selectedPortfolioId || defaultPortfolio?.id || '');
     setOpenUploadDialog(true);
   };
 
@@ -368,47 +340,34 @@ const NPS: React.FC = () => {
       return;
     }
 
-    if (!uploadAccountId) {
-      notify.error('Please select an NPS account');
-      return;
-    }
-
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const formData = new FormData();
-      formData.append('file', uploadFile);
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', uploadFile);
       if (uploadPassword) {
-        formData.append('password', uploadPassword);
+        uploadFormData.append('password', uploadPassword);
+      }
+      if (uploadPortfolioId) {
+        uploadFormData.append('portfolio_id', String(uploadPortfolioId));
       }
 
-      await axios.post(
-        `http://localhost:8000/api/v1/nps/${uploadAccountId}/upload`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
+      const response = await api.post('/nps/upload', uploadFormData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
 
       notify.success('NPS statement uploaded and processed successfully');
       handleCloseUploadDialog();
       await fetchAccounts();
       await fetchSummary();
-      
+
       try {
-        const accountResponse = await axios.get(
-          `http://localhost:8000/api/v1/nps/${uploadAccountId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        );
-        
-        setSelectedAccount(accountResponse.data);
-        setTransactions(accountResponse.data.transactions || []);
-        setTabValue(1);
+        const accountId = response.data.id || response.data.asset_id;
+        if (accountId) {
+          const accountResponse = await api.get(`/nps/${accountId}`);
+          setSelectedAccount(accountResponse.data);
+          setTransactions(accountResponse.data.transactions || []);
+          setTabValue(1);
+        }
       } catch (err) {
         notify.error(getErrorMessage(err, 'Failed to refresh transactions after upload'));
       }
@@ -460,8 +419,8 @@ const NPS: React.FC = () => {
       {/* Summary Cards */}
       {summary && (
         <Grid container spacing={3} mb={3}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Accounts
@@ -470,8 +429,8 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Balance
@@ -480,8 +439,8 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Tier 1 Balance
@@ -490,8 +449,8 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Tier 2 Balance
@@ -500,8 +459,8 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <Card>
+          <Grid item xs={12} sm={6} md={4} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Contributions
@@ -510,8 +469,8 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <Card>
+          <Grid item xs={12} sm={6} md={4} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Employer Contributions
@@ -520,8 +479,8 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <Card>
+          <Grid item xs={12} sm={6} md={4} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Returns
@@ -709,7 +668,6 @@ const NPS: React.FC = () => {
                 value={formData.portfolio_id}
                 onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
               >
-                <MenuItem value="">None</MenuItem>
                 {portfolios.map((p: any) => (
                   <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                 ))}
@@ -984,52 +942,60 @@ const NPS: React.FC = () => {
         <DialogTitle>Upload NPS Statement</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="textSecondary" gutterBottom>
-              Select the NPS account for this statement
-            </Typography>
-            <TextField
+            <Button
+              variant="outlined"
+              component="label"
               fullWidth
-              select
-              label="NPS Account"
-              value={uploadAccountId || ''}
-              onChange={(e) => setUploadAccountId(Number(e.target.value))}
-              sx={{ mt: 2, mb: 2 }}
-              required
+              startIcon={<UploadIcon />}
+              sx={{ mb: 2 }}
             >
-              {accounts.map((account) => (
-                <MenuItem key={account.id} value={account.id}>
-                  {account.pran_number} - {account.account_holder_name}
-                </MenuItem>
-              ))}
-            </TextField>
-            <Typography variant="body2" color="textSecondary" gutterBottom>
-              Supported formats: PDF
-            </Typography>
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={handleFileChange}
-              style={{ marginTop: '16px', marginBottom: '16px' }}
-            />
+              {uploadFile ? uploadFile.name : 'Select Statement File'}
+              <input
+                type="file"
+                hidden
+                accept=".pdf,.xlsx,.xls,.csv"
+                onChange={handleFileChange}
+              />
+            </Button>
             {uploadFile && (
-              <Typography variant="body2" color="primary">
-                Selected: {uploadFile.name}
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(2)} KB)
               </Typography>
             )}
             <TextField
               fullWidth
               type="password"
-              label="Password (if PDF is encrypted)"
+              label="Password (if encrypted)"
               value={uploadPassword}
               onChange={(e) => setUploadPassword(e.target.value)}
-              sx={{ mt: 2 }}
+              placeholder="Leave empty if not password-protected"
+              helperText="Required for password-protected statements"
+              sx={{ mb: 2 }}
             />
+            <TextField
+              select
+              fullWidth
+              label="Portfolio"
+              value={uploadPortfolioId}
+              onChange={(e) => setUploadPortfolioId(e.target.value ? Number(e.target.value) : '')}
+              helperText="The NPS account will be assigned to the selected portfolio"
+            >
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name}{p.is_default ? ' (Default)' : ''}
+                </MenuItem>
+              ))}
+            </TextField>
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseUploadDialog}>Cancel</Button>
-          <Button onClick={handleUploadStatement} variant="contained" disabled={loading || !uploadFile || !uploadAccountId}>
-            {loading ? <CircularProgress size={24} /> : 'Upload'}
+          <Button
+            onClick={handleUploadStatement}
+            variant="contained"
+            disabled={!uploadFile || loading}
+          >
+            {loading ? <CircularProgress size={24} /> : 'Upload & Process'}
           </Button>
         </DialogActions>
       </Dialog>

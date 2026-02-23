@@ -80,6 +80,8 @@ class PPFAccountResponse(PPFAccountBase):
     account_number: str = ""
     bank_name: str = ""
     account_holder_name: str = ""
+    # Override to remove ge=0 constraint; interest is stored explicitly, not derived
+    total_interest_earned: float = 0.0
     created_at: datetime
     updated_at: Optional[datetime] = None
 

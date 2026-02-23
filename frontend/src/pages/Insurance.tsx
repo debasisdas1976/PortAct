@@ -164,14 +164,14 @@ const Insurance: React.FC = () => {
 
   const handleOpenAdd = () => {
     setEditingId(null);
-    setForm({...emptyForm, portfolio_id: selectedPortfolioId || ''});
+    setForm({...emptyForm, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '')});
     setDialogOpen(true);
   };
 
   const handleOpenEdit = (policy: InsurancePolicy) => {
     setEditingId(policy.id);
     setForm({
-      portfolio_id: (policy as any).portfolio_id || selectedPortfolioId || '',
+      portfolio_id: (policy as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
       nickname: policy.nickname,
       policy_name: policy.policy_name,
       policy_number: policy.policy_number,
@@ -285,8 +285,8 @@ const Insurance: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={2}>
-          <Card>
+        <Grid item xs={12} md={2} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Policies</Typography>
               <Typography variant="h5">{summary?.total_policies ?? 0}</Typography>
@@ -294,16 +294,16 @@ const Insurance: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
+        <Grid item xs={12} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Sum Assured</Typography>
               <Typography variant="h5">{formatCurrency(summary?.total_sum_assured ?? 0)}</Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
+        <Grid item xs={12} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Current Fund Value</Typography>
               <Typography variant="h5" color="success.main">
@@ -313,16 +313,16 @@ const Insurance: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={2}>
-          <Card>
+        <Grid item xs={12} md={2} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Annual Premium</Typography>
               <Typography variant="h5">{formatCurrency(summary?.total_annual_premium ?? 0)}</Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={2}>
-          <Card>
+        <Grid item xs={12} md={2} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Premium Paid</Typography>
               <Typography variant="h5">{formatCurrency(summary?.total_premium_paid ?? 0)}</Typography>
@@ -444,7 +444,6 @@ const Insurance: React.FC = () => {
                 value={form.portfolio_id}
                 onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
               >
-                <MenuItem value="">None</MenuItem>
                 {portfolios.map((p: any) => (
                   <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                 ))}

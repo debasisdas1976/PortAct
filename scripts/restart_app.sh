@@ -50,9 +50,73 @@ pkill -f "node.*frontend" || true
 # Wait a moment for processes to stop
 sleep 2
 
-# Step 2: Run database migrations (if any pending)
+# Step 2: Ensure PostgreSQL is running
 echo ""
-echo "Step 2: Running database migrations..."
+echo "Step 2: Checking PostgreSQL..."
+echo "--------------------------------------"
+
+if pg_isready -q 2>/dev/null; then
+    print_status "PostgreSQL is already running"
+else
+    print_warning "PostgreSQL is not running. Starting it..."
+
+    OS_TYPE="$(uname -s)"
+    PG_STARTED=false
+
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        # macOS: start via brew services (try 17, 16, 15 in order)
+        for pg_ver in 17 16 15; do
+            if brew list "postgresql@$pg_ver" &>/dev/null; then
+                print_status "Starting PostgreSQL @$pg_ver via Homebrew..."
+                brew services start "postgresql@$pg_ver" 2>/dev/null || true
+                PG_STARTED=true
+                break
+            fi
+        done
+        # Fallback: plain "postgresql" formula
+        if [ "$PG_STARTED" = false ] && brew list postgresql &>/dev/null; then
+            print_status "Starting PostgreSQL via Homebrew..."
+            brew services start postgresql 2>/dev/null || true
+            PG_STARTED=true
+        fi
+    else
+        # Linux: start via systemctl
+        if command -v systemctl &>/dev/null; then
+            print_status "Starting PostgreSQL via systemctl..."
+            sudo systemctl start postgresql 2>/dev/null || true
+            PG_STARTED=true
+        fi
+    fi
+
+    # Fallback: pg_ctl with auto-detected data dir
+    if [ "$PG_STARTED" = false ]; then
+        PG_DATA_DIR=""
+        for d in /usr/local/var/postgres /opt/homebrew/var/postgres /var/lib/postgresql/*/main; do
+            if [ -d "$d" ]; then
+                PG_DATA_DIR="$d"
+                break
+            fi
+        done
+        if [ -n "$PG_DATA_DIR" ]; then
+            print_status "Starting PostgreSQL via pg_ctl (data dir: $PG_DATA_DIR)..."
+            pg_ctl -D "$PG_DATA_DIR" -l /tmp/pg_restart.log start 2>/dev/null || true
+            PG_STARTED=true
+        fi
+    fi
+
+    # Wait for PostgreSQL to be ready
+    sleep 3
+    if pg_isready -q 2>/dev/null; then
+        print_status "PostgreSQL started successfully"
+    else
+        print_error "Could not start PostgreSQL. Please start it manually and run this script again."
+        exit 1
+    fi
+fi
+
+# Step 3: Run database migrations (if any pending)
+echo ""
+echo "Step 3: Running database migrations..."
 echo "--------------------------------------"
 
 cd backend
@@ -66,9 +130,9 @@ else
 fi
 cd ..
 
-# Step 3: Start backend
+# Step 4: Start backend
 echo ""
-echo "Step 3: Starting backend server..."
+echo "Step 4: Starting backend server..."
 echo "--------------------------------------"
 
 cd backend
@@ -81,9 +145,9 @@ cd ..
 # Wait for backend to be ready
 sleep 3
 
-# Step 4: Start frontend
+# Step 5: Start frontend
 echo ""
-echo "Step 4: Starting frontend server..."
+echo "Step 5: Starting frontend server..."
 echo "--------------------------------------"
 
 cd frontend

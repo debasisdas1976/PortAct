@@ -40,6 +40,7 @@ const Stocks = React.lazy(() => import('./pages/Stocks'));
 const USStocks = React.lazy(() => import('./pages/USStocks'));
 const EquityMF = React.lazy(() => import('./pages/EquityMF'));
 const Savings = React.lazy(() => import('./pages/Savings'));
+const CreditCards = React.lazy(() => import('./pages/CreditCards'));
 const FixedDeposit = React.lazy(() => import('./pages/FixedDeposit'));
 const RecurringDeposit = React.lazy(() => import('./pages/RecurringDeposit'));
 const DebtFunds = React.lazy(() => import('./pages/DebtFunds'));
@@ -62,6 +63,7 @@ const Settings = React.lazy(() => import('./pages/Settings'));
 const Help = React.lazy(() => import('./pages/Help'));
 const Portfolios = React.lazy(() => import('./pages/Portfolios'));
 const AssetTypesMaster = React.lazy(() => import('./pages/AssetTypesMaster'));
+const SuperAdmin = React.lazy(() => import('./pages/SuperAdmin'));
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -143,6 +145,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="us-stocks" element={<USStocks />} />
             <Route path="equity-mf" element={<EquityMF />} />
             <Route path="savings" element={<Savings />} />
+            <Route path="credit-cards" element={<CreditCards />} />
             <Route path="fixed-deposit" element={<FixedDeposit />} />
             <Route path="recurring-deposit" element={<RecurringDeposit />} />
             <Route path="debt-funds" element={<DebtFunds />} />
@@ -165,6 +168,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="land" element={<RealEstate propertyType="land" title="Land" />} />
             <Route path="farm-land" element={<RealEstate propertyType="farm_land" title="Farm Land" />} />
             <Route path="house" element={<RealEstate propertyType="house" title="House" />} />
+            <Route path="super-admin" element={<SuperAdmin />} />
             <Route path="settings" element={<Settings />} />
             <Route path="help" element={<Help />} />
           </Route>

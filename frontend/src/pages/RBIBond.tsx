@@ -54,11 +54,11 @@ const RBIBond: React.FC = () => {
   const totalPnL = totalValue - totalInvested;
   const totalPnLPct = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
 
-  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || '' }); setDialogOpen(true); };
+  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') }); setDialogOpen(true); };
   const handleEdit = (asset: AssetItem) => {
     setEditingId(asset.id);
     setForm({ name: asset.name || '', symbol: asset.symbol || '', isin: asset.isin || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), interest_rate: String(asset.details?.interest_rate || ''), maturity_date: asset.details?.maturity_date || '', broker_name: asset.broker_name || '', notes: asset.notes || '',
-      portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '' });
+      portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
     setDialogOpen(true);
   };
 
@@ -95,10 +95,10 @@ const RBIBond: React.FC = () => {
         <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>Add</Button>
       </Box>
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Holdings</Typography><Typography variant="h4">{assets.length}</Typography></CardContent></Card></Grid>
-        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Current Value</Typography><Typography variant="h5">{formatCurrency(totalValue)}</Typography></CardContent></Card></Grid>
-        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Total Invested</Typography><Typography variant="h5">{formatCurrency(totalInvested)}</Typography></CardContent></Card></Grid>
-        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Total P&L</Typography><Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{formatCurrency(totalPnL)}</Typography><Typography variant="body2" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}><Card sx={{ width: '100%' }}><CardContent><Typography color="text.secondary" variant="body2">Holdings</Typography><Typography variant="h4">{assets.length}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}><Card sx={{ width: '100%' }}><CardContent><Typography color="text.secondary" variant="body2">Current Value</Typography><Typography variant="h5">{formatCurrency(totalValue)}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}><Card sx={{ width: '100%' }}><CardContent><Typography color="text.secondary" variant="body2">Total Invested</Typography><Typography variant="h5">{formatCurrency(totalInvested)}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}><Card sx={{ width: '100%' }}><CardContent><Typography color="text.secondary" variant="body2">Total P&L</Typography><Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{formatCurrency(totalPnL)}</Typography><Typography variant="body2" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%</Typography></CardContent></Card></Grid>
       </Grid>
       <TableContainer component={Paper}>
         <Table>

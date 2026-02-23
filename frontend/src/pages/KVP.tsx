@@ -50,12 +50,12 @@ const KVP: React.FC = () => {
   const totalInvested = assets.reduce((s, a) => s + (a.total_invested || 0), 0);
   const totalValue = assets.reduce((s, a) => s + (a.current_value || 0), 0);
 
-  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || '' }); setDialogOpen(true); };
+  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') }); setDialogOpen(true); };
   const handleEdit = (asset: AssetItem) => {
     setEditingId(asset.id);
     setForm({ name: asset.name || '', symbol: asset.symbol || '', total_invested: String(asset.total_invested || ''), current_value: String(asset.current_value || ''),
       interest_rate: String(asset.details?.interest_rate || ''), maturity_date: asset.details?.maturity_date || '', broker_name: asset.broker_name || '', notes: asset.notes || '',
-      portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '' });
+      portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
     setDialogOpen(true);
   };
 

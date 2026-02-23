@@ -33,7 +33,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
-import axios from 'axios';
+import api from '../services/api';
 
 interface CategoryData {
   name: string;
@@ -83,9 +83,8 @@ const ExpenseDashboard: React.FC = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
 
-      let url = 'http://localhost:8000/api/v1/expenses/dashboard/monthly-by-category';
+      let url = '/expenses/dashboard/monthly-by-category';
       if (viewMode === 'single') {
         url += `?months=1&year=${selectedYear}&month=${selectedMonth}`;
       } else {
@@ -94,10 +93,8 @@ const ExpenseDashboard: React.FC = () => {
       if (selectedPortfolioId) {
         url += `&portfolio_id=${selectedPortfolioId}`;
       }
-      
-      const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+
+      const response = await api.get(url);
       setData(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load data'));

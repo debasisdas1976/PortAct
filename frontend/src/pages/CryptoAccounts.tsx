@@ -21,19 +21,21 @@ import {
   TextField,
   Typography,
   Chip,
-  Alert,
-  Autocomplete,
-  CircularProgress
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
+import { useSelector, useDispatch } from 'react-redux';
+import { AppDispatch, RootState } from '../store';
+import { fetchPortfolios } from '../store/slices/portfolioSlice';
 import api, { cryptoExchangesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
+import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import { getErrorMessage } from '../utils/errorUtils';
 import CompanyIcon from '../components/CompanyIcon';
+import CryptoAssetDialog from '../components/CryptoAssetDialog';
 
 interface CryptoAccount {
   id: number;
@@ -49,6 +51,7 @@ interface CryptoAccount {
   total_invested_usd?: number;
   current_value_usd?: number;
   total_profit_loss_usd?: number;
+  portfolio_id?: number;
 }
 
 interface CryptoExchange {
@@ -61,20 +64,15 @@ interface CryptoExchange {
   sort_order: number;
 }
 
-interface CryptoSearchResult {
-  id: string;
-  symbol: string;
-  name: string;
-}
-
 const CryptoAccounts: React.FC = () => {
   const { notify } = useNotification();
+  const dispatch = useDispatch<AppDispatch>();
+  const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [accounts, setAccounts] = useState<CryptoAccount[]>([]);
   const [exchanges, setExchanges] = useState<CryptoExchange[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
-  const [openAssetDialog, setOpenAssetDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState<CryptoAccount | null>(null);
-  const [selectedAccount, setSelectedAccount] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     exchange_name: '',
     account_id: '',
@@ -82,25 +80,18 @@ const CryptoAccounts: React.FC = () => {
     wallet_address: '',
     cash_balance_usd: 0,
     nickname: '',
-    is_active: true
+    is_active: true,
+    portfolio_id: '' as number | '',
   });
 
-  const [assetForm, setAssetForm] = useState({
-    name: '',
-    symbol: '',
-    coin_id: '',
-    quantity: 0,
-    purchase_price: 0,
-    total_invested: 0,
-    currency: 'USD'
-  });
-  const [cryptoOptions, setCryptoOptions] = useState<CryptoSearchResult[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  // Asset dialog state
+  const [assetDialogOpen, setAssetDialogOpen] = useState(false);
+  const [selectedAccountForAsset, setSelectedAccountForAsset] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     fetchData();
-  }, []);
+    dispatch(fetchPortfolios());
+  }, [dispatch]);
 
   const fetchData = async () => {
     try {
@@ -118,36 +109,6 @@ const CryptoAccounts: React.FC = () => {
   const getExchange = (name: string) => exchanges.find(e => e.name === name);
   const getExchangeLabel = (name: string) => getExchange(name)?.display_label || name;
 
-  const searchCrypto = async (query: string) => {
-    if (!query || query.length < 2) {
-      setCryptoOptions([]);
-      return;
-    }
-
-    setSearchLoading(true);
-    try {
-      const response = await api.get('/prices/crypto/search', {
-        params: { query, limit: 10 }
-      });
-      setCryptoOptions(response.data.results || []);
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to search crypto'));
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  const fetchCryptoPrice = async (symbol: string) => {
-    try {
-      const response = await api.get(`/prices/crypto/${symbol}`);
-      setCurrentPrice(response.data.price);
-      return response.data.price;
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to fetch price'));
-      return null;
-    }
-  };
-
   const handleOpenDialog = (account?: CryptoAccount) => {
     if (account) {
       setEditingAccount(account);
@@ -158,7 +119,8 @@ const CryptoAccounts: React.FC = () => {
         wallet_address: account.wallet_address || '',
         cash_balance_usd: account.cash_balance_usd,
         nickname: account.nickname || '',
-        is_active: account.is_active
+        is_active: account.is_active,
+        portfolio_id: account.portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
       });
     } else {
       setEditingAccount(null);
@@ -169,7 +131,8 @@ const CryptoAccounts: React.FC = () => {
         wallet_address: '',
         cash_balance_usd: 0,
         nickname: '',
-        is_active: true
+        is_active: true,
+        portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
       });
     }
     setOpenDialog(true);
@@ -181,67 +144,24 @@ const CryptoAccounts: React.FC = () => {
   };
 
   const handleOpenAssetDialog = (accountId: number) => {
-    setSelectedAccount(accountId);
-    setAssetForm({
-      name: '',
-      symbol: '',
-      coin_id: '',
-      quantity: 0,
-      purchase_price: 0,
-      total_invested: 0,
-      currency: 'USD'
-    });
-    setCurrentPrice(null);
-    setOpenAssetDialog(true);
-  };
-
-  const handleCloseAssetDialog = () => {
-    setOpenAssetDialog(false);
-    setSelectedAccount(null);
-    setCurrentPrice(null);
+    setSelectedAccountForAsset(accountId);
+    setAssetDialogOpen(true);
   };
 
   const handleSubmit = async () => {
     try {
+      const payload = { ...formData, portfolio_id: formData.portfolio_id || undefined };
       if (editingAccount) {
-        await api.put(`/crypto-accounts/${editingAccount.id}`, formData);
+        await api.put(`/crypto-accounts/${editingAccount.id}`, payload);
         notify.success('Crypto account updated successfully');
       } else {
-        await api.post('/crypto-accounts/', formData);
+        await api.post('/crypto-accounts/', payload);
         notify.success('Crypto account added successfully');
       }
       handleCloseDialog();
       fetchData();
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to save crypto account'));
-    }
-  };
-
-  const handleSubmitAsset = async () => {
-    if (!selectedAccount) return;
-
-    try {
-      const assetData = {
-        asset_type: 'crypto',
-        name: assetForm.name,
-        symbol: assetForm.symbol,
-        quantity: assetForm.quantity,
-        purchase_price: assetForm.purchase_price,
-        current_price: currentPrice || assetForm.purchase_price,
-        total_invested: assetForm.total_invested,
-        crypto_account_id: selectedAccount,
-        currency: assetForm.currency,
-        details: {
-          coin_id: assetForm.coin_id
-        }
-      };
-
-      await api.post('/assets/', assetData);
-      notify.success('Crypto asset added successfully');
-      handleCloseAssetDialog();
-      fetchData();
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to add crypto asset'));
     }
   };
 
@@ -419,6 +339,17 @@ const CryptoAccounts: React.FC = () => {
               ))}
             </TextField>
             <TextField
+              select
+              label="Portfolio"
+              value={formData.portfolio_id}
+              onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+              fullWidth
+            >
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
               label="Account ID / Username"
               value={formData.account_id}
               onChange={(e) => setFormData({ ...formData, account_id: e.target.value })}
@@ -460,115 +391,13 @@ const CryptoAccounts: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Add Asset Dialog */}
-      <Dialog open={openAssetDialog} onClose={handleCloseAssetDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Crypto Asset</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            <Autocomplete
-              options={cryptoOptions}
-              getOptionLabel={(option) => `${option.symbol.toUpperCase()} - ${option.name}`}
-              loading={searchLoading}
-              onInputChange={(_, value) => searchCrypto(value)}
-              onChange={async (_, value) => {
-                if (value) {
-                  setAssetForm({
-                    ...assetForm,
-                    name: value.name,
-                    symbol: value.symbol.toUpperCase(),
-                    coin_id: value.id
-                  });
-                  const price = await fetchCryptoPrice(value.symbol);
-                  if (price) {
-                    setAssetForm(prev => ({
-                      ...prev,
-                      purchase_price: price
-                    }));
-                  }
-                }
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Search Cryptocurrency"
-                  placeholder="Type BTC, ETH, etc."
-                  InputProps={{
-                    ...params.InputProps,
-                    endAdornment: (
-                      <>
-                        {searchLoading ? <CircularProgress size={20} /> : null}
-                        {params.InputProps.endAdornment}
-                      </>
-                    ),
-                  }}
-                />
-              )}
-            />
-            {currentPrice && (
-              <Alert severity="info">
-                Current Price: {formatCurrency(currentPrice)}
-              </Alert>
-            )}
-            <TextField
-              select
-              label="Currency"
-              value={assetForm.currency}
-              onChange={(e) => setAssetForm({ ...assetForm, currency: e.target.value })}
-              fullWidth
-            >
-              <MenuItem value="USD">USD</MenuItem>
-              <MenuItem value="INR">INR</MenuItem>
-            </TextField>
-            <TextField
-              label="Quantity"
-              type="number"
-              value={assetForm.quantity}
-              onChange={(e) => {
-                const qty = parseFloat(e.target.value) || 0;
-                setAssetForm({
-                  ...assetForm,
-                  quantity: qty,
-                  total_invested: qty * assetForm.purchase_price
-                });
-              }}
-              required
-              fullWidth
-            />
-            <TextField
-              label={`Purchase Price (${assetForm.currency})`}
-              type="number"
-              value={assetForm.purchase_price}
-              onChange={(e) => {
-                const price = parseFloat(e.target.value) || 0;
-                setAssetForm({
-                  ...assetForm,
-                  purchase_price: price,
-                  total_invested: assetForm.quantity * price
-                });
-              }}
-              required
-              fullWidth
-            />
-            <TextField
-              label={`Total Invested (${assetForm.currency})`}
-              type="number"
-              value={assetForm.total_invested}
-              InputProps={{ readOnly: true }}
-              fullWidth
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseAssetDialog}>Cancel</Button>
-          <Button
-            onClick={handleSubmitAsset}
-            variant="contained"
-            disabled={!assetForm.symbol || !assetForm.quantity}
-          >
-            Add Asset
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Shared Add Asset Dialog */}
+      <CryptoAssetDialog
+        open={assetDialogOpen}
+        onClose={() => { setAssetDialogOpen(false); setSelectedAccountForAsset(undefined); }}
+        onSaved={fetchData}
+        fixedCryptoAccountId={selectedAccountForAsset}
+      />
     </Box>
   );
 };

@@ -260,7 +260,7 @@ const BrokersMaster: React.FC = () => {
                   <TableCell>
                     <Chip
                       label={broker.broker_type.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-                      color={broker.broker_type === 'discount' ? 'primary' : broker.broker_type === 'full_service' ? 'secondary' : 'warning'}
+                      color={broker.broker_type === 'discount' ? 'primary' : broker.broker_type === 'full_service' ? 'secondary' : broker.broker_type === 'aggregator' ? 'info' : 'warning'}
                       size="small"
                       variant="outlined"
                     />
@@ -328,6 +328,7 @@ const BrokersMaster: React.FC = () => {
               <MenuItem value="discount">Discount</MenuItem>
               <MenuItem value="full_service">Full Service</MenuItem>
               <MenuItem value="international">International</MenuItem>
+              <MenuItem value="aggregator">Aggregator</MenuItem>
             </TextField>
             <TextField
               select

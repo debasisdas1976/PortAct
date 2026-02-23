@@ -39,7 +39,7 @@ import { fetchPortfolios } from '../store/slices/portfolioSlice';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
-import axios from 'axios';
+import api from '../services/api';
 
 interface Expense {
   id: number;
@@ -128,7 +128,6 @@ const Expenses: React.FC = () => {
 
   const fetchExpenses = async () => {
     try {
-      const token = localStorage.getItem('token');
       const params = new URLSearchParams();
 
       Object.entries(filters).forEach(([key, value]) => {
@@ -147,10 +146,7 @@ const Expenses: React.FC = () => {
       params.append('order_by', orderBy);
       params.append('order', order);
 
-      const response = await axios.get(
-        `http://localhost:8000/api/v1/expenses/?${params.toString()}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const response = await api.get(`/expenses/?${params.toString()}`);
       
       // Handle new paginated response format
       if (response.data.items) {
@@ -168,7 +164,6 @@ const Expenses: React.FC = () => {
 
   const fetchSummary = async () => {
     try {
-      const token = localStorage.getItem('token');
       const params = new URLSearchParams();
 
       Object.entries(filters).forEach(([key, value]) => {
@@ -179,10 +174,7 @@ const Expenses: React.FC = () => {
         params.append('portfolio_id', String(selectedPortfolioId));
       }
 
-      const response = await axios.get(
-        `http://localhost:8000/api/v1/expenses/summary?${params.toString()}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const response = await api.get(`/expenses/summary?${params.toString()}`);
       
       // Backend returns: total_credits (income), total_debits (expenses), total_expenses (count)
       setSummary({
@@ -217,10 +209,7 @@ const Expenses: React.FC = () => {
 
   const fetchBankAccounts = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/bank-accounts/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/bank-accounts/');
       setBankAccounts(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load bank accounts'));
@@ -229,10 +218,7 @@ const Expenses: React.FC = () => {
 
   const fetchCategories = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/expense-categories/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/expense-categories/');
       setCategories(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load categories'));
@@ -255,17 +241,9 @@ const Expenses: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post(
-        'http://localhost:8000/api/v1/bank-statements/upload',
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
+      const response = await api.post('/bank-statements/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
 
       setSuccess(
         `Successfully imported ${response.data.summary.imported} transactions. ` +
@@ -291,15 +269,10 @@ const Expenses: React.FC = () => {
   };
   const handleCategoryChange = async (expenseId: number, categoryId: number) => {
     try {
-      const token = localStorage.getItem('token');
-      await axios.put(
-        `http://localhost:8000/api/v1/expenses/${expenseId}`,
-        { 
-          category_id: categoryId || null,
-          is_categorized: categoryId ? true : false
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.put(`/expenses/${expenseId}`, {
+        category_id: categoryId || null,
+        is_categorized: categoryId ? true : false
+      });
       
       // Refresh expenses to show updated category
       fetchExpenses();
@@ -317,10 +290,7 @@ const Expenses: React.FC = () => {
     if (!window.confirm('Are you sure you want to delete this expense?')) return;
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:8000/api/v1/expenses/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/expenses/${id}`);
       setSuccess('Expense deleted successfully');
       fetchExpenses();
     } catch (err: any) {
@@ -367,7 +337,7 @@ const Expenses: React.FC = () => {
           variant="contained"
           startIcon={<UploadIcon />}
           onClick={() => {
-            setUploadPortfolioId(selectedPortfolioId || '' as any);
+            setUploadPortfolioId(selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') as any);
             setUploadDialogOpen(true);
           }}
         >

@@ -10,6 +10,9 @@ from app.api.dependencies import get_current_active_user, get_db, get_default_po
 from app.models.user import User
 from app.models.asset import Asset, AssetType
 from app.models.transaction import Transaction, TransactionType
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from app.schemas.recurring_deposit import (
     RDAccountCreate,
     RDAccountUpdate,
@@ -292,7 +295,21 @@ async def delete_rd(
     )
     if not asset:
         raise HTTPException(status_code=404, detail="Recurring deposit not found")
-    db.query(Transaction).filter(Transaction.asset_id == asset.id).delete()
+
+    # Clear FK references that lack ON DELETE CASCADE/SET NULL in the DB
+    db.query(Alert).filter(Alert.asset_id == asset.id).update(
+        {Alert.asset_id: None}, synchronize_session=False
+    )
+    db.query(AssetSnapshot).filter(AssetSnapshot.asset_id == asset.id).update(
+        {AssetSnapshot.asset_id: None}, synchronize_session=False
+    )
+    db.query(MutualFundHolding).filter(MutualFundHolding.asset_id == asset.id).delete(
+        synchronize_session=False
+    )
+    db.query(Transaction).filter(Transaction.asset_id == asset.id).delete(
+        synchronize_session=False
+    )
+
     db.delete(asset)
     db.commit()
 

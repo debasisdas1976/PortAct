@@ -40,7 +40,6 @@ import {
 import { useSelector, useDispatch } from 'react-redux';
 import { AppDispatch, RootState } from '../store';
 import { fetchPortfolios } from '../store/slices/portfolioSlice';
-import axios from 'axios';
 import api, { banksAPI } from '../services/api';
 import CompanyIcon from '../components/CompanyIcon';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
@@ -55,6 +54,34 @@ interface BankAccount {
   credit_limit?: number;
   is_active: boolean;
 }
+
+/** Parse a bank's supported_formats (JSON or legacy flat) for a specific account type. */
+const getBankAccountTypeConfig = (
+  supportedFormats: string | null,
+  hasParser: boolean,
+  accountType: string
+): { has_parser: boolean; formats: string[] } => {
+  if (supportedFormats) {
+    try {
+      const parsed = JSON.parse(supportedFormats);
+      if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const entry = parsed[accountType];
+        if (entry) {
+          return {
+            has_parser: !!entry.has_parser,
+            formats: entry.formats ? entry.formats.split(',').filter(Boolean) : [],
+          };
+        }
+        return { has_parser: false, formats: [] };
+      }
+    } catch {
+      // Not JSON — legacy flat format
+    }
+    const formats = supportedFormats.split(',').map((s: string) => s.trim()).filter(Boolean);
+    return { has_parser: hasParser, formats };
+  }
+  return { has_parser: hasParser, formats: [] };
+};
 
 const BankAccounts: React.FC = () => {
   const { notify } = useNotification();
@@ -89,7 +116,7 @@ const BankAccounts: React.FC = () => {
   const [uploadResult, setUploadResult] = useState<{ imported: number; duplicates: number; categorized: number } | null>(null);
   const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
 
-  const [bankNames, setBankNames] = useState<{ value: string; label: string; website?: string }[]>([]);
+  const [bankNames, setBankNames] = useState<{ value: string; label: string; website?: string; has_parser: boolean; supported_formats: string | null }[]>([]);
 
   const accountTypes = [
     { value: 'savings', label: 'Savings' },
@@ -107,10 +134,7 @@ const BankAccounts: React.FC = () => {
 
   const fetchAccounts = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/bank-accounts/', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await api.get('/bank-accounts/');
       setAccounts(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to fetch bank accounts'));
@@ -122,7 +146,7 @@ const BankAccounts: React.FC = () => {
       const data = await banksAPI.getAll({ is_active: true });
       setBankNames(
         Array.isArray(data)
-          ? data.map((b: any) => ({ value: b.name, label: b.display_label, website: b.website }))
+          ? data.map((b: any) => ({ value: b.name, label: b.display_label, website: b.website, has_parser: b.has_parser ?? false, supported_formats: b.supported_formats ?? null }))
           : []
       );
     } catch (err) {
@@ -143,7 +167,7 @@ const BankAccounts: React.FC = () => {
         available_balance: account.current_balance,
         credit_limit: account.credit_limit || 0,
         is_active: account.is_active,
-        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
       });
     } else {
       setEditingAccount(null);
@@ -156,7 +180,7 @@ const BankAccounts: React.FC = () => {
         available_balance: 0,
         credit_limit: 0,
         is_active: true,
-        portfolio_id: selectedPortfolioId || '',
+        portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
       });
     }
     setOpenDialog(true);
@@ -169,19 +193,12 @@ const BankAccounts: React.FC = () => {
 
   const handleSubmit = async () => {
     try {
-      const token = localStorage.getItem('token');
       const payload = { ...formData, portfolio_id: formData.portfolio_id || undefined };
       if (editingAccount) {
-        await axios.put(
-          `http://localhost:8000/api/v1/bank-accounts/${editingAccount.id}`,
-          payload,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.put(`/bank-accounts/${editingAccount.id}`, payload);
         notify.success('Bank account updated successfully');
       } else {
-        await axios.post('http://localhost:8000/api/v1/bank-accounts/', payload, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await api.post('/bank-accounts/', payload);
         notify.success('Bank account added successfully');
       }
       handleCloseDialog();
@@ -192,12 +209,9 @@ const BankAccounts: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this bank account?')) return;
+    if (!window.confirm('Are you sure you want to delete this bank account? All expenses linked to this account will also be permanently deleted.')) return;
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:8000/api/v1/bank-accounts/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.delete(`/bank-accounts/${id}`);
       notify.success('Bank account deleted successfully');
       fetchAccounts();
     } catch (err) {
@@ -212,7 +226,7 @@ const BankAccounts: React.FC = () => {
     setUploadPassword('');
     setAutoCategorize(true);
     setUploadResult(null);
-    setUploadPortfolioId(selectedPortfolioId || '');
+    setUploadPortfolioId(selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''));
     setOpenUploadDialog(true);
   };
 
@@ -273,6 +287,20 @@ const BankAccounts: React.FC = () => {
   const needsPassword =
     selectedAccountForUpload?.bank_name === 'state_bank_of_india' ||
     selectedAccountForUpload?.bank_name === 'other';
+
+  // Compute accepted formats for the selected account's bank + account type
+  const selectedBankInfo = selectedAccountForUpload
+    ? bankNames.find((b) => b.value === selectedAccountForUpload.bank_name)
+    : null;
+  const selectedUploadConfig = selectedBankInfo && selectedAccountForUpload
+    ? getBankAccountTypeConfig(selectedBankInfo.supported_formats, selectedBankInfo.has_parser, selectedAccountForUpload.account_type)
+    : null;
+  const uploadAcceptFormats = selectedUploadConfig?.formats.length
+    ? selectedUploadConfig.formats.map((f) => `.${f}`).join(',')
+    : '.pdf,.xlsx,.xls,.csv';
+  const uploadFormatLabel = selectedUploadConfig?.formats.length
+    ? selectedUploadConfig.formats.map((f) => `.${f.toUpperCase()}`).join(' / ')
+    : '.PDF / .XLSX / .XLS';
 
   return (
     <Box sx={{ p: 3 }}>
@@ -409,7 +437,6 @@ const BankAccounts: React.FC = () => {
               onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
               fullWidth
             >
-              <MenuItem value="">None</MenuItem>
               {portfolios.map((p: any) => (
                 <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
               ))}
@@ -467,21 +494,39 @@ const BankAccounts: React.FC = () => {
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
 
-            {/* Account selector */}
+            {/* Account selector — filtered by per-account-type parser availability */}
             <TextField
               select
               label="Bank Account"
               value={uploadAccountId}
-              onChange={(e) => setUploadAccountId(Number(e.target.value))}
+              onChange={(e) => { setUploadAccountId(Number(e.target.value)); setSelectedFile(null); }}
               fullWidth
               required
             >
-              {accounts.map((acc) => (
-                <MenuItem key={acc.id} value={acc.id}>
-                  {bankNames.find((b) => b.value === acc.bank_name)?.label || acc.bank_name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-                  {acc.nickname ? ` · ${acc.nickname}` : ''} (****{acc.account_number.slice(-4)})
-                </MenuItem>
-              ))}
+              {accounts
+                .filter((acc) => {
+                  const bank = bankNames.find((b) => b.value === acc.bank_name);
+                  if (!bank) return false;
+                  const cfg = getBankAccountTypeConfig(bank.supported_formats, bank.has_parser, acc.account_type);
+                  return cfg.has_parser;
+                })
+                .map((acc) => {
+                  const bank = bankNames.find((b) => b.value === acc.bank_name);
+                  const cfg = bank ? getBankAccountTypeConfig(bank.supported_formats, bank.has_parser, acc.account_type) : null;
+                  return (
+                    <MenuItem key={acc.id} value={acc.id}>
+                      <Box>
+                        {bank?.label || acc.bank_name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                        {acc.nickname ? ` · ${acc.nickname}` : ''} (****{acc.account_number.slice(-4)})
+                        {cfg && cfg.formats.length > 0 && (
+                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            ({cfg.formats.map((f) => f.toUpperCase()).join(', ')})
+                          </Typography>
+                        )}
+                      </Box>
+                    </MenuItem>
+                  );
+                })}
             </TextField>
 
             {/* Portfolio */}
@@ -498,18 +543,19 @@ const BankAccounts: React.FC = () => {
               ))}
             </TextField>
 
-            {/* File picker */}
+            {/* File picker — accepted formats driven by selected account's config */}
             <Button
               variant="outlined"
               component="label"
               startIcon={<UploadIcon />}
               fullWidth
+              disabled={!uploadAccountId}
             >
-              {selectedFile ? selectedFile.name : 'Select Statement File (.pdf / .xlsx / .xls)'}
+              {selectedFile ? selectedFile.name : `Select Statement File (${uploadFormatLabel})`}
               <input
                 type="file"
                 hidden
-                accept=".pdf,.xlsx,.xls"
+                accept={uploadAcceptFormats}
                 onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
               />
             </Button>

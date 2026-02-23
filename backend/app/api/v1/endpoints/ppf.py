@@ -20,6 +20,9 @@ from app.schemas.ppf import (
     PPFTransactionCreate,
     PPFTransaction
 )
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from app.services.ppf_parser import PPFStatementParser
 import logging
 
@@ -53,27 +56,28 @@ async def get_ppf_accounts(
     # Convert to PPF account response format
     ppf_accounts = []
     for asset in assets:
+        details = asset.details or {}
         ppf_account = PPFAccountResponse(
             id=asset.id,
             user_id=asset.user_id,
             asset_id=asset.id,
             nickname=asset.name or f"PPF - {asset.broker_name}",
-            account_number=asset.account_id or asset.details.get('account_number', ''),
-            bank_name=asset.broker_name or asset.details.get('bank', ''),
+            account_number=asset.account_id or details.get('account_number', ''),
+            bank_name=asset.broker_name or details.get('bank', ''),
             account_holder_name=asset.account_holder_name or '',
             opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
-            maturity_date=asset.details.get('maturity_date'),
-            interest_rate=asset.details.get('interest_rate', 7.1),
+            maturity_date=details.get('maturity_date'),
+            interest_rate=details.get('interest_rate', 7.1),
             current_balance=asset.current_value,
             total_deposits=asset.total_invested,
-            total_interest_earned=asset.profit_loss,
-            financial_year=asset.details.get('financial_year'),
+            total_interest_earned=details.get('total_interest_earned', 0.0),
+            financial_year=details.get('financial_year'),
             notes=asset.notes,
             created_at=asset.created_at,
             updated_at=asset.last_updated
         )
         ppf_accounts.append(ppf_account)
-    
+
     return ppf_accounts
 
 
@@ -102,30 +106,31 @@ async def get_ppf_summary(
     
     total_balance = sum(asset.current_value for asset in assets)
     total_deposits = sum(asset.total_invested for asset in assets)
-    total_interest = sum(asset.profit_loss for asset in assets)
-    
+    total_interest = sum((asset.details or {}).get('total_interest_earned', 0.0) for asset in assets)
+
     # Calculate average interest rate
     interest_rates = [asset.details.get('interest_rate', 0) for asset in assets if asset.details.get('interest_rate')]
     avg_interest_rate = sum(interest_rates) / len(interest_rates) if interest_rates else 7.1
-    
+
     # Convert to PPF account responses
     ppf_accounts = []
     for asset in assets:
+        details = asset.details or {}
         ppf_account = PPFAccountResponse(
             id=asset.id,
             user_id=asset.user_id,
             asset_id=asset.id,
             nickname=asset.name or f"PPF - {asset.broker_name}",
-            account_number=asset.account_id or asset.details.get('account_number', ''),
-            bank_name=asset.broker_name or asset.details.get('bank', ''),
+            account_number=asset.account_id or details.get('account_number', ''),
+            bank_name=asset.broker_name or details.get('bank', ''),
             account_holder_name=asset.account_holder_name or '',
             opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
-            maturity_date=asset.details.get('maturity_date'),
-            interest_rate=asset.details.get('interest_rate', 7.1),
+            maturity_date=details.get('maturity_date'),
+            interest_rate=details.get('interest_rate', 7.1),
             current_balance=asset.current_value,
             total_deposits=asset.total_invested,
-            total_interest_earned=asset.profit_loss,
-            financial_year=asset.details.get('financial_year'),
+            total_interest_earned=details.get('total_interest_earned', 0.0),
+            financial_year=details.get('financial_year'),
             notes=asset.notes,
             created_at=asset.created_at,
             updated_at=asset.last_updated
@@ -197,6 +202,7 @@ async def get_ppf_account(
         )
         ppf_transactions.append(ppf_trans)
     
+    details = asset.details or {}
     ppf_account = PPFAccountWithTransactions(
         id=asset.id,
         user_id=asset.user_id,
@@ -206,12 +212,12 @@ async def get_ppf_account(
         bank_name=asset.broker_name or "",
         account_holder_name=asset.account_holder_name or "",
         opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
-        maturity_date=asset.details.get('maturity_date'),
-        interest_rate=asset.details.get('interest_rate', 7.1),
+        maturity_date=details.get('maturity_date'),
+        interest_rate=details.get('interest_rate', 7.1),
         current_balance=asset.current_value,
         total_deposits=asset.total_invested,
-        total_interest_earned=asset.profit_loss,
-        financial_year=asset.details.get('financial_year'),
+        total_interest_earned=details.get('total_interest_earned', 0.0),
+        financial_year=details.get('financial_year'),
         notes=asset.notes,
         created_at=asset.created_at,
         updated_at=asset.last_updated,
@@ -356,6 +362,7 @@ async def update_ppf_account(
     db.commit()
     db.refresh(asset)
     
+    details = asset.details or {}
     return PPFAccountResponse(
         id=asset.id,
         user_id=asset.user_id,
@@ -365,12 +372,12 @@ async def update_ppf_account(
         bank_name=asset.broker_name or "",
         account_holder_name=asset.account_holder_name or "",
         opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
-        maturity_date=asset.details.get('maturity_date'),
-        interest_rate=asset.details.get('interest_rate', 7.1),
+        maturity_date=details.get('maturity_date'),
+        interest_rate=details.get('interest_rate', 7.1),
         current_balance=asset.current_value,
         total_deposits=asset.total_invested,
-        total_interest_earned=asset.profit_loss,
-        financial_year=asset.details.get('financial_year'),
+        total_interest_earned=details.get('total_interest_earned', 0.0),
+        financial_year=details.get('financial_year'),
         notes=asset.notes,
         created_at=asset.created_at,
         updated_at=asset.last_updated
@@ -397,11 +404,204 @@ async def delete_ppf_account(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="PPF account not found"
         )
-    
+
+    # Clear FK references that lack ON DELETE CASCADE/SET NULL in the DB
+    db.query(Alert).filter(Alert.asset_id == ppf_id).update(
+        {Alert.asset_id: None}, synchronize_session=False
+    )
+    db.query(AssetSnapshot).filter(AssetSnapshot.asset_id == ppf_id).update(
+        {AssetSnapshot.asset_id: None}, synchronize_session=False
+    )
+    db.query(MutualFundHolding).filter(MutualFundHolding.asset_id == ppf_id).delete(
+        synchronize_session=False
+    )
+    db.query(Transaction).filter(Transaction.asset_id == ppf_id).delete(
+        synchronize_session=False
+    )
+
     db.delete(asset)
     db.commit()
-    
+
     return None
+
+
+@router.post("/upload", response_model=PPFAccountResponse, status_code=status.HTTP_201_CREATED)
+async def upload_ppf_statement_auto(
+    file: UploadFile = File(...),
+    password: Optional[str] = Form(None),
+    portfolio_id: Optional[int] = Form(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload and parse a PPF statement PDF, auto-creating an account if needed
+    """
+    # Validate file type
+    allowed_extensions = ['.pdf', '.xlsx', '.xls', '.csv']
+    file_extension = os.path.splitext(file.filename)[1].lower()
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}"
+        )
+
+    try:
+        # Save file to temp location (PPF parser requires file path)
+        upload_dir = f"backend/uploads/{current_user.id}"
+        os.makedirs(upload_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{timestamp}_{file.filename}"
+        file_path = os.path.join(upload_dir, filename)
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        parser = PPFStatementParser()
+        parsed_data = parser.parse_statement(file_path, password)
+
+        account_details = parsed_data.get('account_details', {})
+
+        # Resolve portfolio
+        resolved_portfolio_id = portfolio_id or get_default_portfolio_id(current_user.id, db)
+
+        # Check if account already exists by account number
+        existing_asset = None
+        acct_num = account_details.get('account_number', '').strip()
+        if acct_num:
+            existing_asset = db.query(Asset).filter(
+                Asset.user_id == current_user.id,
+                Asset.asset_type == AssetType.PPF,
+                Asset.account_id == acct_num
+            ).first()
+
+        if existing_asset:
+            asset = existing_asset
+            # Update with parsed data
+            if account_details.get('current_balance'):
+                asset.current_value = account_details['current_balance']
+                asset.current_price = account_details['current_balance']
+            if account_details.get('total_deposits'):
+                asset.total_invested = account_details['total_deposits']
+            if account_details.get('interest_rate'):
+                if not asset.details:
+                    asset.details = {}
+                asset.details['interest_rate'] = account_details['interest_rate']
+            if account_details.get('total_interest_earned'):
+                if not asset.details:
+                    asset.details = {}
+                asset.details['total_interest_earned'] = account_details['total_interest_earned']
+        else:
+            # Create new PPF asset
+            opening_date_str = account_details.get('opening_date', date.today().strftime('%Y-%m-%d'))
+            opening_date = datetime.strptime(opening_date_str, '%Y-%m-%d') if isinstance(opening_date_str, str) else opening_date_str
+
+            holder_name = (account_details.get('account_holder_name') or
+                          account_details.get('account_holder', 'Unknown'))
+            bank_name = account_details.get('bank_name') or account_details.get('bank', '')
+
+            asset = Asset(
+                user_id=current_user.id,
+                asset_type=AssetType.PPF,
+                portfolio_id=resolved_portfolio_id,
+                name=f"PPF - {bank_name or 'Account'}",
+                broker_name=bank_name,
+                account_id=acct_num,
+                account_holder_name=holder_name,
+                purchase_date=opening_date,
+                quantity=1,
+                purchase_price=account_details.get('current_balance', 0),
+                current_price=account_details.get('current_balance', 0),
+                current_value=account_details.get('current_balance', 0),
+                total_invested=account_details.get('total_deposits', 0),
+                profit_loss=account_details.get('total_interest_earned', 0),
+                details={
+                    'interest_rate': account_details.get('interest_rate', 7.1),
+                    'total_interest_earned': account_details.get('total_interest_earned', 0),
+                    'financial_year': account_details.get('financial_year'),
+                    'account_type': 'PPF',
+                },
+                is_active=True
+            )
+            db.add(asset)
+            db.commit()
+            db.refresh(asset)
+
+        # Add transactions with duplicate detection
+        for trans_data in parsed_data.get('transactions', []):
+            trans_date = trans_data.get('transaction_date')
+            if trans_date:
+                if isinstance(trans_date, str):
+                    trans_date = datetime.strptime(trans_date, '%Y-%m-%d')
+            else:
+                trans_date = datetime.now()
+
+            trans_type_str = trans_data.get('transaction_type', 'deposit')
+            if trans_type_str == 'deposit':
+                transaction_type = TransactionType.BUY
+            elif trans_type_str == 'interest':
+                transaction_type = TransactionType.DIVIDEND
+            elif trans_type_str == 'withdrawal':
+                transaction_type = TransactionType.SELL
+            else:
+                transaction_type = TransactionType.BUY
+
+            amount = trans_data.get('amount', 0)
+
+            existing = db.query(Transaction).filter(
+                Transaction.asset_id == asset.id,
+                Transaction.transaction_date == trans_date,
+                Transaction.transaction_type == transaction_type,
+                Transaction.total_amount == amount
+            ).first()
+
+            if not existing:
+                transaction = Transaction(
+                    asset_id=asset.id,
+                    transaction_type=transaction_type,
+                    transaction_date=trans_date,
+                    quantity=1.0,
+                    price_per_unit=amount,
+                    total_amount=amount,
+                    fees=0,
+                    taxes=0,
+                    description=trans_data.get('description', trans_type_str.title()),
+                    reference_number=trans_data.get('financial_year')
+                )
+                db.add(transaction)
+
+        asset.calculate_metrics()
+        db.commit()
+        db.refresh(asset)
+
+        details = asset.details or {}
+        return PPFAccountResponse(
+            id=asset.id,
+            user_id=asset.user_id,
+            asset_id=asset.id,
+            nickname=asset.name or f"PPF - {asset.broker_name}",
+            account_number=asset.account_id or '',
+            bank_name=asset.broker_name or '',
+            account_holder_name=asset.account_holder_name or '',
+            opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
+            maturity_date=details.get('maturity_date'),
+            interest_rate=details.get('interest_rate', 7.1),
+            current_balance=asset.current_value,
+            total_deposits=asset.total_invested,
+            total_interest_earned=details.get('total_interest_earned', 0.0),
+            financial_year=details.get('financial_year'),
+            notes=asset.notes,
+            created_at=asset.created_at,
+            updated_at=asset.last_updated
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing PPF statement: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not process the PPF statement. Please check the file format and try again."
+        )
 
 
 @router.post("/{ppf_id}/upload", status_code=status.HTTP_201_CREATED)

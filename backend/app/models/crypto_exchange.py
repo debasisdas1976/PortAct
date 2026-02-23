@@ -12,6 +12,8 @@ class CryptoExchangeMaster(Base):
     display_label = Column(String(100), nullable=False)
     exchange_type = Column(String(20), default="exchange")  # "exchange" or "wallet"
     website = Column(String(200))  # Website URL for favicon
+    has_parser = Column(Boolean, default=False)  # Whether a dedicated statement parser exists
+    supported_formats = Column(String(100))  # Comma-separated: pdf,csv,xlsx,xls,txt
     is_active = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

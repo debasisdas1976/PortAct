@@ -19,6 +19,10 @@ from app.core.database import get_db
 from app.api.dependencies import get_current_active_user, get_default_portfolio_id
 from app.models.asset import Asset, AssetType
 from app.models.user import User
+from app.models.transaction import Transaction
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from app.schemas.gratuity import (
     GratuityAccountCreate,
     GratuityAccountUpdate,
@@ -244,10 +248,20 @@ async def delete_gratuity_account(
     ).first()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gratuity account not found")
-    try:
-        db.delete(asset)
-        db.commit()
-    except SQLAlchemyError as exc:
-        db.rollback()
-        logger.error(f"DB error deleting gratuity account id={gratuity_id}: {exc}")
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Failed to delete gratuity account")
+
+    # Clear FK references that lack ON DELETE CASCADE/SET NULL in the DB
+    db.query(Alert).filter(Alert.asset_id == gratuity_id).update(
+        {Alert.asset_id: None}, synchronize_session=False
+    )
+    db.query(AssetSnapshot).filter(AssetSnapshot.asset_id == gratuity_id).update(
+        {AssetSnapshot.asset_id: None}, synchronize_session=False
+    )
+    db.query(MutualFundHolding).filter(MutualFundHolding.asset_id == gratuity_id).delete(
+        synchronize_session=False
+    )
+    db.query(Transaction).filter(Transaction.asset_id == gratuity_id).delete(
+        synchronize_session=False
+    )
+
+    db.delete(asset)
+    db.commit()

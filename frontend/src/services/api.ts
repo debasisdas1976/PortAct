@@ -277,6 +277,22 @@ export const statementsAPI = {
     const response = await api.get('/statements/accounts', { params });
     return response.data;
   },
+
+  getUnmatchedMFs: async (statementId: number) => {
+    const response = await api.get(`/statements/${statementId}/unmatched-mfs`);
+    return response.data;
+  },
+
+  resolveMFs: async (statementId: number, resolutions: Array<{
+    asset_id: number;
+    selected_isin: string;
+    selected_scheme_name: string;
+  }>) => {
+    const response = await api.post(`/statements/${statementId}/resolve-mfs`, {
+      resolutions,
+    });
+    return response.data;
+  },
 };
 
 // Crypto Exchanges API

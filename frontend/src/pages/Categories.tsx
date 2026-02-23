@@ -33,7 +33,7 @@ import {
   Delete as DeleteIcon,
   Category as CategoryIcon
 } from '@mui/icons-material';
-import axios from 'axios';
+import api from '../services/api';
 
 interface Category {
   id: number;
@@ -81,10 +81,7 @@ const Categories: React.FC = () => {
 
   const fetchCategories = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/v1/expense-categories/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/expense-categories/');
       setCategories(response.data);
     } catch (err) {
       setError('Failed to fetch categories');
@@ -131,23 +128,11 @@ const Categories: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      
       if (editingCategory) {
-        // Update existing category
-        await axios.put(
-          `http://localhost:8000/api/v1/expense-categories/${editingCategory.id}`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.put(`/expense-categories/${editingCategory.id}`, formData);
         setSuccess('Category updated successfully');
       } else {
-        // Create new category
-        await axios.post(
-          'http://localhost:8000/api/v1/expense-categories/',
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.post('/expense-categories/', formData);
         setSuccess('Category created successfully');
       }
       
@@ -165,11 +150,7 @@ const Categories: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(
-        `http://localhost:8000/api/v1/expense-categories/${categoryId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.delete(`/expense-categories/${categoryId}`);
       setSuccess('Category deleted successfully');
       fetchCategories();
       setTimeout(() => setSuccess(''), 3000);
@@ -185,12 +166,7 @@ const Categories: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post(
-        'http://localhost:8000/api/v1/expense-categories/recategorize',
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const response = await api.post('/expense-categories/recategorize', {});
       
       setSuccess(
         `Re-categorization complete! ${response.data.total_affected} expenses updated ` +

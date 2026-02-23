@@ -17,6 +17,10 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Create base class for models
 Base = declarative_base()
 
+# Auto-sync seed_data.json whenever master tables are modified.
+from app.services.seed_sync import register_seed_sync_events  # noqa: E402
+register_seed_sync_events(SessionLocal)
+
 
 # Dependency to get database session
 def get_db():

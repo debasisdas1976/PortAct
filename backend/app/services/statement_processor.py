@@ -6,6 +6,10 @@ from app.models.statement import Statement, StatementStatus, StatementType
 from app.models.asset import Asset, AssetType
 from app.models.transaction import Transaction, TransactionType
 from app.models.demat_account import DematAccount
+from app.models.crypto_account import CryptoAccount
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from datetime import datetime
 import PyPDF2
 import pandas as pd
@@ -50,7 +54,21 @@ BROKER_MAPPING = {
     'indmoney': 'indmoney',
     'vested': 'vested',
     'mf_central': 'mf_central',
+    'mf central': 'mf_central',
+    'nsdl cas': 'nsdl_cas',
+    'nsdl_cas': 'nsdl_cas',
+    'cdsl cas': 'cdsl_cas',
+    'cdsl_cas': 'cdsl_cas',
+    'direct mf': 'direct_mf',
+    'direct_mf': 'direct_mf',
 }
+
+# Asset types that belong in demat accounts
+DEMAT_ASSET_TYPES = {AssetType.STOCK, AssetType.US_STOCK, AssetType.EQUITY_MUTUAL_FUND,
+                     AssetType.DEBT_MUTUAL_FUND, AssetType.COMMODITY, AssetType.SOVEREIGN_GOLD_BOND}
+
+# Asset types that belong in crypto accounts
+CRYPTO_ASSET_TYPES = {AssetType.CRYPTO}
 
 
 def get_or_create_demat_account(
@@ -73,9 +91,10 @@ def get_or_create_demat_account(
 
     broker_name_lower = broker_name.lower() if broker_name else ''
     broker_enum = BROKER_MAPPING.get(broker_name_lower, 'other')
-    
+
+    # Generate a placeholder account_id if not provided
     if not account_id:
-        return None
+        account_id = f"{broker_enum.upper()}-AUTO-{user_id}"
     
     # Check if demat account exists
     demat_account = db.query(DematAccount).filter(
@@ -135,6 +154,43 @@ def get_or_create_demat_account(
             demat_account.cash_balance_usd = cash_balance_usd
     
     return demat_account
+
+
+def get_or_create_crypto_account(
+    user_id: int,
+    exchange_name: str,
+    account_id: str,
+    db: Session,
+    portfolio_id: Optional[int] = None
+) -> Optional[CryptoAccount]:
+    """
+    Get existing crypto account or create a new one.
+    """
+    if not exchange_name:
+        exchange_name = 'unknown'
+    exchange_lower = exchange_name.lower()
+
+    if not account_id:
+        account_id = f"{exchange_lower.upper()}-AUTO-{user_id}"
+
+    # Check if crypto account exists
+    crypto_account = db.query(CryptoAccount).filter(
+        CryptoAccount.user_id == user_id,
+        CryptoAccount.exchange_name == exchange_lower,
+        CryptoAccount.account_id == account_id
+    ).first()
+
+    if not crypto_account:
+        crypto_account = CryptoAccount(
+            user_id=user_id,
+            exchange_name=exchange_lower,
+            account_id=account_id,
+            is_active=True,
+        )
+        db.add(crypto_account)
+        db.flush()
+
+    return crypto_account
 
 
 def _process_bank_statement_via_parser(statement: Statement, db: Session, portfolio_id: int = None) -> dict:
@@ -464,43 +520,92 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
         assets_count = 0
         transactions_count = 0
 
-        # Create or get demat account if this is a stock/demat statement
-        demat_account = None
-        if assets and len(assets) > 0:
-            first_asset = assets[0]
-            broker_name = first_asset.get('broker_name')
-            account_id = first_asset.get('account_id')
-            account_holder_name = first_asset.get('account_holder_name')
+        # Create or get accounts for all assets.
+        # Every demat-type asset (stock, MF, commodity, etc.) gets a DematAccount.
+        # Every crypto asset gets a CryptoAccount.
+        # Assets are grouped by (broker_name, account_id) since a single statement
+        # (e.g. NSDL CAS) can produce assets with different broker_names.
 
-            # Only create demat account for stock/mutual fund assets
-            asset_type = first_asset.get('asset_type')
-            if asset_type in [AssetType.STOCK, AssetType.US_STOCK, AssetType.EQUITY_MUTUAL_FUND,
-                             AssetType.DEBT_MUTUAL_FUND, AssetType.COMMODITY]:
-                if broker_name and account_id:
-                    demat_account = get_or_create_demat_account(
-                        statement.user_id,
-                        broker_name,
-                        account_id,
-                        account_holder_name,
-                        db,
-                        cash_balance_usd,
-                        portfolio_id=portfolio_id,
-                    )
-                    
-                    # Delete existing assets for this demat account to refresh holdings
-                    # Use ORM-level delete so the Asset.transactions cascade fires correctly
-                    if demat_account:
-                        existing_assets = db.query(Asset).filter(
-                            Asset.demat_account_id == demat_account.id
-                        ).all()
-                        for asset in existing_assets:
-                            db.delete(asset)
+        demat_account_map = {}  # (broker_name, account_id) -> DematAccount
+        crypto_account = None
+
+        if assets and len(assets) > 0:
+            # Group assets by account
+            demat_groups = {}   # (broker_name, account_id) -> list of asset indices
+            crypto_indices = []
+
+            for idx, ad in enumerate(assets):
+                at = ad.get('asset_type')
+                if at in DEMAT_ASSET_TYPES:
+                    bn = ad.get('broker_name') or (statement.institution_name if statement.institution_name else 'unknown')
+                    aid = ad.get('account_id') or f"{bn.upper().replace(' ', '-')}-AUTO-{statement.user_id}"
+                    demat_groups.setdefault((bn, aid), []).append(idx)
+                elif at in CRYPTO_ASSET_TYPES:
+                    crypto_indices.append(idx)
+
+            # Create demat account for each (broker, account_id) group
+            for (bn, aid), indices in demat_groups.items():
+                first_asset = assets[indices[0]]
+                da = get_or_create_demat_account(
+                    statement.user_id,
+                    bn,
+                    aid,
+                    first_asset.get('account_holder_name'),
+                    db,
+                    cash_balance_usd,
+                    portfolio_id=portfolio_id,
+                )
+                if da:
+                    # Delete existing assets for this demat account to refresh holdings.
+                    # Clear FK references first (same pattern as asset delete endpoints).
+                    existing_asset_ids = [a.id for a in db.query(Asset.id).filter(
+                        Asset.demat_account_id == da.id
+                    ).all()]
+                    if existing_asset_ids:
+                        db.query(Alert).filter(Alert.asset_id.in_(existing_asset_ids)).update(
+                            {Alert.asset_id: None}, synchronize_session=False
+                        )
+                        db.query(AssetSnapshot).filter(AssetSnapshot.asset_id.in_(existing_asset_ids)).update(
+                            {AssetSnapshot.asset_id: None}, synchronize_session=False
+                        )
+                        db.query(MutualFundHolding).filter(MutualFundHolding.asset_id.in_(existing_asset_ids)).delete(
+                            synchronize_session=False
+                        )
+                        db.query(Transaction).filter(Transaction.asset_id.in_(existing_asset_ids)).delete(
+                            synchronize_session=False
+                        )
+                        db.query(Asset).filter(Asset.id.in_(existing_asset_ids)).delete(
+                            synchronize_session=False
+                        )
                         db.flush()
-        
+                    demat_account_map[(bn, aid)] = da
+
+            # Create crypto account if there are crypto assets
+            if crypto_indices:
+                first_crypto = assets[crypto_indices[0]]
+                exchange_name = (statement.institution_name
+                                 or first_crypto.get('broker_name')
+                                 or 'unknown')
+                crypto_aid = (first_crypto.get('account_id')
+                              or f"{exchange_name.upper().replace(' ', '-')}-AUTO-{statement.user_id}")
+                crypto_account = get_or_create_crypto_account(
+                    statement.user_id,
+                    exchange_name,
+                    crypto_aid,
+                    db,
+                )
+
         for asset_data in assets:
-            # Add demat_account_id to asset_data if available
-            if demat_account:
-                asset_data['demat_account_id'] = demat_account.id
+            # Link asset to the appropriate account
+            at = asset_data.get('asset_type')
+            if at in DEMAT_ASSET_TYPES:
+                bn = asset_data.get('broker_name') or (statement.institution_name if statement.institution_name else 'unknown')
+                aid = asset_data.get('account_id') or f"{bn.upper().replace(' ', '-')}-AUTO-{statement.user_id}"
+                da = demat_account_map.get((bn, aid))
+                if da:
+                    asset_data['demat_account_id'] = da.id
+            elif at in CRYPTO_ASSET_TYPES and crypto_account:
+                asset_data['crypto_account_id'] = crypto_account.id
 
             # Assign portfolio_id to each asset
             if portfolio_id:

@@ -16,6 +16,9 @@ import app.models.app_settings as _app_settings_model  # noqa: F401 – register
 import app.models.crypto_exchange as _crypto_exchange_model  # noqa: F401 – register for create_all
 import app.models.institution as _institution_model  # noqa: F401 – register for create_all
 import app.models.expense_category as _expense_category_model  # noqa: F401 – register for create_all
+import app.models.broker as _broker_model  # noqa: F401 – register for create_all
+import app.models.bank as _bank_model  # noqa: F401 – register for create_all
+import app.models.asset_type_master as _asset_type_model  # noqa: F401 – register for create_all
 
 
 def _fix_null_portfolio_ids(db):
@@ -98,6 +101,28 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Production mode — skipping create_all (Alembic manages schema).")
 
+    # Validate that every Python AssetType enum member has a corresponding
+    # value in the PostgreSQL 'assettype' enum.  This catches missing migration
+    # entries at startup instead of at runtime during statement uploads.
+    _check_db = SessionLocal()
+    try:
+        from app.models.asset import AssetType
+        import sqlalchemy
+        rows = _check_db.execute(
+            sqlalchemy.text("SELECT enumlabel FROM pg_enum WHERE enumtypid = 'assettype'::regtype")
+        ).fetchall()
+        pg_labels = {row[0] for row in rows}
+        missing = [member.name for member in AssetType if member.name not in pg_labels]
+        if missing:
+            raise RuntimeError(
+                f"PostgreSQL 'assettype' enum is missing values: {missing}. "
+                f"Create an Alembic migration to add them with: "
+                f"ALTER TYPE assettype ADD VALUE IF NOT EXISTS '<VALUE>';"
+            )
+        logger.info("AssetType enum validation passed.")
+    finally:
+        _check_db.close()
+
     # Seed default app settings and pass DB session so schedulers read from DB
     _startup_db = SessionLocal()
     try:
@@ -109,135 +134,78 @@ async def lifespan(app: FastAPI):
                 _startup_db.add(AppSettings(**item))
             _startup_db.commit()
             logger.info(f"Seeded {len(new_items)} new app_settings rows.")
-        # Seed default crypto exchanges
+        # ── Seed master data from seed_data.json (auto-synced by seed_sync) ──
+        from app.services.seed_sync import load_seed_data
         from app.models.crypto_exchange import CryptoExchangeMaster
-        existing_exchanges = {r.name for r in _startup_db.query(CryptoExchangeMaster.name).all()}
-        DEFAULT_CRYPTO_EXCHANGES = [
-            {"name": "binance", "display_label": "Binance", "exchange_type": "exchange", "sort_order": 1},
-            {"name": "coinbase", "display_label": "Coinbase", "exchange_type": "exchange", "sort_order": 2},
-            {"name": "kraken", "display_label": "Kraken", "exchange_type": "exchange", "sort_order": 3},
-            {"name": "wazirx", "display_label": "WazirX", "exchange_type": "exchange", "sort_order": 4},
-            {"name": "coindcx", "display_label": "CoinDCX", "exchange_type": "exchange", "sort_order": 5},
-            {"name": "zebpay", "display_label": "ZebPay", "exchange_type": "exchange", "sort_order": 6},
-            {"name": "coinswitch", "display_label": "CoinSwitch", "exchange_type": "exchange", "sort_order": 7},
-            {"name": "kucoin", "display_label": "KuCoin", "exchange_type": "exchange", "sort_order": 8},
-            {"name": "bybit", "display_label": "Bybit", "exchange_type": "exchange", "sort_order": 9},
-            {"name": "okx", "display_label": "OKX", "exchange_type": "exchange", "sort_order": 10},
-            {"name": "metamask", "display_label": "MetaMask", "exchange_type": "wallet", "sort_order": 11},
-            {"name": "trust_wallet", "display_label": "Trust Wallet", "exchange_type": "wallet", "sort_order": 12},
-            {"name": "ledger", "display_label": "Ledger", "exchange_type": "wallet", "sort_order": 13},
-            {"name": "trezor", "display_label": "Trezor", "exchange_type": "wallet", "sort_order": 14},
-            {"name": "tangem", "display_label": "Tangem", "exchange_type": "wallet", "sort_order": 15},
-            {"name": "getbit", "display_label": "Getbit", "exchange_type": "exchange", "sort_order": 16},
-            {"name": "other", "display_label": "Other", "exchange_type": "exchange", "sort_order": 99},
-        ]
-        new_exchanges = [e for e in DEFAULT_CRYPTO_EXCHANGES if e["name"] not in existing_exchanges]
-        if new_exchanges:
-            for ex in new_exchanges:
-                _startup_db.add(CryptoExchangeMaster(**ex))
-            _startup_db.commit()
-            logger.info(f"Seeded {len(new_exchanges)} new crypto exchanges.")
-
-        # Seed default institutions (NPS fund managers, NPS CRAs, insurance providers)
         from app.models.institution import InstitutionMaster
-        existing_institutions = {
-            (r.name, r.category)
-            for r in _startup_db.query(InstitutionMaster.name, InstitutionMaster.category).all()
-        }
-        DEFAULT_INSTITUTIONS = [
-            # NPS Fund Managers
-            {"name": "sbi_pension_funds", "display_label": "SBI Pension Funds", "category": "nps_fund_manager", "sort_order": 1},
-            {"name": "lic_pension_fund", "display_label": "LIC Pension Fund", "category": "nps_fund_manager", "sort_order": 2},
-            {"name": "uti_retirement", "display_label": "UTI Retirement Solutions", "category": "nps_fund_manager", "sort_order": 3},
-            {"name": "icici_prudential_pension", "display_label": "ICICI Prudential Pension Fund", "category": "nps_fund_manager", "sort_order": 4},
-            {"name": "hdfc_pension", "display_label": "HDFC Pension Management", "category": "nps_fund_manager", "sort_order": 5},
-            {"name": "kotak_pension", "display_label": "Kotak Mahindra Pension Fund", "category": "nps_fund_manager", "sort_order": 6},
-            {"name": "aditya_birla_pension", "display_label": "Aditya Birla Sun Life Pension", "category": "nps_fund_manager", "sort_order": 7},
-            {"name": "tata_pension", "display_label": "Tata Pension Management", "category": "nps_fund_manager", "sort_order": 8},
-            {"name": "axis_pension", "display_label": "Axis Pension Fund Management", "category": "nps_fund_manager", "sort_order": 9},
-            {"name": "dsp_pension", "display_label": "DSP Pension Fund Managers", "category": "nps_fund_manager", "sort_order": 10},
-            # NPS CRAs
-            {"name": "protean_cra", "display_label": "Protean CRA (formerly NSDL CRA)", "category": "nps_cra", "sort_order": 1},
-            {"name": "kfintech_cra", "display_label": "KFintech CRA (formerly Karvy CRA)", "category": "nps_cra", "sort_order": 2},
-            # Insurance Providers
-            {"name": "lic", "display_label": "LIC", "category": "insurance_provider", "sort_order": 1},
-            {"name": "sbi_life", "display_label": "SBI Life", "category": "insurance_provider", "sort_order": 2},
-            {"name": "hdfc_life", "display_label": "HDFC Life", "category": "insurance_provider", "sort_order": 3},
-            {"name": "icici_prudential", "display_label": "ICICI Prudential", "category": "insurance_provider", "sort_order": 4},
-            {"name": "max_life", "display_label": "Max Life", "category": "insurance_provider", "sort_order": 5},
-            {"name": "bajaj_allianz", "display_label": "Bajaj Allianz", "category": "insurance_provider", "sort_order": 6},
-            {"name": "tata_aia", "display_label": "Tata AIA", "category": "insurance_provider", "sort_order": 7},
-            {"name": "kotak_life", "display_label": "Kotak Life", "category": "insurance_provider", "sort_order": 8},
-            {"name": "star_health", "display_label": "Star Health", "category": "insurance_provider", "sort_order": 9},
-            {"name": "niva_bupa", "display_label": "Niva Bupa", "category": "insurance_provider", "sort_order": 10},
-            {"name": "care_health", "display_label": "Care Health", "category": "insurance_provider", "sort_order": 11},
-            {"name": "aditya_birla_health", "display_label": "Aditya Birla Health", "category": "insurance_provider", "sort_order": 12},
-        ]
-        new_institutions = [
-            inst for inst in DEFAULT_INSTITUTIONS
-            if (inst["name"], inst["category"]) not in existing_institutions
-        ]
-        if new_institutions:
-            for inst in new_institutions:
-                _startup_db.add(InstitutionMaster(**inst))
-            _startup_db.commit()
-            logger.info(f"Seeded {len(new_institutions)} new institutions.")
-
-        # Seed default system expense categories
+        from app.models.bank import BankMaster
+        from app.models.broker import BrokerMaster
+        from app.models.asset_type_master import AssetTypeMaster
         from app.models.expense_category import ExpenseCategory
-        existing_system_cats = {
-            r.name for r in _startup_db.query(ExpenseCategory.name).filter(
+
+        seed = load_seed_data()
+
+        def _upsert_master(model, defaults, key_fn, extra_fields=None):
+            """Insert missing rows, update existing rows to match seed data."""
+            existing = {key_fn(r): r for r in _startup_db.query(model).all()}
+            inserted = updated = 0
+            for item in defaults:
+                key = key_fn(item)
+                row = existing.get(key)
+                if row is None:
+                    _startup_db.add(model(**{**item, **(extra_fields or {})}))
+                    inserted += 1
+                else:
+                    changed = False
+                    for col, val in item.items():
+                        if getattr(row, col, None) != val:
+                            setattr(row, col, val)
+                            changed = True
+                    if changed:
+                        updated += 1
+            if inserted or updated:
+                _startup_db.commit()
+            label = model.__tablename__
+            if inserted:
+                logger.info(f"Seeded {inserted} new {label} rows.")
+            if updated:
+                logger.info(f"Updated {updated} existing {label} rows to match seed data.")
+
+        _name_key = lambda r: r["name"] if isinstance(r, dict) else r.name
+
+        _upsert_master(CryptoExchangeMaster, seed.get("crypto_exchanges", []), _name_key)
+        _upsert_master(InstitutionMaster, seed.get("institutions", []),
+                        lambda r: (r["name"], r["category"]) if isinstance(r, dict) else (r.name, r.category))
+        _upsert_master(BankMaster, seed.get("banks", []), _name_key)
+        _upsert_master(BrokerMaster, seed.get("brokers", []), _name_key)
+        _upsert_master(AssetTypeMaster, seed.get("asset_types", []), _name_key)
+
+        # Expense categories: system-level only
+        existing_sys_cats = {
+            r.name: r for r in _startup_db.query(ExpenseCategory).filter(
                 ExpenseCategory.is_system == True
             ).all()
         }
-        DEFAULT_EXPENSE_CATEGORIES = [
-            {"name": "Groceries", "description": "Food and household items", "icon": "🛒", "color": "#4CAF50", "is_income": False,
-             "keywords": "grocery,supermarket,walmart,target,costco,whole foods,trader joe,safeway,kroger,food,vegetables,fruits,meat,dairy"},
-            {"name": "Dining & Restaurants", "description": "Eating out, restaurants, cafes", "icon": "🍽️", "color": "#FF9800", "is_income": False,
-             "keywords": "restaurant,cafe,coffee,starbucks,mcdonald,burger,pizza,food delivery,uber eats,doordash,grubhub,zomato,swiggy,dining,eatery"},
-            {"name": "Transportation", "description": "Fuel, public transport, ride-sharing", "icon": "🚗", "color": "#2196F3", "is_income": False,
-             "keywords": "uber,lyft,taxi,cab,fuel,gas,petrol,diesel,metro,bus,train,parking,toll,transport,ola"},
-            {"name": "Utilities", "description": "Electricity, water, gas, internet", "icon": "💡", "color": "#FFC107", "is_income": False,
-             "keywords": "electricity,water,gas,internet,broadband,wifi,phone bill,mobile,utility,power,energy"},
-            {"name": "Rent & Mortgage", "description": "Housing payments", "icon": "🏠", "color": "#9C27B0", "is_income": False,
-             "keywords": "rent,mortgage,housing,lease,landlord,property,apartment"},
-            {"name": "Healthcare & Medical", "description": "Doctor visits, medicines, insurance", "icon": "⚕️", "color": "#F44336", "is_income": False,
-             "keywords": "doctor,hospital,clinic,pharmacy,medicine,medical,health,insurance,dental,prescription,lab test"},
-            {"name": "Entertainment", "description": "Movies, games, hobbies", "icon": "🎬", "color": "#E91E63", "is_income": False,
-             "keywords": "movie,cinema,netflix,spotify,amazon prime,disney,gaming,xbox,playstation,entertainment,concert,theater"},
-            {"name": "Shopping & Clothing", "description": "Clothes, accessories, personal items", "icon": "👕", "color": "#673AB7", "is_income": False,
-             "keywords": "clothing,clothes,fashion,shoes,accessories,mall,amazon,flipkart,myntra,shopping,apparel"},
-            {"name": "Education", "description": "Tuition, books, courses", "icon": "📚", "color": "#3F51B5", "is_income": False,
-             "keywords": "school,college,university,tuition,books,course,education,training,udemy,coursera,learning"},
-            {"name": "Fitness & Gym", "description": "Gym membership, sports, fitness", "icon": "💪", "color": "#FF5722", "is_income": False,
-             "keywords": "gym,fitness,yoga,sports,workout,exercise,trainer,membership,health club"},
-            {"name": "Travel & Vacation", "description": "Hotels, flights, vacation expenses", "icon": "✈️", "color": "#00BCD4", "is_income": False,
-             "keywords": "hotel,flight,airline,booking,airbnb,travel,vacation,trip,tourism,resort"},
-            {"name": "Insurance", "description": "Life, health, car insurance", "icon": "🛡️", "color": "#607D8B", "is_income": False,
-             "keywords": "insurance,premium,policy,life insurance,health insurance,car insurance"},
-            {"name": "Personal Care", "description": "Salon, spa, grooming", "icon": "💇", "color": "#E91E63", "is_income": False,
-             "keywords": "salon,spa,haircut,beauty,grooming,cosmetics,skincare,barber"},
-            {"name": "Subscriptions", "description": "Monthly subscriptions and memberships", "icon": "📱", "color": "#9E9E9E", "is_income": False,
-             "keywords": "subscription,membership,monthly,recurring,netflix,spotify,amazon prime,youtube premium"},
-            {"name": "Gifts & Donations", "description": "Gifts, charity, donations", "icon": "🎁", "color": "#FF4081", "is_income": False,
-             "keywords": "gift,donation,charity,present,contribution,ngo"},
-            {"name": "Pet Care", "description": "Pet food, vet, supplies", "icon": "🐾", "color": "#795548", "is_income": False,
-             "keywords": "pet,dog,cat,vet,veterinary,pet food,pet supplies,grooming"},
-            {"name": "Home Maintenance", "description": "Repairs, cleaning, maintenance", "icon": "🔧", "color": "#607D8B", "is_income": False,
-             "keywords": "repair,maintenance,plumber,electrician,cleaning,handyman,home improvement"},
-            {"name": "Taxes", "description": "Income tax, property tax", "icon": "📋", "color": "#455A64", "is_income": False,
-             "keywords": "tax,income tax,property tax,tds,gst,irs"},
-            {"name": "Salary & Income", "description": "Salary, wages, income", "icon": "💰", "color": "#4CAF50", "is_income": True,
-             "keywords": "salary,wage,income,payment,paycheck,earnings,compensation"},
-            {"name": "Investments & Returns", "description": "Investment returns, dividends, interest", "icon": "📈", "color": "#009688", "is_income": True,
-             "keywords": "dividend,interest,investment,returns,profit,capital gain,mutual fund"},
-        ]
-        new_categories = [c for c in DEFAULT_EXPENSE_CATEGORIES if c["name"] not in existing_system_cats]
-        if new_categories:
-            for cat in new_categories:
-                _startup_db.add(ExpenseCategory(**cat, is_system=True, is_active=True, user_id=None))
+        cat_inserted = cat_updated = 0
+        for item in seed.get("expense_categories", []):
+            row = existing_sys_cats.get(item["name"])
+            if row is None:
+                _startup_db.add(ExpenseCategory(**item, is_system=True, is_active=True, user_id=None))
+                cat_inserted += 1
+            else:
+                changed = False
+                for col, val in item.items():
+                    if getattr(row, col, None) != val:
+                        setattr(row, col, val)
+                        changed = True
+                if changed:
+                    cat_updated += 1
+        if cat_inserted or cat_updated:
             _startup_db.commit()
-            logger.info(f"Seeded {len(new_categories)} new system expense categories.")
+        if cat_inserted:
+            logger.info(f"Seeded {cat_inserted} new system expense categories.")
+        if cat_updated:
+            logger.info(f"Updated {cat_updated} existing system expense categories to match seed data.")
 
         # Fix any records with NULL portfolio_id by assigning to user's default portfolio
         _fix_null_portfolio_ids(_startup_db)

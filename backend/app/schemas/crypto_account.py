@@ -15,6 +15,7 @@ class CryptoAccountBase(BaseModel):
     is_primary: bool = Field(default=False)
     nickname: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = None
+    portfolio_id: Optional[int] = None
 
 
 class CryptoAccountCreate(CryptoAccountBase):
@@ -34,6 +35,7 @@ class CryptoAccountUpdate(BaseModel):
     nickname: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = None
     last_sync_date: Optional[datetime] = None
+    portfolio_id: Optional[int] = None
 
 
 class CryptoAccountInDB(CryptoAccountBase):

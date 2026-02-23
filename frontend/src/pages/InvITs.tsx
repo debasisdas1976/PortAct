@@ -82,10 +82,10 @@ const InvITs: React.FC = () => {
     return parts.length ? parts.join(' ') : 'Unlinked Holdings';
   };
 
-  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || '' }); setDialogOpen(true); };
+  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') }); setDialogOpen(true); };
   const handleEdit = (asset: AssetItem) => {
     setEditingId(asset.id);
-    setForm({ name: asset.name || '', symbol: asset.symbol || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '', portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '' });
+    setForm({ name: asset.name || '', symbol: asset.symbol || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '', portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
     setDialogOpen(true);
   };
   const handleSave = async () => {
@@ -117,10 +117,10 @@ const InvITs: React.FC = () => {
         <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>Add</Button>
       </Box>
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Holdings</Typography><Typography variant="h4">{assets.length}</Typography></CardContent></Card></Grid>
-        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Current Value</Typography><Typography variant="h5">{formatCurrency(totalValue)}</Typography></CardContent></Card></Grid>
-        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Total Invested</Typography><Typography variant="h5">{formatCurrency(totalInvested)}</Typography></CardContent></Card></Grid>
-        <Grid item xs={12} sm={6} md={3}><Card><CardContent><Typography color="text.secondary" variant="body2">Total P&L</Typography><Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{formatCurrency(totalPnL)}</Typography><Typography variant="body2" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}><Card sx={{ width: '100%' }}><CardContent><Typography color="text.secondary" variant="body2">Holdings</Typography><Typography variant="h4">{assets.length}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}><Card sx={{ width: '100%' }}><CardContent><Typography color="text.secondary" variant="body2">Current Value</Typography><Typography variant="h5">{formatCurrency(totalValue)}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}><Card sx={{ width: '100%' }}><CardContent><Typography color="text.secondary" variant="body2">Total Invested</Typography><Typography variant="h5">{formatCurrency(totalInvested)}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}><Card sx={{ width: '100%' }}><CardContent><Typography color="text.secondary" variant="body2">Total P&L</Typography><Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{formatCurrency(totalPnL)}</Typography><Typography variant="body2" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>{totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%</Typography></CardContent></Card></Grid>
       </Grid>
       <TableContainer component={Paper}>
         <Table>
@@ -189,7 +189,6 @@ const InvITs: React.FC = () => {
                 value={form.portfolio_id}
                 onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
               >
-                <MenuItem value="">None</MenuItem>
                 {portfolios.map((p: any) => (
                   <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                 ))}

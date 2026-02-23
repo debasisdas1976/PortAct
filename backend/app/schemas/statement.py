@@ -63,6 +63,8 @@ class StatementUploadResponse(BaseModel):
     filename: str
     status: str
     message: str
+    needs_account_link: bool = False
+    unmatched_mf_count: int = 0
 
 class UploadConfig(BaseModel):
     """Configuration for uploading a statement to an existing account"""
@@ -94,3 +96,50 @@ class AccountGroup(BaseModel):
 class PortfolioAccountsResponse(BaseModel):
     """Response for GET /statements/accounts"""
     groups: List[AccountGroup]
+
+
+# --- Unmatched MF Resolution Schemas ---
+
+class UnmatchedMFSuggestion(BaseModel):
+    """A single AMFI scheme suggestion for an unmatched mutual fund"""
+    scheme_code: str
+    isin: str
+    scheme_name: str
+    nav: float
+    score: float
+    amc_name: str
+
+
+class UnmatchedMF(BaseModel):
+    """An unmatched mutual fund asset with fuzzy match suggestions"""
+    asset_id: int
+    asset_name: str
+    asset_symbol: str
+    asset_type: str
+    suggestions: List[UnmatchedMFSuggestion]
+
+
+class UnmatchedMFsResponse(BaseModel):
+    """Response for GET /statements/{id}/unmatched-mfs"""
+    statement_id: int
+    unmatched_count: int
+    unmatched_mfs: List[UnmatchedMF]
+
+
+class ResolveMFRequest(BaseModel):
+    """Request to resolve a single unmatched MF"""
+    asset_id: int
+    selected_isin: str
+    selected_scheme_name: str
+
+
+class ResolveMFsRequest(BaseModel):
+    """Request to resolve multiple unmatched MFs in one call"""
+    resolutions: List[ResolveMFRequest]
+
+
+class ResolveMFsResponse(BaseModel):
+    """Response for POST /statements/{id}/resolve-mfs"""
+    resolved_count: int
+    failed_count: int
+    errors: List[str] = []

@@ -11,6 +11,9 @@ class CryptoAccount(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
+    # Portfolio association
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=True)
+
     # Account details
     exchange_name = Column(String(50), nullable=False, index=True)  # References crypto_exchanges.name
     account_id = Column(String, nullable=False)  # Account ID / Wallet Address
@@ -36,4 +39,5 @@ class CryptoAccount(Base):
 
     # Relationships
     user = relationship("User", back_populates="crypto_accounts")
+    portfolio = relationship("Portfolio", foreign_keys=[portfolio_id])
     assets = relationship("Asset", back_populates="crypto_account", cascade="all, delete-orphan")

@@ -138,6 +138,7 @@ const PF: React.FC = () => {
   });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPassword, setUploadPassword] = useState('');
+  const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
   const [loading, setLoading] = useState(false);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
@@ -187,7 +188,7 @@ const PF: React.FC = () => {
     if (account) {
       setEditingAccount(account);
       setFormData({
-        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
         nickname: account.nickname,
         uan_number: account.uan_number,
         pf_number: account.pf_number || '',
@@ -207,7 +208,7 @@ const PF: React.FC = () => {
     } else {
       setEditingAccount(null);
       setFormData({
-        portfolio_id: selectedPortfolioId || '',
+        portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
         nickname: '',
         uan_number: '',
         pf_number: '',
@@ -318,6 +319,8 @@ const PF: React.FC = () => {
   const handleOpenUploadDialog = () => {
     setUploadFile(null);
     setUploadPassword('');
+    const defaultPortfolio = portfolios.find((p: any) => p.is_default);
+    setUploadPortfolioId(selectedPortfolioId || defaultPortfolio?.id || '');
     setOpenUploadDialog(true);
   };
 
@@ -345,6 +348,9 @@ const PF: React.FC = () => {
       formData.append('file', uploadFile);
       if (uploadPassword) {
         formData.append('password', uploadPassword);
+      }
+      if (uploadPortfolioId) {
+        formData.append('portfolio_id', String(uploadPortfolioId));
       }
 
       await api.post('/pf/upload', formData, {
@@ -407,8 +413,8 @@ const PF: React.FC = () => {
       {/* Summary Cards */}
       {summary && (
         <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Accounts
@@ -420,8 +426,8 @@ const PF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Balance
@@ -430,8 +436,8 @@ const PF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Employee Contribution
@@ -440,28 +446,8 @@ const PF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Employer Contribution
-                </Typography>
-                <Typography variant="h4">{formatCurrency(summary.employer_contribution)}</Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Pension (EPS)
-                </Typography>
-                <Typography variant="h4">{formatCurrency(summary.pension_contribution)}</Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
                   Total Interest
@@ -659,7 +645,6 @@ const PF: React.FC = () => {
                 value={formData.portfolio_id}
                 onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
               >
-                <MenuItem value="">None</MenuItem>
                 {portfolios.map((p: any) => (
                   <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                 ))}
@@ -923,11 +908,11 @@ const PF: React.FC = () => {
               startIcon={<UploadIcon />}
               sx={{ mb: 2 }}
             >
-              {uploadFile ? uploadFile.name : 'Select PDF File'}
+              {uploadFile ? uploadFile.name : 'Select Statement File'}
               <input
                 type="file"
                 hidden
-                accept=".pdf"
+                accept=".pdf,.xlsx,.xls,.csv"
                 onChange={handleFileSelect}
               />
             </Button>
@@ -939,12 +924,27 @@ const PF: React.FC = () => {
             <TextField
               fullWidth
               type="password"
-              label="PDF Password (if encrypted)"
+              label="Password (if encrypted)"
               value={uploadPassword}
               onChange={(e) => setUploadPassword(e.target.value)}
               placeholder="Leave empty if not password-protected"
-              helperText="Required for password-protected EPFO statements"
+              helperText="Required for password-protected statements"
+              sx={{ mb: 2 }}
             />
+            <TextField
+              select
+              fullWidth
+              label="Portfolio"
+              value={uploadPortfolioId}
+              onChange={(e) => setUploadPortfolioId(e.target.value ? Number(e.target.value) : '')}
+              helperText="The PF account will be assigned to the selected portfolio"
+            >
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name}{p.is_default ? ' (Default)' : ''}
+                </MenuItem>
+              ))}
+            </TextField>
           </Box>
         </DialogContent>
         <DialogActions>

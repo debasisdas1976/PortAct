@@ -34,7 +34,6 @@ import {
 } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-import axios from 'axios';
 import api, { brokersAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -95,7 +94,7 @@ const DematAccounts: React.FC = () => {
     { value: 'indmoney_statement', label: 'INDmoney Statement' }
   ];
 
-  const [brokerNames, setBrokerNames] = useState<{ value: string; label: string; website?: string }[]>([]);
+  const [brokerNames, setBrokerNames] = useState<{ value: string; label: string; website?: string; has_parser: boolean; supported_formats: string | null }[]>([]);
 
   useEffect(() => {
     fetchAccounts();
@@ -104,13 +103,9 @@ const DematAccounts: React.FC = () => {
 
   const fetchAccounts = async () => {
     try {
-      const token = localStorage.getItem('token');
       const params: any = {};
       if (selectedPortfolioId) params.portfolio_id = selectedPortfolioId;
-      const response = await axios.get('http://localhost:8000/api/v1/demat-accounts/', {
-        headers: { Authorization: `Bearer ${token}` },
-        params
-      });
+      const response = await api.get('/demat-accounts/', { params });
       setAccounts(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to fetch demat accounts'));
@@ -122,7 +117,7 @@ const DematAccounts: React.FC = () => {
       const data = await brokersAPI.getAll({ is_active: true });
       setBrokerNames(
         Array.isArray(data)
-          ? data.map((b: any) => ({ value: b.name, label: b.display_label, website: b.website }))
+          ? data.map((b: any) => ({ value: b.name, label: b.display_label, website: b.website, has_parser: b.has_parser ?? false, supported_formats: b.supported_formats ?? null }))
           : []
       );
     } catch (err) {
@@ -143,7 +138,7 @@ const DematAccounts: React.FC = () => {
         cash_balance_usd: account.cash_balance_usd || 0,
         nickname: account.nickname || '',
         is_active: account.is_active,
-        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
+        portfolio_id: (account as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
       });
     } else {
       setEditingAccount(null);
@@ -157,7 +152,7 @@ const DematAccounts: React.FC = () => {
         cash_balance_usd: 0,
         nickname: '',
         is_active: true,
-        portfolio_id: selectedPortfolioId || '',
+        portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
       });
     }
     setOpenDialog(true);
@@ -170,28 +165,18 @@ const DematAccounts: React.FC = () => {
 
   const handleSubmit = async () => {
     try {
-      const token = localStorage.getItem('token');
-      
       // Prepare data based on account market type
       const isInternational = formData.account_market === 'INTERNATIONAL';
       const baseData = { ...formData, portfolio_id: formData.portfolio_id || undefined };
       const submitData = isInternational
         ? { ...baseData, cash_balance: 0 } // Backend will calculate INR from USD
         : { ...baseData, cash_balance_usd: 0 }; // Domestic accounts don't need USD
-      
+
       if (editingAccount) {
-        await axios.put(
-          `http://localhost:8000/api/v1/demat-accounts/${editingAccount.id}`,
-          submitData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.put(`/demat-accounts/${editingAccount.id}`, submitData);
         notify.success('Demat account updated successfully');
       } else {
-        await axios.post(
-          'http://localhost:8000/api/v1/demat-accounts/',
-          submitData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.post('/demat-accounts/', submitData);
         notify.success('Demat account added successfully');
       }
       handleCloseDialog();
@@ -205,10 +190,7 @@ const DematAccounts: React.FC = () => {
     if (!window.confirm('Are you sure you want to delete this demat account? This will also delete all associated assets.')) return;
     
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:8000/api/v1/demat-accounts/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/demat-accounts/${id}`);
       notify.success('Demat account deleted successfully');
       fetchAccounts();
     } catch (err) {
@@ -281,7 +263,7 @@ const DematAccounts: React.FC = () => {
           <Button
             variant="outlined"
             startIcon={<UploadIcon />}
-            onClick={() => { setUploadPortfolioId(selectedPortfolioId || ''); setOpenUploadDialog(true); }}
+            onClick={() => { setUploadPortfolioId(selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '')); setOpenUploadDialog(true); }}
           >
             Upload Statement
           </Button>
@@ -296,7 +278,7 @@ const DematAccounts: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} sm={6} md>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
@@ -306,17 +288,17 @@ const DematAccounts: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} sm={6} md>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
-                Cash Balance
+                Current Value
               </Typography>
-              <Typography variant="h4">{formatCurrency(totalCashBalance)}</Typography>
+              <Typography variant="h4">{formatCurrency(totalCurrentValue)}</Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} sm={6} md>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
@@ -326,18 +308,28 @@ const DematAccounts: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} sm={6} md>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
                 Total P&L
               </Typography>
-              <Typography 
-                variant="h4" 
+              <Typography
+                variant="h4"
                 color={totalProfitLoss >= 0 ? 'success.main' : 'error.main'}
               >
                 {formatCurrency(totalProfitLoss)}
               </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Cash Balance
+              </Typography>
+              <Typography variant="h4">{formatCurrency(totalCashBalance)}</Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -426,6 +418,7 @@ const DematAccounts: React.FC = () => {
               onChange={(e) => {
                 const broker = e.target.value;
                 setUploadBroker(broker);
+                setSelectedFile(null); // Reset file when broker changes (formats may differ)
                 // Auto-set statement type based on broker
                 if (broker === 'vested') {
                   setStatementType('vested_statement');
@@ -439,9 +432,14 @@ const DematAccounts: React.FC = () => {
               fullWidth
               required
             >
-              {brokerNames.map((broker) => (
+              {brokerNames.filter((b) => b.has_parser).map((broker) => (
                 <MenuItem key={broker.value} value={broker.value}>
                   {broker.label}
+                  {broker.supported_formats && (
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                      ({broker.supported_formats.toUpperCase()})
+                    </Typography>
+                  )}
                 </MenuItem>
               ))}
             </TextField>
@@ -482,12 +480,26 @@ const DematAccounts: React.FC = () => {
               component="label"
               startIcon={<UploadIcon />}
               fullWidth
+              disabled={!uploadBroker}
             >
-              {selectedFile ? selectedFile.name : 'Select File'}
+              {selectedFile ? selectedFile.name : (() => {
+                const broker = brokerNames.find((b) => b.value === uploadBroker);
+                if (broker?.supported_formats) {
+                  const fmts = broker.supported_formats.split(',').map((s) => `.${s.trim().toUpperCase()}`).filter(Boolean);
+                  return `Select File (${fmts.join(' / ')})`;
+                }
+                return 'Select File (.PDF / .XLSX / .XLS / .CSV)';
+              })()}
               <input
                 type="file"
                 hidden
-                accept=".pdf,.xlsx,.xls,.csv"
+                accept={(() => {
+                  const broker = brokerNames.find((b) => b.value === uploadBroker);
+                  if (broker?.supported_formats) {
+                    return broker.supported_formats.split(',').map((s) => `.${s.trim()}`).join(',');
+                  }
+                  return '.pdf,.xlsx,.xls,.csv';
+                })()}
                 onChange={handleFileSelect}
               />
             </Button>
@@ -613,7 +625,6 @@ const DematAccounts: React.FC = () => {
               onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
               fullWidth
             >
-              <MenuItem value="">None</MenuItem>
               {portfolios.map((p: any) => (
                 <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
               ))}

@@ -33,8 +33,6 @@ import {
   KeyboardArrowRight,
 } from '@mui/icons-material';
 import api from '../services/api';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
 import { useNotification } from '../contexts/NotificationContext';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -81,7 +79,6 @@ const Commodities: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
-  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
 
   // Add/Edit dialog
   const [openDialog, setOpenDialog] = useState(false);
@@ -94,7 +91,6 @@ const Commodities: React.FC = () => {
     total_invested: 0,
     current_price: 0,
     demat_account_id: '' as number | '',
-    portfolio_id: '' as number | '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -148,11 +144,10 @@ const Commodities: React.FC = () => {
         total_invested: asset.total_invested,
         current_price: asset.current_price,
         demat_account_id: asset.demat_account_id || '',
-        portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '',
       });
     } else {
       setEditingAsset(null);
-      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, demat_account_id: '', portfolio_id: selectedPortfolioId || '' });
+      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, demat_account_id: '' });
     }
     setOpenDialog(true);
   };
@@ -161,6 +156,7 @@ const Commodities: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) { notify.error('Commodity name is required'); return; }
+    if (!formData.demat_account_id) { notify.error('Demat account is required'); return; }
     try {
       setSubmitting(true);
       const payload: Record<string, unknown> = {
@@ -171,8 +167,7 @@ const Commodities: React.FC = () => {
         purchase_price: formData.purchase_price,
         total_invested: formData.total_invested || formData.quantity * formData.purchase_price,
         current_price: formData.current_price,
-        demat_account_id: formData.demat_account_id || undefined,
-        portfolio_id: formData.portfolio_id || undefined,
+        demat_account_id: formData.demat_account_id,
       };
       if (editingAsset) {
         await api.put(`/assets/${editingAsset.id}`, payload);
@@ -246,26 +241,26 @@ const Commodities: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card><CardContent>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Holdings</Typography>
             <Typography variant="h4">{commodities.length}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card><CardContent>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Current Value</Typography>
             <Typography variant="h5">{formatCurrency(totalValue)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card><CardContent>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Total Invested</Typography>
             <Typography variant="h5">{formatCurrency(totalInvested)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card><CardContent>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Total P&L</Typography>
             <Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
               {formatCurrency(totalPnL)}
@@ -387,33 +382,21 @@ const Commodities: React.FC = () => {
             <TextField label="Current Price" type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Will be auto-updated by price scheduler" />
             <TextField
               select
-              label="Demat Account (Optional)"
+              label="Demat Account"
               value={formData.demat_account_id}
               onChange={(e) => setFormData({ ...formData, demat_account_id: e.target.value ? Number(e.target.value) : '' })}
               fullWidth
+              required
             >
-              <MenuItem value="">None</MenuItem>
               {dematAccounts.map((da) => (
                 <MenuItem key={da.id} value={da.id}>{buildDematLabel(da)}</MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              label="Portfolio"
-              value={formData.portfolio_id}
-              onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
-              fullWidth
-            >
-              <MenuItem value="">None</MenuItem>
-              {portfolios.map((p: any) => (
-                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
               ))}
             </TextField>
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={submitting || !formData.name.trim()}
+          <Button onClick={handleSubmit} variant="contained" disabled={submitting || !formData.name.trim() || !formData.demat_account_id}
             startIcon={submitting ? <CircularProgress size={18} /> : editingAsset ? <EditIcon /> : <AddIcon />}>
             {submitting ? 'Saving…' : editingAsset ? 'Update' : 'Add Commodity'}
           </Button>

@@ -38,6 +38,7 @@ import {
   Shield as InsuranceIcon,
   TrendingUp as StocksIcon,
   Language as USStocksIcon,
+  CreditCard as CreditCardIcon,
   Lock as FDIcon,
   Autorenew as RDIcon,
   MonetizationOn as DebtFundIcon,
@@ -97,6 +98,7 @@ const assetGroups: AssetGroup[] = [
     icon: <AccountBalanceIcon />,
     items: [
       { text: 'Savings', icon: <AccountBalanceIcon />, path: '/savings' },
+      { text: 'Credit Cards', icon: <CreditCardIcon />, path: '/credit-cards' },
       { text: 'Fixed Deposit', icon: <FDIcon />, path: '/fixed-deposit' },
       { text: 'Recurring Deposit', icon: <RDIcon />, path: '/recurring-deposit' },
     ],

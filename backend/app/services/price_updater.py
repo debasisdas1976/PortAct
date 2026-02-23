@@ -89,14 +89,15 @@ def get_stock_price_nse(symbol: str) -> float:
 
 def get_mutual_fund_price(identifier: str) -> tuple:
     """
-    Get mutual fund NAV and ISIN from AMFI India (free API)
-    Format: Scheme Code;ISIN Div Payout/ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date
-    identifier can be either ISIN or fund name
-    
-    For Direct Plans, prioritizes Growth plans over IDCW/Dividend plans
-    
+    Get mutual fund NAV and ISIN from AMFI India (cached data).
+    identifier can be either ISIN or fund name.
+
+    For Direct Plans, prioritizes Growth plans over IDCW/Dividend plans.
+
     Returns: (nav, isin) tuple or (None, None) if not found
     """
+    from app.services.amfi_cache import AMFICache
+
     try:
         # Special mappings for common ETFs that have different names
         name_mappings = {
@@ -106,101 +107,53 @@ def get_mutual_fund_price(identifier: str) -> tuple:
             'BANKBEES': 'BANK BEES',
             'JUNIORBEES': 'JUNIOR BEES',
         }
-        
+
         # Check if identifier matches any special mapping
         identifier_upper = identifier.upper().replace('-E', '').replace(' ', '')
         for key, value in name_mappings.items():
             if key in identifier_upper:
                 identifier = value
                 break
-        
-        # AMFI India NAV API
-        url = settings.AMFI_NAV_URL
-        response = requests.get(url, timeout=settings.API_TIMEOUT)
-        
-        if response.status_code == 200:
-            lines = response.text.split('\n')
-            
-            # Check if identifier looks like an ISIN (starts with INF or INE)
-            is_isin = identifier.startswith('INF') or identifier.startswith('INE')
-            
-            # Clean up fund name for better matching
-            if not is_isin:
-                # Remove common suffixes that might not match exactly
-                search_name = identifier.upper()
-                search_name = search_name.replace('-E', '').replace(' - E', '')  # Remove -E suffix
-                search_name = search_name.replace(' - DIRECT PLAN', '').replace(' -DIRECT PLAN', '')
-                search_name = search_name.replace(' - REGULAR PLAN', '').replace(' -REGULAR PLAN', '')
-                search_name = search_name.strip()
-                # Normalize whitespace - replace multiple spaces with single space
-                import re
-                search_name = re.sub(r'\s+', ' ', search_name)
-            else:
-                search_name = identifier
-            
-            # Collect all matching funds, then prioritize Growth plans
+
+        # Check if identifier looks like an ISIN (starts with INF or INE)
+        is_isin = identifier.startswith('INF') or identifier.startswith('INE')
+
+        if is_isin:
+            # O(1) lookup by ISIN
+            scheme = AMFICache.get_by_isin(identifier)
+            if scheme and scheme.nav > 0:
+                logger.info(f"Found NAV for ISIN '{identifier}': ₹{scheme.nav} ({scheme.scheme_name[:60]})")
+                return (scheme.nav, scheme.isin)
+        else:
+            # Name-based search against cached schemes
+            search_name = identifier.upper()
+            search_name = search_name.replace('-E', '').replace(' - E', '')
+            search_name = search_name.replace(' - DIRECT PLAN', '').replace(' -DIRECT PLAN', '')
+            search_name = search_name.replace(' - REGULAR PLAN', '').replace(' -REGULAR PLAN', '')
+            search_name = search_name.strip()
+            search_name = re.sub(r'\s+', ' ', search_name)
+
             matching_funds = []
-            
-            for line in lines:
-                # Normalize the line for comparison
-                normalized_line = re.sub(r'\s+', ' ', line.upper()) if not is_isin else line.upper()
-                
-                # Check if identifier is in the line
-                if search_name.upper() in normalized_line:
-                    parts = line.split(';')
-                    # Format: Scheme Code;ISIN1;ISIN2;Scheme Name;NAV;Date
-                    if len(parts) >= 6:
-                        # If it's an ISIN, check columns 1 and 2
-                        if is_isin:
-                            if identifier in parts[1] or identifier in parts[2]:
-                                nav_str = parts[4].strip()
-                                try:
-                                    nav = float(nav_str)
-                                    if nav > 0:
-                                        matching_funds.append({
-                                            'name': parts[3],
-                                            'nav': nav,
-                                            'isin': parts[1] if parts[1] else parts[2],
-                                            'is_growth': 'GROWTH' in parts[3].upper()
-                                        })
-                                except ValueError:
-                                    continue
-                        else:
-                            # If it's a name, check column 3 (scheme name)
-                            # Normalize scheme name for comparison
-                            scheme_name_normalized = re.sub(r'\s+', ' ', parts[3].upper())
-                            if search_name.upper() in scheme_name_normalized:
-                                nav_str = parts[4].strip()
-                                try:
-                                    nav = float(nav_str)
-                                    if nav > 0:
-                                        matching_funds.append({
-                                            'name': parts[3],
-                                            'nav': nav,
-                                            'isin': parts[1] if parts[1] else parts[2],
-                                            'is_growth': 'GROWTH' in parts[3].upper()
-                                        })
-                                except ValueError:
-                                    continue
-            
-            # If we found matches, prioritize Growth plans
+            for scheme in AMFICache.get_schemes():
+                # Normalize scheme name for comparison
+                scheme_name_normalized = re.sub(r'\s+', ' ', scheme.name_upper)
+                if search_name in scheme_name_normalized:
+                    if scheme.nav > 0:
+                        matching_funds.append(scheme)
+
             if matching_funds:
-                # First try to find a Growth plan
-                growth_funds = [f for f in matching_funds if f['is_growth']]
-                if growth_funds:
-                    # Return the first Growth plan found
-                    fund = growth_funds[0]
-                    logger.info(f"Found NAV for '{identifier}' (searched as '{search_name}'): ₹{fund['nav']} ({fund['name'][:60]}) ISIN: {fund['isin']}")
-                    return (fund['nav'], fund['isin'])
-                else:
-                    # If no Growth plan, return the first match
-                    fund = matching_funds[0]
-                    logger.info(f"Found NAV for '{identifier}' (searched as '{search_name}'): ₹{fund['nav']} ({fund['name'][:60]}) ISIN: {fund['isin']}")
-                    return (fund['nav'], fund['isin'])
-                    
+                # Prioritize Growth plans
+                growth_funds = [f for f in matching_funds if f.is_growth]
+                fund = growth_funds[0] if growth_funds else matching_funds[0]
+                logger.info(
+                    f"Found NAV for '{identifier}' (searched as '{search_name}'): "
+                    f"₹{fund.nav} ({fund.scheme_name[:60]}) ISIN: {fund.isin}"
+                )
+                return (fund.nav, fund.isin)
+
     except Exception as e:
         logger.error(f"Error fetching MF NAV for {identifier}: {str(e)}")
-    
+
     return (None, None)
 
 

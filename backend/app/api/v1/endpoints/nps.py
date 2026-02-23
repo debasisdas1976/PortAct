@@ -21,6 +21,9 @@ from app.schemas.nps import (
     NPSStatementUpload,
     NPSSummary,
 )
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from app.services.nps_parser import NPSStatementParser
 
 router = APIRouter()
@@ -351,14 +354,24 @@ async def delete_nps_account(
     
     if not asset:
         raise HTTPException(status_code=404, detail="NPS account not found")
-    
-    # Delete associated transactions
-    db.query(Transaction).filter(Transaction.asset_id == asset.id).delete()
-    
-    # Delete asset
+
+    # Clear FK references that lack ON DELETE CASCADE/SET NULL in the DB
+    db.query(Alert).filter(Alert.asset_id == asset.id).update(
+        {Alert.asset_id: None}, synchronize_session=False
+    )
+    db.query(AssetSnapshot).filter(AssetSnapshot.asset_id == asset.id).update(
+        {AssetSnapshot.asset_id: None}, synchronize_session=False
+    )
+    db.query(MutualFundHolding).filter(MutualFundHolding.asset_id == asset.id).delete(
+        synchronize_session=False
+    )
+    db.query(Transaction).filter(Transaction.asset_id == asset.id).delete(
+        synchronize_session=False
+    )
+
     db.delete(asset)
     db.commit()
-    
+
     return None
 
 
@@ -448,6 +461,161 @@ async def add_nps_transaction(
         financial_year=transaction_data.financial_year,
         created_at=transaction.created_at
     )
+
+
+@router.post("/upload", response_model=NPSAccountResponse, status_code=status.HTTP_201_CREATED)
+async def upload_nps_statement_auto(
+    file: UploadFile = File(...),
+    password: Optional[str] = Form(None),
+    portfolio_id: Optional[int] = Form(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload and parse an NPS statement PDF, auto-creating an account if needed
+    """
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    try:
+        content = await file.read()
+        parser = NPSStatementParser(content, password)
+        account_data, transactions = parser.parse()
+
+        # Resolve portfolio
+        resolved_portfolio_id = portfolio_id or get_default_portfolio_id(current_user.id, db)
+
+        # Check if account already exists by PRAN number
+        existing_asset = None
+        pran = (account_data.get('pran_number') or account_data.get('account_number') or '').strip()
+        if pran:
+            existing_asset = db.query(Asset).filter(
+                Asset.user_id == current_user.id,
+                Asset.asset_type == AssetType.NPS,
+                Asset.account_id == pran
+            ).first()
+
+        if existing_asset:
+            asset = existing_asset
+            # Update with parsed data
+            if account_data.get('current_balance'):
+                asset.current_value = account_data['current_balance']
+                asset.current_price = account_data['current_balance']
+            if account_data.get('total_contributions'):
+                asset.total_invested = account_data['total_contributions']
+            if account_data.get('total_returns'):
+                asset.profit_loss = account_data['total_returns']
+            if account_data.get('employer_contributions'):
+                asset.details['employer_contributions'] = account_data['employer_contributions']
+            asset.last_updated = datetime.utcnow()
+        else:
+            # Create new NPS asset
+            holder_name = (account_data.get('account_holder_name') or
+                          account_data.get('account_holder', 'Unknown'))
+            fund_manager = account_data.get('fund_manager', '')
+            opening_date_str = account_data.get('opening_date', date.today().strftime('%Y-%m-%d'))
+            if isinstance(opening_date_str, str):
+                opening_date = datetime.strptime(opening_date_str, '%Y-%m-%d')
+            else:
+                opening_date = opening_date_str if isinstance(opening_date_str, datetime) else datetime.combine(opening_date_str, datetime.min.time())
+
+            dob_str = account_data.get('date_of_birth', date.today().strftime('%Y-%m-%d'))
+
+            asset = Asset(
+                user_id=current_user.id,
+                asset_type=AssetType.NPS,
+                portfolio_id=resolved_portfolio_id,
+                name=f"NPS - {holder_name}",
+                broker_name=fund_manager,
+                account_id=pran,
+                account_holder_name=holder_name,
+                purchase_date=opening_date,
+                quantity=1,
+                purchase_price=account_data.get('current_balance', 0),
+                current_price=account_data.get('current_balance', 0),
+                current_value=account_data.get('current_balance', 0),
+                total_invested=account_data.get('total_contributions', 0),
+                profit_loss=account_data.get('total_returns', 0),
+                details={
+                    'pran_number': pran,
+                    'date_of_birth': dob_str if isinstance(dob_str, str) else dob_str.strftime('%Y-%m-%d'),
+                    'sector_type': account_data.get('sector_type', 'all_citizen'),
+                    'tier_type': account_data.get('tier_type', 'tier_1'),
+                    'retirement_age': account_data.get('retirement_age', 60),
+                    'employer_contributions': account_data.get('employer_contributions', 0),
+                    'scheme_preference': account_data.get('scheme_preference'),
+                }
+            )
+            db.add(asset)
+            db.commit()
+            db.refresh(asset)
+
+        # Add transactions with duplicate detection
+        for trans_data in transactions:
+            trans_type_map = {
+                'contribution': TransactionType.BUY,
+                'employer_contribution': TransactionType.BUY,
+                'returns': TransactionType.DIVIDEND,
+                'withdrawal': TransactionType.SELL,
+                'switch': TransactionType.BUY
+            }
+
+            trans_type = trans_type_map.get(trans_data.get('transaction_type', 'contribution'), TransactionType.BUY)
+            trans_date = datetime.strptime(trans_data['transaction_date'], '%Y-%m-%d')
+
+            existing = db.query(Transaction).filter(
+                Transaction.asset_id == asset.id,
+                Transaction.transaction_date == trans_date,
+                Transaction.transaction_type == trans_type,
+                Transaction.total_amount == trans_data['amount']
+            ).first()
+
+            if not existing:
+                transaction = Transaction(
+                    asset_id=asset.id,
+                    transaction_type=trans_type,
+                    transaction_date=trans_date,
+                    quantity=trans_data.get('units', 1),
+                    price_per_unit=trans_data.get('nav', trans_data['amount']),
+                    total_amount=trans_data['amount'],
+                    fees=0,
+                    taxes=0,
+                    description=trans_data.get('description'),
+                    reference_number=trans_data.get('financial_year'),
+                    details={'scheme': trans_data.get('scheme')} if trans_data.get('scheme') else {}
+                )
+                db.add(transaction)
+
+        db.commit()
+        db.refresh(asset)
+
+        return NPSAccountResponse(
+            id=asset.id,
+            user_id=asset.user_id,
+            asset_id=asset.id,
+            nickname=asset.name or f"NPS - {asset.account_id}",
+            pran_number=asset.account_id or asset.details.get('pran_number', ''),
+            account_holder_name=asset.account_holder_name or '',
+            sector_type=asset.details.get('sector_type', 'all_citizen'),
+            tier_type=asset.details.get('tier_type', 'tier_1'),
+            opening_date=asset.purchase_date.date() if asset.purchase_date else date.today(),
+            date_of_birth=datetime.strptime(asset.details.get('date_of_birth'), '%Y-%m-%d').date() if asset.details.get('date_of_birth') else date.today(),
+            retirement_age=asset.details.get('retirement_age', 60),
+            current_balance=asset.current_value,
+            total_contributions=asset.total_invested,
+            employer_contributions=asset.details.get('employer_contributions', 0),
+            total_returns=asset.profit_loss,
+            scheme_preference=asset.details.get('scheme_preference'),
+            fund_manager=asset.broker_name,
+            notes=asset.notes,
+            created_at=asset.created_at,
+            updated_at=asset.last_updated
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Could not process the NPS statement. Please check the file format.")
 
 
 @router.post("/{account_id}/upload", response_model=NPSAccountResponse, status_code=status.HTTP_201_CREATED)

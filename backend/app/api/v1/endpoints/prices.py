@@ -8,6 +8,7 @@ from app.api.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.services.scheduler import run_price_update_now
 from app.services.crypto_price_service import search_crypto, get_crypto_price, get_coin_id_by_symbol
+from app.services.currency_converter import get_usd_to_inr_rate
 
 router = APIRouter()
 
@@ -100,10 +101,15 @@ async def get_cryptocurrency_price(
             "coin_id": coin_id
         }
     
+    usd_to_inr = get_usd_to_inr_rate()
+    price_usd = price_data.get("price", 0)
+
     return {
         "symbol": symbol.upper(),
         "coin_id": coin_id,
-        **price_data
+        **price_data,
+        "price_inr": price_usd * usd_to_inr,
+        "usd_to_inr_rate": usd_to_inr,
     }
 
 
@@ -127,5 +133,15 @@ async def get_cryptocurrency_price_by_id(
         "coin_id": coin_id,
         **price_data
     }
+
+@router.get("/exchange-rate")
+async def get_exchange_rate(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get current USD to INR exchange rate
+    """
+    rate = get_usd_to_inr_rate()
+    return {"usd_to_inr": rate}
 
 # Made with Bob

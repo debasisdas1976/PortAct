@@ -1,14 +1,19 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
+
+BROKER_TYPES = Literal["discount", "full_service", "international", "aggregator"]
+SUPPORTED_MARKETS = Literal["domestic", "international", "both"]
 
 
 class BrokerBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=50)
-    display_label: str = Field(..., min_length=1, max_length=100)
-    broker_type: str = Field(default="discount")
-    supported_markets: str = Field(default="domestic")
+    display_label: str = Field(..., min_length=1, max_length=500)
+    broker_type: BROKER_TYPES = Field(default="discount")
+    supported_markets: SUPPORTED_MARKETS = Field(default="domestic")
     website: Optional[str] = Field(None, max_length=200)
+    has_parser: bool = Field(default=False)
+    supported_formats: Optional[str] = Field(None, max_length=500)
     is_active: bool = Field(default=True)
     sort_order: int = Field(default=0)
 
@@ -19,10 +24,12 @@ class BrokerCreate(BrokerBase):
 
 class BrokerUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=50)
-    display_label: Optional[str] = Field(None, min_length=1, max_length=100)
-    broker_type: Optional[str] = None
-    supported_markets: Optional[str] = None
+    display_label: Optional[str] = Field(None, min_length=1, max_length=500)
+    broker_type: Optional[BROKER_TYPES] = None
+    supported_markets: Optional[SUPPORTED_MARKETS] = None
     website: Optional[str] = Field(None, max_length=200)
+    has_parser: Optional[bool] = None
+    supported_formats: Optional[str] = Field(None, max_length=500)
     is_active: Optional[bool] = None
     sort_order: Optional[int] = None
 

@@ -16,6 +16,7 @@ from app.schemas.asset import (
 from app.services.price_updater import update_asset_price
 from app.services.currency_converter import convert_usd_to_inr
 from app.models.portfolio import Portfolio
+from app.models.demat_account import DematAccount
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import AssetSnapshot
 from app.models.mutual_fund_holding import MutualFundHolding
@@ -141,7 +142,14 @@ async def create_asset(
     Create a new asset
     """
     asset_dict = asset_data.model_dump()
-    
+
+    # Crypto assets must belong to a crypto account
+    if asset_dict.get('asset_type') == AssetType.CRYPTO and not asset_dict.get('crypto_account_id'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Crypto assets must belong to a crypto account. Please select a crypto account."
+        )
+
     # Get currency from details if present (for crypto assets)
     currency = None
     if 'details' in asset_dict and asset_dict['details']:
@@ -159,7 +167,21 @@ async def create_asset(
         if 'total_invested' in asset_dict and asset_dict['total_invested']:
             asset_dict['total_invested'] = convert_usd_to_inr(asset_dict['total_invested'])
 
-    # Auto-assign to default portfolio if not specified
+    # Derive portfolio from demat account if provided
+    if asset_dict.get('demat_account_id'):
+        demat = db.query(DematAccount).filter(
+            DematAccount.id == asset_dict['demat_account_id'],
+            DematAccount.user_id == current_user.id,
+        ).first()
+        if not demat:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Demat account not found."
+            )
+        if demat.portfolio_id:
+            asset_dict['portfolio_id'] = demat.portfolio_id
+
+    # Auto-assign to default portfolio if still not set
     if not asset_dict.get('portfolio_id'):
         default_portfolio = db.query(Portfolio).filter(
             Portfolio.user_id == current_user.id,
@@ -172,13 +194,21 @@ async def create_asset(
         user_id=current_user.id,
         **asset_dict
     )
-    
+
     new_asset.calculate_metrics()
-    
+
     db.add(new_asset)
     db.commit()
     db.refresh(new_asset)
-    
+
+    # Immediately fetch the latest price for crypto assets
+    if new_asset.asset_type == AssetType.CRYPTO and new_asset.symbol:
+        try:
+            update_asset_price(new_asset, db)
+            db.refresh(new_asset)
+        except Exception:
+            pass  # Price update is best-effort; don't fail the creation
+
     return new_asset
 
 
@@ -205,9 +235,22 @@ async def update_asset(
     
     # Update fields
     update_data = asset_update.model_dump(exclude_unset=True)
+
+    # Convert USD to INR for crypto assets if currency is USD
+    if asset.asset_type == AssetType.CRYPTO:
+        details = update_data.get('details') or {}
+        currency = details.get('currency', 'USD') if details else None
+        if currency == 'USD':
+            if 'purchase_price' in update_data and update_data['purchase_price']:
+                update_data['purchase_price'] = convert_usd_to_inr(update_data['purchase_price'])
+            if 'current_price' in update_data and update_data['current_price']:
+                update_data['current_price'] = convert_usd_to_inr(update_data['current_price'])
+            if 'total_invested' in update_data and update_data['total_invested']:
+                update_data['total_invested'] = convert_usd_to_inr(update_data['total_invested'])
+
     for field, value in update_data.items():
         setattr(asset, field, value)
-    
+
     asset.calculate_metrics()
     
     db.commit()

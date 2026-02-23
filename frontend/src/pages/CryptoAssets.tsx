@@ -5,13 +5,8 @@ import {
   Card,
   CardContent,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Grid,
   IconButton,
-  MenuItem,
   Paper,
   Table,
   TableBody,
@@ -19,7 +14,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Typography,
   Chip,
 } from '@mui/material';
@@ -33,11 +27,10 @@ import {
   KeyboardArrowRight,
 } from '@mui/icons-material';
 import api, { cryptoExchangesAPI } from '../services/api';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
 import { useNotification } from '../contexts/NotificationContext';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import { getErrorMessage } from '../utils/errorUtils';
+import CryptoAssetDialog, { CryptoAccountOption, CryptoAssetForEdit } from '../components/CryptoAssetDialog';
 
 interface CryptoAsset {
   id: number;
@@ -55,6 +48,7 @@ interface CryptoAsset {
   broker_name?: string;
   account_id?: string;
   account_holder_name?: string;
+  details?: { coin_id?: string; currency?: string };
 }
 
 interface CryptoAccount {
@@ -72,7 +66,7 @@ interface CryptoExchangeItem {
 }
 
 const formatCurrency = (value: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
 
 const buildCryptoLabel = (ca: CryptoAccount, exchangeMap: Record<string, string>) => {
   const exchangeLabel = exchangeMap[ca.exchange_name] || ca.exchange_name;
@@ -83,27 +77,15 @@ const buildCryptoLabel = (ca: CryptoAccount, exchangeMap: Record<string, string>
 
 const CryptoAssets: React.FC = () => {
   const [assets, setAssets] = useState<CryptoAsset[]>([]);
-  const [cryptoAccounts, setCryptoAccounts] = useState<CryptoAccount[]>([]);
   const [cryptoLabelMap, setCryptoLabelMap] = useState<Record<number, string>>({});
+  const [cryptoAccountOptions, setCryptoAccountOptions] = useState<CryptoAccountOption[]>([]);
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
-  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
 
-  // Add/Edit dialog
-  const [openDialog, setOpenDialog] = useState(false);
-  const [editingAsset, setEditingAsset] = useState<CryptoAsset | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    symbol: '',
-    quantity: 0,
-    purchase_price: 0,
-    total_invested: 0,
-    current_price: 0,
-    crypto_account_id: '' as number | '',
-    portfolio_id: '' as number | '',
-  });
-  const [submitting, setSubmitting] = useState(false);
+  // Dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<CryptoAssetForEdit | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const toggleGroup = (key: string) => {
@@ -135,12 +117,15 @@ const CryptoAssets: React.FC = () => {
       }
 
       const cryptoList = cryptoRes.data as CryptoAccount[];
-      setCryptoAccounts(cryptoList);
       const labelMap: Record<number, string> = {};
+      const options: CryptoAccountOption[] = [];
       for (const ca of cryptoList) {
-        labelMap[ca.id] = buildCryptoLabel(ca, exchangeMap);
+        const label = buildCryptoLabel(ca, exchangeMap);
+        labelMap[ca.id] = label;
+        options.push({ id: ca.id, label });
       }
       setCryptoLabelMap(labelMap);
+      setCryptoAccountOptions(options);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load data'));
     } finally {
@@ -153,55 +138,26 @@ const CryptoAssets: React.FC = () => {
   // ── Add / Edit ──────────────────────────────────────────────────────────
   const handleOpenDialog = (asset?: CryptoAsset) => {
     if (asset) {
-      setEditingAsset(asset);
-      setFormData({
+      setEditingAsset({
+        id: asset.id,
         name: asset.name,
-        symbol: asset.symbol || '',
+        symbol: asset.symbol,
         quantity: asset.quantity,
         purchase_price: asset.purchase_price,
         total_invested: asset.total_invested,
         current_price: asset.current_price,
-        crypto_account_id: asset.crypto_account_id || '',
-        portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || '',
+        crypto_account_id: asset.crypto_account_id,
+        details: asset.details,
       });
     } else {
       setEditingAsset(null);
-      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, crypto_account_id: '', portfolio_id: selectedPortfolioId || '' });
     }
-    setOpenDialog(true);
+    setDialogOpen(true);
   };
 
-  const handleCloseDialog = () => { setOpenDialog(false); setEditingAsset(null); };
-
-  const handleSubmit = async () => {
-    if (!formData.name.trim()) { notify.error('Crypto name is required'); return; }
-    try {
-      setSubmitting(true);
-      const payload: Record<string, unknown> = {
-        asset_type: 'crypto',
-        name: formData.name.trim(),
-        symbol: formData.symbol.trim() || undefined,
-        quantity: formData.quantity,
-        purchase_price: formData.purchase_price,
-        total_invested: formData.total_invested || formData.quantity * formData.purchase_price,
-        current_price: formData.current_price,
-        crypto_account_id: formData.crypto_account_id || undefined,
-        portfolio_id: formData.portfolio_id || undefined,
-      };
-      if (editingAsset) {
-        await api.put(`/assets/${editingAsset.id}`, payload);
-        notify.success('Crypto asset updated');
-      } else {
-        await api.post('/assets/', payload);
-        notify.success('Crypto asset added');
-      }
-      handleCloseDialog();
-      fetchData();
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to save crypto asset'));
-    } finally {
-      setSubmitting(false);
-    }
+  const handleCloseDialog = () => {
+    setDialogOpen(false);
+    setEditingAsset(null);
   };
 
   // ── Delete ──────────────────────────────────────────────────────────────
@@ -261,27 +217,27 @@ const CryptoAssets: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card><CardContent>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Holdings</Typography>
             <Typography variant="h4">{assets.length}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card><CardContent>
-            <Typography color="text.secondary" variant="body2">Current Value (USD)</Typography>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}><CardContent>
+            <Typography color="text.secondary" variant="body2">Current Value (₹)</Typography>
             <Typography variant="h5">{formatCurrency(totalValue)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card><CardContent>
-            <Typography color="text.secondary" variant="body2">Total Invested (USD)</Typography>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}><CardContent>
+            <Typography color="text.secondary" variant="body2">Total Invested (₹)</Typography>
             <Typography variant="h5">{formatCurrency(totalInvested)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card><CardContent>
-            <Typography color="text.secondary" variant="body2">Total P&L (USD)</Typography>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}><CardContent>
+            <Typography color="text.secondary" variant="body2">Total P&L (₹)</Typography>
             <Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
               {formatCurrency(totalPnL)}
             </Typography>
@@ -298,11 +254,11 @@ const CryptoAssets: React.FC = () => {
             <TableRow>
               <TableCell><strong>Crypto</strong></TableCell>
               <TableCell align="right"><strong>Qty</strong></TableCell>
-              <TableCell align="right"><strong>Avg Buy Price (USD)</strong></TableCell>
-              <TableCell align="right"><strong>Current Price (USD)</strong></TableCell>
-              <TableCell align="right"><strong>Invested (USD)</strong></TableCell>
-              <TableCell align="right"><strong>Current Value (USD)</strong></TableCell>
-              <TableCell align="right"><strong>P&L (USD)</strong></TableCell>
+              <TableCell align="right"><strong>Avg Buy Price (₹)</strong></TableCell>
+              <TableCell align="right"><strong>Current Price (₹)</strong></TableCell>
+              <TableCell align="right"><strong>Invested (₹)</strong></TableCell>
+              <TableCell align="right"><strong>Current Value (₹)</strong></TableCell>
+              <TableCell align="right"><strong>P&L (₹)</strong></TableCell>
               <TableCell align="right"><strong>P&L %</strong></TableCell>
               <TableCell align="center"><strong>Actions</strong></TableCell>
             </TableRow>
@@ -389,51 +345,13 @@ const CryptoAssets: React.FC = () => {
         </Table>
       </TableContainer>
 
-      {/* ── Add / Edit Dialog ──────────────────────────────────────────────── */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingAsset ? 'Edit Crypto Asset' : 'Add Crypto Asset'}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            <TextField label="Crypto Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} fullWidth required />
-            <TextField label="Symbol (e.g. BTC)" value={formData.symbol} onChange={(e) => setFormData({ ...formData, symbol: e.target.value })} fullWidth />
-            <TextField label="Quantity" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })} fullWidth inputProps={{ step: '0.000001' }} />
-            <TextField label="Average Buy Price (USD)" type="number" value={formData.purchase_price} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} fullWidth />
-            <TextField label="Total Invested (USD)" type="number" value={formData.total_invested} onChange={(e) => setFormData({ ...formData, total_invested: parseFloat(e.target.value) || 0 })} fullWidth helperText="Leave 0 to auto-calculate (Qty x Avg Price)" />
-            <TextField label="Current Price (USD)" type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Will be auto-updated by price scheduler" />
-            <TextField
-              select
-              label="Crypto Account (Optional)"
-              value={formData.crypto_account_id}
-              onChange={(e) => setFormData({ ...formData, crypto_account_id: e.target.value ? Number(e.target.value) : '' })}
-              fullWidth
-            >
-              <MenuItem value="">None</MenuItem>
-              {cryptoAccounts.map((ca) => (
-                <MenuItem key={ca.id} value={ca.id}>{cryptoLabelMap[ca.id] || `${ca.exchange_name} (${ca.account_id})`}</MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              label="Portfolio"
-              value={formData.portfolio_id}
-              onChange={(e) => setFormData({ ...formData, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
-              fullWidth
-            >
-              <MenuItem value="">None</MenuItem>
-              {portfolios.map((p: any) => (
-                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-              ))}
-            </TextField>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={submitting || !formData.name.trim()}
-            startIcon={submitting ? <CircularProgress size={18} /> : editingAsset ? <EditIcon /> : <AddIcon />}>
-            {submitting ? 'Saving…' : editingAsset ? 'Update' : 'Add Crypto Asset'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CryptoAssetDialog
+        open={dialogOpen}
+        onClose={handleCloseDialog}
+        onSaved={fetchData}
+        editingAsset={editingAsset}
+        cryptoAccounts={cryptoAccountOptions}
+      />
     </Box>
   );
 };

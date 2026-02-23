@@ -1,0 +1,884 @@
+{
+  "banks": [
+    {
+      "name": "icici_bank",
+      "display_label": "ICICI Bank",
+      "bank_type": "commercial",
+      "website": "icicibank.com",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 1
+    },
+    {
+      "name": "hdfc_bank",
+      "display_label": "HDFC Bank",
+      "bank_type": "commercial",
+      "website": "hdfcbank.com",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 2
+    },
+    {
+      "name": "idfc_first_bank",
+      "display_label": "IDFC First Bank",
+      "bank_type": "small_finance",
+      "website": "https://www.idfcfirst.bank.in/",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 3
+    },
+    {
+      "name": "state_bank_of_india",
+      "display_label": "State Bank of India",
+      "bank_type": "commercial",
+      "website": "https://sbi.bank.in/",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 4
+    },
+    {
+      "name": "axis_bank",
+      "display_label": "Axis Bank",
+      "bank_type": "commercial",
+      "website": "axisbank.com",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 5
+    },
+    {
+      "name": "kotak_mahindra_bank",
+      "display_label": "Kotak Mahindra Bank",
+      "bank_type": "commercial",
+      "website": "kotak.com",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 6
+    },
+    {
+      "name": "yes_bank",
+      "display_label": "Yes Bank",
+      "bank_type": "commercial",
+      "website": "yesbank.in",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 7
+    },
+    {
+      "name": "scapia",
+      "display_label": "Scapia",
+      "bank_type": "payment",
+      "website": "https://www.scapia.cards/",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 8
+    },
+    {
+      "name": "other",
+      "display_label": "Other",
+      "bank_type": "commercial",
+      "website": null,
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 99
+    }
+  ],
+  "brokers": [
+    {
+      "name": "zerodha",
+      "display_label": "Zerodha",
+      "broker_type": "discount",
+      "supported_markets": "domestic",
+      "website": "zerodha.com",
+      "has_parser": true,
+      "supported_formats": "csv,xlsx",
+      "sort_order": 1
+    },
+    {
+      "name": "groww",
+      "display_label": "Groww",
+      "broker_type": "discount",
+      "supported_markets": "domestic",
+      "website": "groww.in",
+      "has_parser": true,
+      "supported_formats": "csv,xlsx",
+      "sort_order": 2
+    },
+    {
+      "name": "upstox",
+      "display_label": "Upstox",
+      "broker_type": "discount",
+      "supported_markets": "domestic",
+      "website": "upstox.com",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 3
+    },
+    {
+      "name": "angel_one",
+      "display_label": "Angel One",
+      "broker_type": "discount",
+      "supported_markets": "domestic",
+      "website": "angelone.in",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 4
+    },
+    {
+      "name": "icici_direct",
+      "display_label": "ICICI Direct",
+      "broker_type": "full_service",
+      "supported_markets": "domestic",
+      "website": "https://www.icicidirect.com/",
+      "has_parser": true,
+      "supported_formats": "csv",
+      "sort_order": 5
+    },
+    {
+      "name": "hdfc_securities",
+      "display_label": "HDFC Securities",
+      "broker_type": "full_service",
+      "supported_markets": "domestic",
+      "website": "hdfcsec.com",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 6
+    },
+    {
+      "name": "kotak_securities",
+      "display_label": "Kotak Securities",
+      "broker_type": "full_service",
+      "supported_markets": "domestic",
+      "website": "https://www.kotakneo.com/",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 7
+    },
+    {
+      "name": "axis_direct",
+      "display_label": "Axis Direct",
+      "broker_type": "full_service",
+      "supported_markets": "domestic",
+      "website": "https://simplehai.axisdirect.in/",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 8
+    },
+    {
+      "name": "sharekhan",
+      "display_label": "Sharekhan",
+      "broker_type": "full_service",
+      "supported_markets": "domestic",
+      "website": "sharekhan.com",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 9
+    },
+    {
+      "name": "motilal_oswal",
+      "display_label": "Motilal Oswal",
+      "broker_type": "full_service",
+      "supported_markets": "domestic",
+      "website": "motilaloswal.com",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 10
+    },
+    {
+      "name": "iifl_securities",
+      "display_label": "IIFL Securities",
+      "broker_type": "full_service",
+      "supported_markets": "domestic",
+      "website": "iifl.com",
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 11
+    },
+    {
+      "name": "indmoney",
+      "display_label": "INDmoney",
+      "broker_type": "international",
+      "supported_markets": "international",
+      "website": "indmoney.com",
+      "has_parser": true,
+      "supported_formats": "csv",
+      "sort_order": 12
+    },
+    {
+      "name": "vested",
+      "display_label": "Vested",
+      "broker_type": "international",
+      "supported_markets": "international",
+      "website": "vested.co.in",
+      "has_parser": true,
+      "supported_formats": "csv",
+      "sort_order": 13
+    },
+    {
+      "name": "nsdl_cas",
+      "display_label": "NSDL CAS (Consolidated)",
+      "broker_type": "aggregator",
+      "supported_markets": "domestic",
+      "website": "nsdl.co.in",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 20
+    },
+    {
+      "name": "cdsl_cas",
+      "display_label": "CDSL CAS (Consolidated)",
+      "broker_type": "aggregator",
+      "supported_markets": "domestic",
+      "website": "cdslindia.com",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 21
+    },
+    {
+      "name": "mf_central",
+      "display_label": "MF Central CAS",
+      "broker_type": "aggregator",
+      "supported_markets": "domestic",
+      "website": "mfcentral.com",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 22
+    },
+    {
+      "name": "direct_mf",
+      "display_label": "Direct MF / Kuvera",
+      "broker_type": "aggregator",
+      "supported_markets": "domestic",
+      "website": "kuvera.in",
+      "has_parser": true,
+      "supported_formats": "pdf",
+      "sort_order": 23
+    },
+    {
+      "name": "other",
+      "display_label": "Other",
+      "broker_type": "discount",
+      "supported_markets": "domestic",
+      "website": null,
+      "has_parser": false,
+      "supported_formats": null,
+      "sort_order": 99
+    }
+  ],
+  "crypto_exchanges": [
+    {
+      "name": "binance",
+      "display_label": "Binance",
+      "exchange_type": "exchange",
+      "website": "binance.com",
+      "sort_order": 1
+    },
+    {
+      "name": "coinbase",
+      "display_label": "Coinbase",
+      "exchange_type": "exchange",
+      "website": "coinbase.com",
+      "sort_order": 2
+    },
+    {
+      "name": "kraken",
+      "display_label": "Kraken",
+      "exchange_type": "exchange",
+      "website": "kraken.com",
+      "sort_order": 3
+    },
+    {
+      "name": "wazirx",
+      "display_label": "WazirX",
+      "exchange_type": "exchange",
+      "website": "wazirx.com",
+      "sort_order": 4
+    },
+    {
+      "name": "coindcx",
+      "display_label": "CoinDCX",
+      "exchange_type": "exchange",
+      "website": "coindcx.com",
+      "sort_order": 5
+    },
+    {
+      "name": "zebpay",
+      "display_label": "ZebPay",
+      "exchange_type": "exchange",
+      "website": "zebpay.com",
+      "sort_order": 6
+    },
+    {
+      "name": "coinswitch",
+      "display_label": "CoinSwitch",
+      "exchange_type": "exchange",
+      "website": "coinswitch.co",
+      "sort_order": 7
+    },
+    {
+      "name": "kucoin",
+      "display_label": "KuCoin",
+      "exchange_type": "exchange",
+      "website": "kucoin.com",
+      "sort_order": 8
+    },
+    {
+      "name": "bybit",
+      "display_label": "Bybit",
+      "exchange_type": "exchange",
+      "website": "bybit.com",
+      "sort_order": 9
+    },
+    {
+      "name": "okx",
+      "display_label": "OKX",
+      "exchange_type": "exchange",
+      "website": "okx.com",
+      "sort_order": 10
+    },
+    {
+      "name": "metamask",
+      "display_label": "MetaMask",
+      "exchange_type": "wallet",
+      "website": "metamask.io",
+      "sort_order": 11
+    },
+    {
+      "name": "trust_wallet",
+      "display_label": "Trust Wallet",
+      "exchange_type": "wallet",
+      "website": "trustwallet.com",
+      "sort_order": 12
+    },
+    {
+      "name": "ledger",
+      "display_label": "Ledger",
+      "exchange_type": "wallet",
+      "website": "ledger.com",
+      "sort_order": 13
+    },
+    {
+      "name": "trezor",
+      "display_label": "Trezor",
+      "exchange_type": "wallet",
+      "website": "trezor.io",
+      "sort_order": 14
+    },
+    {
+      "name": "tangem",
+      "display_label": "Tangem",
+      "exchange_type": "wallet",
+      "website": "tangem.com",
+      "sort_order": 15
+    },
+    {
+      "name": "getbit",
+      "display_label": "Getbit",
+      "exchange_type": "exchange",
+      "website": "getbit.com",
+      "sort_order": 16
+    },
+    {
+      "name": "other",
+      "display_label": "Other",
+      "exchange_type": "exchange",
+      "website": null,
+      "sort_order": 99
+    }
+  ],
+  "institutions": [
+    {
+      "name": "sbi_pension_funds",
+      "display_label": "SBI Pension Funds",
+      "category": "nps_fund_manager",
+      "website": "sbipensionfunds.com",
+      "sort_order": 1
+    },
+    {
+      "name": "protean_cra",
+      "display_label": "Protean CRA (formerly NSDL CRA)",
+      "category": "nps_cra",
+      "website": "npscra.nsdl.co.in",
+      "sort_order": 1
+    },
+    {
+      "name": "lic",
+      "display_label": "LIC",
+      "category": "insurance_provider",
+      "website": "licindia.in",
+      "sort_order": 1
+    },
+    {
+      "name": "lic_pension_fund",
+      "display_label": "LIC Pension Fund",
+      "category": "nps_fund_manager",
+      "website": "licpensionfund.in",
+      "sort_order": 2
+    },
+    {
+      "name": "kfintech_cra",
+      "display_label": "KFintech CRA (formerly Karvy CRA)",
+      "category": "nps_cra",
+      "website": "cra.kfintech.com",
+      "sort_order": 2
+    },
+    {
+      "name": "sbi_life",
+      "display_label": "SBI Life",
+      "category": "insurance_provider",
+      "website": "sbilife.co.in",
+      "sort_order": 2
+    },
+    {
+      "name": "uti_retirement",
+      "display_label": "UTI Retirement Solutions",
+      "category": "nps_fund_manager",
+      "website": "utimf.com",
+      "sort_order": 3
+    },
+    {
+      "name": "hdfc_life",
+      "display_label": "HDFC Life",
+      "category": "insurance_provider",
+      "website": "hdfclife.com",
+      "sort_order": 3
+    },
+    {
+      "name": "icici_prudential_pension",
+      "display_label": "ICICI Prudential Pension Fund",
+      "category": "nps_fund_manager",
+      "website": "iciciprupensionfund.com",
+      "sort_order": 4
+    },
+    {
+      "name": "icici_prudential",
+      "display_label": "ICICI Prudential",
+      "category": "insurance_provider",
+      "website": "iciciprulife.com",
+      "sort_order": 4
+    },
+    {
+      "name": "hdfc_pension",
+      "display_label": "HDFC Pension Management",
+      "category": "nps_fund_manager",
+      "website": "hdfcpension.com",
+      "sort_order": 5
+    },
+    {
+      "name": "max_life",
+      "display_label": "Max Life",
+      "category": "insurance_provider",
+      "website": "maxlifeinsurance.com",
+      "sort_order": 5
+    },
+    {
+      "name": "kotak_pension",
+      "display_label": "Kotak Mahindra Pension Fund",
+      "category": "nps_fund_manager",
+      "website": "kotakpensionfund.com",
+      "sort_order": 6
+    },
+    {
+      "name": "bajaj_allianz",
+      "display_label": "Bajaj Allianz",
+      "category": "insurance_provider",
+      "website": "bajajallianzlife.com",
+      "sort_order": 6
+    },
+    {
+      "name": "aditya_birla_pension",
+      "display_label": "Aditya Birla Sun Life Pension",
+      "category": "nps_fund_manager",
+      "website": "adityabirlapension.com",
+      "sort_order": 7
+    },
+    {
+      "name": "tata_aia",
+      "display_label": "Tata AIA",
+      "category": "insurance_provider",
+      "website": "tataaia.com",
+      "sort_order": 7
+    },
+    {
+      "name": "tata_pension",
+      "display_label": "Tata Pension Management",
+      "category": "nps_fund_manager",
+      "website": "tatapension.com",
+      "sort_order": 8
+    },
+    {
+      "name": "kotak_life",
+      "display_label": "Kotak Life",
+      "category": "insurance_provider",
+      "website": "kotaklife.com",
+      "sort_order": 8
+    },
+    {
+      "name": "axis_pension",
+      "display_label": "Axis Pension Fund Management",
+      "category": "nps_fund_manager",
+      "website": "axispensionfund.com",
+      "sort_order": 9
+    },
+    {
+      "name": "star_health",
+      "display_label": "Star Health",
+      "category": "insurance_provider",
+      "website": "starhealth.in",
+      "sort_order": 9
+    },
+    {
+      "name": "dsp_pension",
+      "display_label": "DSP Pension Fund Managers",
+      "category": "nps_fund_manager",
+      "website": "dsppensionfund.com",
+      "sort_order": 10
+    },
+    {
+      "name": "niva_bupa",
+      "display_label": "Niva Bupa",
+      "category": "insurance_provider",
+      "website": "nivabupa.com",
+      "sort_order": 10
+    },
+    {
+      "name": "care_health",
+      "display_label": "Care Health",
+      "category": "insurance_provider",
+      "website": "careinsurance.com",
+      "sort_order": 11
+    },
+    {
+      "name": "aditya_birla_health",
+      "display_label": "Aditya Birla Health",
+      "category": "insurance_provider",
+      "website": "adityabirlahealthinsurance.com",
+      "sort_order": 12
+    }
+  ],
+  "asset_types": [
+    {
+      "name": "stock",
+      "display_label": "Stock",
+      "category": "Equity",
+      "sort_order": 1
+    },
+    {
+      "name": "us_stock",
+      "display_label": "US Stock",
+      "category": "Equity",
+      "sort_order": 2
+    },
+    {
+      "name": "equity_mutual_fund",
+      "display_label": "Equity Mutual Fund",
+      "category": "Equity",
+      "sort_order": 3
+    },
+    {
+      "name": "reit",
+      "display_label": "REIT",
+      "category": "Equity",
+      "sort_order": 4
+    },
+    {
+      "name": "invit",
+      "display_label": "InvIT",
+      "category": "Equity",
+      "sort_order": 5
+    },
+    {
+      "name": "debt_mutual_fund",
+      "display_label": "Debt Mutual Fund",
+      "category": "Fixed Income",
+      "sort_order": 10
+    },
+    {
+      "name": "fixed_deposit",
+      "display_label": "Fixed Deposit",
+      "category": "Fixed Income",
+      "sort_order": 11
+    },
+    {
+      "name": "recurring_deposit",
+      "display_label": "Recurring Deposit",
+      "category": "Fixed Income",
+      "sort_order": 12
+    },
+    {
+      "name": "savings_account",
+      "display_label": "Savings Account",
+      "category": "Fixed Income",
+      "sort_order": 13
+    },
+    {
+      "name": "corporate_bond",
+      "display_label": "Corporate Bond",
+      "category": "Fixed Income",
+      "sort_order": 14
+    },
+    {
+      "name": "rbi_bond",
+      "display_label": "RBI Bond",
+      "category": "Fixed Income",
+      "sort_order": 15
+    },
+    {
+      "name": "tax_saving_bond",
+      "display_label": "Tax Saving Bond",
+      "category": "Fixed Income",
+      "sort_order": 16
+    },
+    {
+      "name": "ppf",
+      "display_label": "PPF",
+      "category": "Govt. Schemes",
+      "sort_order": 20
+    },
+    {
+      "name": "pf",
+      "display_label": "PF",
+      "category": "Govt. Schemes",
+      "sort_order": 21
+    },
+    {
+      "name": "nps",
+      "display_label": "NPS",
+      "category": "Govt. Schemes",
+      "sort_order": 22
+    },
+    {
+      "name": "ssy",
+      "display_label": "SSY",
+      "category": "Govt. Schemes",
+      "sort_order": 23
+    },
+    {
+      "name": "nsc",
+      "display_label": "NSC",
+      "category": "Govt. Schemes",
+      "sort_order": 24
+    },
+    {
+      "name": "kvp",
+      "display_label": "KVP",
+      "category": "Govt. Schemes",
+      "sort_order": 25
+    },
+    {
+      "name": "scss",
+      "display_label": "SCSS",
+      "category": "Govt. Schemes",
+      "sort_order": 26
+    },
+    {
+      "name": "mis",
+      "display_label": "MIS",
+      "category": "Govt. Schemes",
+      "sort_order": 27
+    },
+    {
+      "name": "gratuity",
+      "display_label": "Gratuity",
+      "category": "Govt. Schemes",
+      "sort_order": 28
+    },
+    {
+      "name": "commodity",
+      "display_label": "Commodity",
+      "category": "Commodities",
+      "sort_order": 30
+    },
+    {
+      "name": "sovereign_gold_bond",
+      "display_label": "Sovereign Gold Bond",
+      "category": "Commodities",
+      "sort_order": 31
+    },
+    {
+      "name": "crypto",
+      "display_label": "Crypto",
+      "category": "Crypto",
+      "sort_order": 40
+    },
+    {
+      "name": "real_estate",
+      "display_label": "Real Estate",
+      "category": "Real Estate",
+      "sort_order": 50
+    },
+    {
+      "name": "insurance_policy",
+      "display_label": "Insurance Policy",
+      "category": "Other",
+      "sort_order": 60
+    },
+    {
+      "name": "cash",
+      "display_label": "Cash",
+      "category": "Other",
+      "sort_order": 61
+    }
+  ],
+  "expense_categories": [
+    {
+      "name": "Groceries",
+      "description": "Food and household items",
+      "icon": "🛒",
+      "color": "#4CAF50",
+      "is_income": false,
+      "keywords": "grocery,supermarket,walmart,target,costco,whole foods,trader joe,safeway,kroger,food,vegetables,fruits,meat,dairy"
+    },
+    {
+      "name": "Dining & Restaurants",
+      "description": "Eating out, restaurants, cafes",
+      "icon": "🍽️",
+      "color": "#FF9800",
+      "is_income": false,
+      "keywords": "restaurant,cafe,coffee,starbucks,mcdonald,burger,pizza,food delivery,uber eats,doordash,grubhub,zomato,swiggy,dining,eatery"
+    },
+    {
+      "name": "Transportation",
+      "description": "Fuel, public transport, ride-sharing",
+      "icon": "🚗",
+      "color": "#2196F3",
+      "is_income": false,
+      "keywords": "uber,lyft,taxi,cab,fuel,gas,petrol,diesel,metro,bus,train,parking,toll,transport,ola"
+    },
+    {
+      "name": "Utilities",
+      "description": "Electricity, water, gas, internet",
+      "icon": "💡",
+      "color": "#FFC107",
+      "is_income": false,
+      "keywords": "electricity,water,gas,internet,broadband,wifi,phone bill,mobile,utility,power,energy"
+    },
+    {
+      "name": "Rent & Mortgage",
+      "description": "Housing payments",
+      "icon": "🏠",
+      "color": "#9C27B0",
+      "is_income": false,
+      "keywords": "rent,mortgage,housing,lease,landlord,property,apartment"
+    },
+    {
+      "name": "Healthcare & Medical",
+      "description": "Doctor visits, medicines, insurance",
+      "icon": "⚕️",
+      "color": "#F44336",
+      "is_income": false,
+      "keywords": "doctor,hospital,clinic,pharmacy,medicine,medical,health,insurance,dental,prescription,lab test"
+    },
+    {
+      "name": "Entertainment",
+      "description": "Movies, games, hobbies",
+      "icon": "🎬",
+      "color": "#E91E63",
+      "is_income": false,
+      "keywords": "movie,cinema,netflix,spotify,amazon prime,disney,gaming,xbox,playstation,entertainment,concert,theater"
+    },
+    {
+      "name": "Shopping & Clothing",
+      "description": "Clothes, accessories, personal items",
+      "icon": "👕",
+      "color": "#673AB7",
+      "is_income": false,
+      "keywords": "clothing,clothes,fashion,shoes,accessories,mall,amazon,flipkart,myntra,shopping,apparel"
+    },
+    {
+      "name": "Education",
+      "description": "Tuition, books, courses",
+      "icon": "📚",
+      "color": "#3F51B5",
+      "is_income": false,
+      "keywords": "school,college,university,tuition,books,course,education,training,udemy,coursera,learning"
+    },
+    {
+      "name": "Fitness & Gym",
+      "description": "Gym membership, sports, fitness",
+      "icon": "💪",
+      "color": "#FF5722",
+      "is_income": false,
+      "keywords": "gym,fitness,yoga,sports,workout,exercise,trainer,membership,health club"
+    },
+    {
+      "name": "Travel & Vacation",
+      "description": "Hotels, flights, vacation expenses",
+      "icon": "✈️",
+      "color": "#00BCD4",
+      "is_income": false,
+      "keywords": "hotel,flight,airline,booking,airbnb,travel,vacation,trip,tourism,resort"
+    },
+    {
+      "name": "Insurance",
+      "description": "Life, health, car insurance",
+      "icon": "🛡️",
+      "color": "#607D8B",
+      "is_income": false,
+      "keywords": "insurance,premium,policy,life insurance,health insurance,car insurance"
+    },
+    {
+      "name": "Personal Care",
+      "description": "Salon, spa, grooming",
+      "icon": "💇",
+      "color": "#E91E63",
+      "is_income": false,
+      "keywords": "salon,spa,haircut,beauty,grooming,cosmetics,skincare,barber"
+    },
+    {
+      "name": "Subscriptions",
+      "description": "Monthly subscriptions and memberships",
+      "icon": "📱",
+      "color": "#9E9E9E",
+      "is_income": false,
+      "keywords": "subscription,membership,monthly,recurring,netflix,spotify,amazon prime,youtube premium"
+    },
+    {
+      "name": "Gifts & Donations",
+      "description": "Gifts, charity, donations",
+      "icon": "🎁",
+      "color": "#FF4081",
+      "is_income": false,
+      "keywords": "gift,donation,charity,present,contribution,ngo"
+    },
+    {
+      "name": "Pet Care",
+      "description": "Pet food, vet, supplies",
+      "icon": "🐾",
+      "color": "#795548",
+      "is_income": false,
+      "keywords": "pet,dog,cat,vet,veterinary,pet food,pet supplies,grooming"
+    },
+    {
+      "name": "Home Maintenance",
+      "description": "Repairs, cleaning, maintenance",
+      "icon": "🔧",
+      "color": "#607D8B",
+      "is_income": false,
+      "keywords": "repair,maintenance,plumber,electrician,cleaning,handyman,home improvement"
+    },
+    {
+      "name": "Taxes",
+      "description": "Income tax, property tax",
+      "icon": "📋",
+      "color": "#455A64",
+      "is_income": false,
+      "keywords": "tax,income tax,property tax,tds,gst,irs"
+    },
+    {
+      "name": "Salary & Income",
+      "description": "Salary, wages, income",
+      "icon": "💰",
+      "color": "#4CAF50",
+      "is_income": true,
+      "keywords": "salary,wage,income,payment,paycheck,earnings,compensation"
+    },
+    {
+      "name": "Investments & Returns",
+      "description": "Investment returns, dividends, interest",
+      "icon": "📈",
+      "color": "#009688",
+      "is_income": true,
+      "keywords": "dividend,interest,investment,returns,profit,capital gain,mutual fund"
+    }
+  ]
+}

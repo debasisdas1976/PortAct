@@ -35,7 +35,7 @@ import {
   Info as InfoIcon,
   Upload as UploadIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
+import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 
@@ -120,13 +120,7 @@ const MutualFundHoldings: React.FC = () => {
 
   const fetchMutualFunds = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get<MutualFundWithHoldings[]>(
-        'http://localhost:8000/api/v1/mutual-fund-holdings/',
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await api.get<MutualFundWithHoldings[]>('/mutual-fund-holdings/');
       setMutualFunds(response.data);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to fetch mutual funds'));
@@ -135,13 +129,7 @@ const MutualFundHoldings: React.FC = () => {
 
   const fetchDashboard = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get<HoldingsDashboard>(
-        'http://localhost:8000/api/v1/mutual-fund-holdings/dashboard/stocks',
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await api.get<HoldingsDashboard>('/mutual-fund-holdings/dashboard/stocks');
       setDashboard(response.data);
     } catch (err: any) {
       notify.error(err.response?.data?.detail || 'Failed to fetch dashboard');
@@ -151,14 +139,7 @@ const MutualFundHoldings: React.FC = () => {
   const fetchHoldingsForFund = async (assetId: number) => {
     setFetchingHoldings(assetId);
     try {
-      const token = localStorage.getItem('token');
-      await axios.post(
-        `http://localhost:8000/api/v1/mutual-fund-holdings/${assetId}/fetch?force_refresh=true`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      await api.post(`/mutual-fund-holdings/${assetId}/fetch?force_refresh=true`, {});
       await fetchMutualFunds();
       await fetchDashboard();
     } catch (err: any) {
@@ -178,20 +159,12 @@ const MutualFundHoldings: React.FC = () => {
   const uploadCSV = async (assetId: number, file: File) => {
     setUploadingFor(assetId);
     try {
-      const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('file', file);
 
-      await axios.post(
-        `http://localhost:8000/api/v1/mutual-fund-holdings/${assetId}/upload-csv`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
+      await api.post(`/mutual-fund-holdings/${assetId}/upload-csv`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
 
       await fetchMutualFunds();
       await fetchDashboard();
@@ -215,21 +188,13 @@ const MutualFundHoldings: React.FC = () => {
 
     setUploadingConsolidatedFile(true);
     try {
-      const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('file', file);
 
       // Step 1: Get preview of fund mappings
-      const response = await axios.post(
-        'http://localhost:8000/api/v1/mutual-fund-holdings/preview-consolidated-file',
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
+      const response = await api.post('/mutual-fund-holdings/preview-consolidated-file', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       
       // Show preview dialog for user to confirm mappings
       setFundMappingPreview(response.data);
@@ -248,30 +213,19 @@ const MutualFundHoldings: React.FC = () => {
 
     setConfirmingImport(true);
     try {
-      const token = localStorage.getItem('token');
-      
       // Prepare confirmed mappings - collect ALL matching asset IDs for each fund
       const confirmedMappings = fundMappingPreview.mappings
         .filter((m: any) => m.matched_asset_id !== null)
         .map((m: any) => ({
           fund_name_from_excel: m.fund_name_from_excel,
-          asset_ids: m.all_matched_asset_ids || [m.matched_asset_id],  // Use all matches if available
+          asset_ids: m.all_matched_asset_ids || [m.matched_asset_id],
         }));
 
       // Step 2: Confirm import with mappings
-      const response = await axios.post(
-        'http://localhost:8000/api/v1/mutual-fund-holdings/confirm-consolidated-import',
-        {
-          temp_file_id: fundMappingPreview.temp_file_id,
-          confirmed_mappings: confirmedMappings,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await api.post('/mutual-fund-holdings/confirm-consolidated-import', {
+        temp_file_id: fundMappingPreview.temp_file_id,
+        confirmed_mappings: confirmedMappings,
+      });
       
       // Close mapping dialog and show results
       setShowFundMappingDialog(false);

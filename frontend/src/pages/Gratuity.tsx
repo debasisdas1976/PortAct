@@ -105,14 +105,14 @@ const Gratuity: React.FC = () => {
 
   const handleOpenAdd = () => {
     setEditingId(null);
-    setForm({...emptyForm, portfolio_id: selectedPortfolioId || ''});
+    setForm({...emptyForm, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '')});
     setDialogOpen(true);
   };
 
   const handleOpenEdit = (account: GratuityAccount) => {
     setEditingId(account.id);
     setForm({
-      portfolio_id: (account as any).portfolio_id || selectedPortfolioId || '',
+      portfolio_id: (account as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
       nickname: account.nickname,
       employer_name: account.employer_name,
       employee_name: account.employee_name,
@@ -208,24 +208,24 @@ const Gratuity: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={3}>
-          <Card>
+        <Grid item xs={12} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Accounts</Typography>
               <Typography variant="h5">{summary?.total_accounts ?? 0}</Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
+        <Grid item xs={12} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Active Accounts</Typography>
               <Typography variant="h5">{summary?.active_accounts ?? 0}</Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={6}>
-          <Card>
+        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+          <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Gratuity Accrued</Typography>
               <Typography variant="h5" color="success.main">
@@ -342,7 +342,6 @@ const Gratuity: React.FC = () => {
               value={form.portfolio_id}
               onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
             >
-              <MenuItem value="">None</MenuItem>
               {portfolios.map((p: any) => (
                 <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
               ))}

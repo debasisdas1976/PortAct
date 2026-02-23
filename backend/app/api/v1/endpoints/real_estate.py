@@ -13,6 +13,10 @@ from loguru import logger
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user, get_default_portfolio_id
 from app.models.asset import Asset, AssetType
+from app.models.transaction import Transaction
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from app.models.user import User
 from app.schemas.real_estate import (
     RealEstateCreate,
@@ -261,5 +265,20 @@ async def delete_property(
     ).first()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
+
+    # Clear FK references that lack ON DELETE CASCADE/SET NULL in the DB
+    db.query(Alert).filter(Alert.asset_id == property_id).update(
+        {Alert.asset_id: None}, synchronize_session=False
+    )
+    db.query(AssetSnapshot).filter(AssetSnapshot.asset_id == property_id).update(
+        {AssetSnapshot.asset_id: None}, synchronize_session=False
+    )
+    db.query(MutualFundHolding).filter(MutualFundHolding.asset_id == property_id).delete(
+        synchronize_session=False
+    )
+    db.query(Transaction).filter(Transaction.asset_id == property_id).delete(
+        synchronize_session=False
+    )
+
     db.delete(asset)
     db.commit()

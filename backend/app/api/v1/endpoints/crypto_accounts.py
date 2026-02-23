@@ -3,11 +3,15 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
-from app.api.dependencies import get_current_active_user
+from app.api.dependencies import get_current_active_user, get_default_portfolio_id
 from app.models.user import User
 from app.models.crypto_account import CryptoAccount
 from app.models.crypto_exchange import CryptoExchangeMaster
 from app.models.asset import Asset, AssetType
+from app.models.transaction import Transaction
+from app.models.portfolio_snapshot import AssetSnapshot
+from app.models.alert import Alert
+from app.models.mutual_fund_holding import MutualFundHolding
 from app.schemas.crypto_account import (
     CryptoAccount as CryptoAccountSchema,
     CryptoAccountCreate,
@@ -23,6 +27,7 @@ router = APIRouter()
 async def get_crypto_accounts(
     exchange_name: Optional[str] = None,
     is_active: Optional[bool] = None,
+    portfolio_id: Optional[int] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     current_user: User = Depends(get_current_active_user),
@@ -32,10 +37,13 @@ async def get_crypto_accounts(
     Get all crypto accounts for the current user with optional filtering and asset statistics
     """
     query = db.query(CryptoAccount).filter(CryptoAccount.user_id == current_user.id)
-    
+
+    if portfolio_id is not None:
+        query = query.filter(CryptoAccount.portfolio_id == portfolio_id)
+
     if exchange_name:
         query = query.filter(CryptoAccount.exchange_name == exchange_name)
-    
+
     if is_active is not None:
         query = query.filter(CryptoAccount.is_active == is_active)
     
@@ -202,9 +210,15 @@ async def create_crypto_account(
             CryptoAccount.user_id == current_user.id,
             CryptoAccount.is_primary == True
         ).update({"is_primary": False})
-    
+
+    account_dict = account_data.model_dump()
+
+    # Auto-assign to default portfolio if not specified
+    if not account_dict.get('portfolio_id'):
+        account_dict['portfolio_id'] = get_default_portfolio_id(current_user.id, db)
+
     account = CryptoAccount(
-        **account_data.model_dump(),
+        **account_dict,
         user_id=current_user.id
     )
     
@@ -286,10 +300,34 @@ async def delete_crypto_account(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Crypto account not found"
         )
-    
+
+    # Get all asset IDs linked to this crypto account
+    asset_ids = [a.id for a in db.query(Asset.id).filter(
+        Asset.crypto_account_id == account.id
+    ).all()]
+
+    if asset_ids:
+        # Clear FK references that lack ON DELETE CASCADE
+        db.query(Alert).filter(Alert.asset_id.in_(asset_ids)).update(
+            {Alert.asset_id: None}, synchronize_session=False
+        )
+        db.query(AssetSnapshot).filter(AssetSnapshot.asset_id.in_(asset_ids)).update(
+            {AssetSnapshot.asset_id: None}, synchronize_session=False
+        )
+        db.query(MutualFundHolding).filter(MutualFundHolding.asset_id.in_(asset_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Transaction).filter(Transaction.asset_id.in_(asset_ids)).delete(
+            synchronize_session=False
+        )
+        # Delete the assets themselves
+        db.query(Asset).filter(Asset.crypto_account_id == account.id).delete(
+            synchronize_session=False
+        )
+
     db.delete(account)
     db.commit()
-    
+
     return None
 
 # Made with Bob
