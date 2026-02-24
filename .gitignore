@@ -110,6 +110,3 @@ Thumbs.db
 # Package manager
 package-lock.json.bak
 yarn.lock.bak
-
-# Super Admin page (dev-only, not shipped)
-frontend/src/pages/SuperAdmin.tsx
