@@ -440,7 +440,11 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
                 elif is_icici_direct_mf_format(data):
                     logger.info("Detected ICICI Direct Mutual Fund CSV format")
                     assets, transactions = parse_icici_direct_mf_csv(data, statement)
-                # Check if it's Groww format
+                # Check if it's Groww MF format
+                elif is_groww_mf_format(data):
+                    logger.info("Detected Groww MF Holdings format")
+                    assets, transactions = parse_groww_mf_holdings(data, statement)
+                # Check if it's Groww stock format
                 elif is_groww_format(data):
                     logger.info("Detected Groww Stock Holdings format")
                     assets, transactions = parse_groww_holdings(data, statement)
@@ -462,7 +466,12 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
                 for item in data:
                     sheet_name, df, account_info = item
                     logger.info(f"Processing sheet: {sheet_name}")
-                    if is_groww_format(df, account_info):
+                    if is_groww_mf_format(df, account_info):
+                        logger.info(f"Detected Groww MF format in sheet '{sheet_name}'")
+                        sheet_assets, sheet_transactions = parse_groww_mf_holdings(df, statement, account_info)
+                        assets.extend(sheet_assets)
+                        transactions.extend(sheet_transactions)
+                    elif is_groww_format(df, account_info):
                         logger.info(f"Detected Groww format in sheet '{sheet_name}'")
                         sheet_assets, sheet_transactions = parse_groww_holdings(df, statement, account_info)
                         assets.extend(sheet_assets)
@@ -482,6 +491,9 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
                     elif is_icici_direct_mf_format(df):
                         logger.info("Detected ICICI Direct Mutual Fund CSV format")
                         assets, transactions = parse_icici_direct_mf_csv(df, statement, account_info)
+                    elif is_groww_mf_format(df, account_info):
+                        logger.info("Detected Groww MF Holdings format")
+                        assets, transactions = parse_groww_mf_holdings(df, statement, account_info)
                     elif is_groww_format(df, account_info):
                         logger.info("Detected Groww Stock Holdings format")
                         assets, transactions = parse_groww_holdings(df, statement, account_info)
@@ -869,18 +881,29 @@ def parse_nsdl_cas_pdf(file_path: str, statement: Statement, password: str = Non
     return assets, transactions
 
 
-def _classify_mf_scheme(scheme_name: str) -> str:
-    """Classify a mutual fund scheme as equity, debt, or commodity based on its name."""
+def _classify_mf_scheme(scheme_name: str, category: str = '', sub_category: str = '') -> str:
+    """Classify a mutual fund scheme as equity, debt, or commodity based on its name.
+
+    When a structured category field is available (e.g. from Groww), it takes
+    precedence over keyword-based heuristics from the scheme name.
+    """
     upper = scheme_name.upper()
     # Gold/Silver ETFs and commodity funds
     if any(kw in upper for kw in ['GOLD', 'SILVER', 'COMMODITY']):
         return AssetType.COMMODITY.value
-    # Debt fund keywords
+    # Use structured category when available (Groww provides Equity/Debt/Hybrid)
+    if category:
+        upper_cat = category.upper()
+        if upper_cat == 'DEBT':
+            return AssetType.DEBT_MUTUAL_FUND.value
+        if upper_cat in ('EQUITY', 'HYBRID'):
+            return AssetType.EQUITY_MUTUAL_FUND.value
+    # Fallback: debt fund keywords from scheme name
     if any(kw in upper for kw in [
         'GILT', 'LIQUID', 'OVERNIGHT', 'MONEY MARKET', 'FLOATING RATE',
-        'SAVINGS', 'FLEXI DEBT', 'DYNAMIC BOND', 'DEBT', 'SHORT DURATION',
+        'FLEXI DEBT', 'DYNAMIC BOND', 'DEBT', 'SHORT DURATION',
         'MEDIUM DURATION', 'LONG DURATION', 'ULTRA SHORT', 'LOW DURATION',
-        'CORPORATE BOND', 'BANKING & PSU', 'CREDIT RISK',
+        'CORPORATE BOND', 'BANKING & PSU', 'CREDIT RISK', 'SHORT TERM DEBT',
     ]):
         return AssetType.DEBT_MUTUAL_FUND.value
     return AssetType.EQUITY_MUTUAL_FUND.value
@@ -1572,19 +1595,37 @@ def extract_account_info_from_excel(file_path: str) -> dict:
         # Read first few rows to extract account info
         df_header = pd.read_excel(file_path, sheet_name=0, header=None, nrows=20, engine='openpyxl')
 
-        # Check for Groww format first (specific structure)
+        # Check for Groww MF format (has "HOLDING SUMMARY" and "HOLDINGS AS ON")
+        is_groww_mf = False
+        is_groww_stock = False
+        for i in range(min(20, len(df_header))):
+            row_vals = [str(val).strip() for val in df_header.iloc[i].values if pd.notna(val)]
+            row_str = ' '.join(row_vals).lower()
+            if 'holding summary' in row_str or 'holdings as on' in row_str:
+                is_groww_mf = True
+            if 'unique client code' in row_str or 'holdings statement for stocks' in row_str:
+                is_groww_stock = True
+
+        if is_groww_mf:
+            account_info['broker_name'] = 'Groww'
+            account_info['is_groww_mf'] = True
+            for i in range(min(20, len(df_header))):
+                row_vals = [str(val).strip() for val in df_header.iloc[i].values if pd.notna(val)]
+                if len(row_vals) >= 2:
+                    label = row_vals[0].lower()
+                    value = row_vals[1]
+                    if label == 'name':
+                        account_info['account_holder_name'] = value
+                    elif label == 'pan':
+                        account_info['account_id'] = value
+            logger.info(f"Detected Groww MF statement. Account info: {account_info}")
+            return account_info
+
+        # Check for Groww stock format (specific structure)
         # Row 0: "Name" | <name>
         # Row 1: "Unique Client Code" | <code>
         # Row 3: "Holdings statement for stocks as on ..."
-        is_groww = False
-        for i in range(min(5, len(df_header))):
-            row_vals = [str(val).strip() for val in df_header.iloc[i].values if pd.notna(val)]
-            row_str = ' '.join(row_vals).lower()
-            if 'unique client code' in row_str or 'holdings statement for stocks' in row_str:
-                is_groww = True
-                break
-
-        if is_groww:
+        if is_groww_stock:
             account_info['broker_name'] = 'Groww'
             for i in range(min(5, len(df_header))):
                 row_vals = [str(val).strip() for val in df_header.iloc[i].values if pd.notna(val)]
@@ -1656,7 +1697,7 @@ def extract_text_from_excel(file_path: str):
                 header_row = None
                 for i in range(min(30, len(df_raw))):
                     row_values = df_raw.iloc[i].values
-                    if any(str(val).strip().lower() in ('symbol', 'stock name') for val in row_values if pd.notna(val)):
+                    if any(str(val).strip().lower() in ('symbol', 'stock name', 'scheme name') for val in row_values if pd.notna(val)):
                         header_row = i
                         break
 
@@ -1680,11 +1721,11 @@ def extract_text_from_excel(file_path: str):
         else:
             # Single sheet file - process as before
             df_raw = pd.read_excel(file_path, engine='openpyxl', header=None)
-            
+
             header_row = None
             for i in range(min(30, len(df_raw))):
                 row_values = df_raw.iloc[i].values
-                if any(str(val).strip().lower() in ('symbol', 'stock name') for val in row_values if pd.notna(val)):
+                if any(str(val).strip().lower() in ('symbol', 'stock name', 'scheme name') for val in row_values if pd.notna(val)):
                     header_row = i
                     break
 
@@ -2118,6 +2159,215 @@ def parse_groww_holdings(df: pd.DataFrame, statement: Statement, account_info: d
             continue
 
     logger.info(f"Parsed {len(assets)} assets and {len(transactions)} transactions from Groww")
+    return assets, transactions
+
+
+def is_groww_mf_format(df: pd.DataFrame, account_info: dict = None) -> bool:
+    """
+    Check if the DataFrame is in Groww MF holdings format.
+    Groww MF headers: Scheme Name, AMC, Category, Sub-category, Folio No.,
+                      Source, Units, Invested Value, Current Value, Returns, XIRR
+    """
+    try:
+        df_columns_lower = [str(col).lower().strip() for col in df.columns]
+        groww_mf_columns = ['scheme name', 'amc', 'folio no.', 'units', 'invested value', 'current value']
+        matches = sum(1 for col in groww_mf_columns if col in df_columns_lower)
+        if account_info and account_info.get('broker_name', '').lower() == 'groww':
+            return matches >= 3
+        return matches >= 4
+    except Exception:
+        return False
+
+
+def parse_groww_mf_holdings(df: pd.DataFrame, statement: Statement, account_info: dict = None) -> tuple:
+    """
+    Parse Groww MF holdings Excel file.
+    Columns: Scheme Name, AMC, Category, Sub-category, Folio No., Source,
+             Units, Invested Value, Current Value, Returns, XIRR
+
+    Uses the shared _classify_mf_scheme() for asset type classification and
+    relies on the central AMFI lookup in process_statement() for ISIN resolution.
+    """
+    assets = []
+    transactions = []
+
+    if account_info is None:
+        account_info = {}
+
+    logger.info("Parsing Groww MF Holdings")
+    logger.debug(f"Account Info: {account_info}")
+    logger.debug(f"DataFrame shape: {df.shape}")
+
+    # Clean column names
+    df.columns = df.columns.str.strip()
+
+    # Case-insensitive column lookup
+    col_map = {col.lower(): col for col in df.columns}
+
+    def get_col(name):
+        return col_map.get(name.lower())
+
+    scheme_name_col = get_col('Scheme Name')
+    amc_col = get_col('AMC')
+    category_col = get_col('Category')
+    sub_category_col = get_col('Sub-category') or get_col('Sub-Category') or get_col('Subcategory')
+    folio_col = get_col('Folio No.') or get_col('Folio No') or get_col('Folio')
+    source_col = get_col('Source')
+    units_col = get_col('Units')
+    invested_value_col = get_col('Invested Value')
+    current_value_col = get_col('Current Value')
+    returns_col = get_col('Returns')
+    xirr_col = get_col('XIRR')
+
+    if not scheme_name_col or not units_col:
+        logger.debug("Required columns not found in Groww MF statement")
+        return assets, transactions
+
+    logger.debug(f"Columns mapped: {list(df.columns)}")
+
+    for index, row in df.iterrows():
+        try:
+            scheme_name = row.get(scheme_name_col)
+            if pd.isna(scheme_name) or not str(scheme_name).strip():
+                continue
+
+            scheme_name = str(scheme_name).strip()
+
+            # Skip summary/header rows
+            if scheme_name.lower() in ['scheme name', 'total', 'grand total', '']:
+                continue
+
+            # Parse units
+            units = row.get(units_col)
+            if pd.isna(units):
+                continue
+            units = float(str(units).replace(',', ''))
+            if units <= 0:
+                continue
+
+            # Parse invested value
+            invested_value = 0.0
+            if invested_value_col:
+                val = row.get(invested_value_col)
+                if pd.notna(val):
+                    invested_value = float(str(val).replace(',', ''))
+
+            # Parse current value
+            current_value = 0.0
+            if current_value_col:
+                val = row.get(current_value_col)
+                if pd.notna(val):
+                    current_value = float(str(val).replace(',', ''))
+
+            # Calculate prices
+            avg_cost = invested_value / units if units > 0 else 0.0
+            current_nav = current_value / units if units > 0 else 0.0
+
+            # Parse returns
+            returns = 0.0
+            if returns_col:
+                val = row.get(returns_col)
+                if pd.notna(val):
+                    returns = float(str(val).replace(',', ''))
+
+            # Parse XIRR
+            xirr_value = None
+            if xirr_col:
+                val = row.get(xirr_col)
+                if pd.notna(val):
+                    xirr_str = str(val).replace('%', '').strip()
+                    try:
+                        xirr_value = float(xirr_str)
+                    except ValueError:
+                        pass
+
+            # Get category info
+            category = ''
+            if category_col:
+                val = row.get(category_col)
+                if pd.notna(val):
+                    category = str(val).strip()
+
+            sub_category = ''
+            if sub_category_col:
+                val = row.get(sub_category_col)
+                if pd.notna(val):
+                    sub_category = str(val).strip()
+
+            # Get AMC
+            amc = ''
+            if amc_col:
+                val = row.get(amc_col)
+                if pd.notna(val):
+                    amc = str(val).strip()
+
+            # Get folio number
+            folio_no = ''
+            if folio_col:
+                val = row.get(folio_col)
+                if pd.notna(val):
+                    folio_no = str(val).strip()
+
+            # Get source
+            source = ''
+            if source_col:
+                val = row.get(source_col)
+                if pd.notna(val):
+                    source = str(val).strip()
+
+            # Classify using the shared function (with Groww's category field)
+            asset_type = _classify_mf_scheme(scheme_name, category, sub_category)
+
+            logger.debug(
+                f"Processing MF: {scheme_name[:40]} - {units} units, "
+                f"invested={invested_value}, current={current_value}, type={asset_type}"
+            )
+
+            asset_data = {
+                'asset_type': asset_type,
+                'name': scheme_name[:100],
+                'symbol': scheme_name[:50],
+                'quantity': units,
+                'purchase_price': avg_cost,
+                'current_price': current_nav,
+                'total_invested': invested_value,
+                'current_value': current_value,
+                'account_id': account_info.get('account_id', f'GROWW_MF_{statement.user_id}'),
+                'broker_name': 'Groww',
+                'account_holder_name': account_info.get('account_holder_name'),
+                'statement_id': statement.id,
+                'details': {
+                    'source': 'groww_mf_import',
+                    'broker': 'groww',
+                    'amc': amc,
+                    'category': category,
+                    'sub_category': sub_category,
+                    'folio_no': folio_no,
+                    'holding_source': source,
+                    'xirr': xirr_value,
+                    'returns': returns,
+                    'import_date': datetime.utcnow().isoformat()
+                }
+            }
+            assets.append(asset_data)
+
+            # Create a buy transaction record
+            transaction_data = {
+                'asset_symbol': scheme_name[:50],
+                'transaction_type': TransactionType.BUY,
+                'transaction_date': statement.uploaded_at,
+                'quantity': units,
+                'price_per_unit': avg_cost,
+                'total_amount': invested_value,
+                'description': f'Imported from Groww MF holdings - {statement.filename}'
+            }
+            transactions.append(transaction_data)
+
+        except Exception as e:
+            logger.debug(f"Error processing MF row {index}: {str(e)}", exc_info=True)
+            continue
+
+    logger.info(f"Parsed {len(assets)} mutual funds and {len(transactions)} transactions from Groww MF")
     return assets, transactions
 
 

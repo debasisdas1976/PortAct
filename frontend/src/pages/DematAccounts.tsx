@@ -38,6 +38,7 @@ import api, { brokersAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import CompanyIcon from '../components/CompanyIcon';
+import UnmatchedMFDialog from '../components/UnmatchedMFDialog';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
 interface DematAccount {
@@ -85,6 +86,8 @@ const DematAccounts: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
+  const [unmatchedDialogOpen, setUnmatchedDialogOpen] = useState(false);
+  const [unmatchedStatementId, setUnmatchedStatementId] = useState<number | null>(null);
 
   const statementTypes = [
     { value: 'broker_statement', label: 'Broker Statement' },
@@ -223,7 +226,7 @@ const DematAccounts: React.FC = () => {
         formData.append('portfolio_id', String(uploadPortfolioId));
       }
 
-      await api.post('/statements/upload', formData, {
+      const response = await api.post('/statements/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -234,8 +237,14 @@ const DematAccounts: React.FC = () => {
       setUploadBroker('');
       setStatementType('broker_statement');
       setPassword('');
-      notify.success('Statement uploaded and processed successfully');
+      notify.success(response.data?.message || 'Statement uploaded and processed successfully');
       fetchAccounts();
+
+      // Check for unmatched mutual funds
+      if (response.data?.unmatched_mf_count > 0) {
+        setUnmatchedStatementId(response.data.statement_id);
+        setUnmatchedDialogOpen(true);
+      }
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to upload statement'));
     } finally {
@@ -669,6 +678,19 @@ const DematAccounts: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Unmatched MF Resolution Dialog */}
+      {unmatchedStatementId && (
+        <UnmatchedMFDialog
+          open={unmatchedDialogOpen}
+          onClose={() => setUnmatchedDialogOpen(false)}
+          onResolved={() => {
+            setUnmatchedDialogOpen(false);
+            fetchAccounts();
+          }}
+          statementId={unmatchedStatementId}
+        />
+      )}
     </Box>
   );
 };

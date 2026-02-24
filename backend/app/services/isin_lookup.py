@@ -107,10 +107,26 @@ def lookup_isin_for_asset(asset_type: str, symbol: str, name: str) -> Optional[T
 
     # ISIN is only for Indian Mutual Funds
     elif asset_type_lower in ['equity_mutual_fund', 'debt_mutual_fund']:
-        # Try with symbol first, then name
+        # Step 1: Try exact substring match (fast, high confidence)
         isin, exact_name = get_isin_from_amfi(symbol)
         if not isin:
             isin, exact_name = get_isin_from_amfi(name)
+
+        # Step 2: Fuzzy match fallback — broker naming often differs from AMFI
+        # (e.g. Groww "...Direct Growth" vs AMFI "...Direct Plan - Growth")
+        if not isin:
+            try:
+                from app.services.amfi_fuzzy_match import fuzzy_search_amfi
+                results = fuzzy_search_amfi(name, top_n=1)
+                if results and results[0]['score'] >= 0.80:
+                    isin = results[0]['isin']
+                    exact_name = results[0]['scheme_name']
+                    logger.info(
+                        f"Fuzzy-matched ISIN for '{name[:50]}': "
+                        f"{isin} ({exact_name[:50]}) score={results[0]['score']}"
+                    )
+            except Exception as e:
+                logger.debug(f"Fuzzy AMFI match failed for '{name[:50]}': {e}")
 
         if isin:
             # Extract base fund name for api_symbol (before first hyphen)

@@ -56,6 +56,7 @@ import {
   FolderSpecial as PortfoliosIcon,
   Description as DescriptionIcon,
   ViewList as ViewListIcon,
+  Insights as InsightsIcon,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { logout } from '../store/slices/authSlice';
@@ -179,6 +180,10 @@ const assetOverviewItem: NavItem = {
   path: '/assets',
 };
 
+const insightsItems: NavItem[] = [
+  { text: 'MF Holdings', icon: <InsightsIcon />, path: '/mutual-fund-holdings' },
+];
+
 const expenseItems: NavItem[] = [
   { text: 'Expense Dashboard', icon: <BarChartIcon />, path: '/expense-dashboard' },
   { text: 'Expenses', icon: <ReceiptIcon />, path: '/expenses' },
@@ -207,6 +212,7 @@ const allNavItems: NavItem[] = [
   ...overviewItems,
   assetOverviewItem,
   ...assetGroups.flatMap((g) => g.items),
+  ...insightsItems,
   ...expenseItems,
   ...masterDataItems,
   ...adminItems,
@@ -322,6 +328,19 @@ const Layout: React.FC = () => {
         }
       >
         {overviewItems.map((item) => renderNavItem(item))}
+      </List>
+
+      <Divider />
+
+      {/* ── Insights ── */}
+      <List
+        subheader={
+          <ListItem sx={{ py: 0.5 }}>
+            <ListItemText primary="Insights" primaryTypographyProps={sectionHeaderSx} />
+          </ListItem>
+        }
+      >
+        {insightsItems.map((item) => renderNavItem(item))}
       </List>
 
       <Divider />
