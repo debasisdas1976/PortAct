@@ -61,6 +61,8 @@ import {
 import { AppDispatch, RootState } from '../store';
 import { logout } from '../store/slices/authSlice';
 import PortfolioSelector from './PortfolioSelector';
+import ProductTour from './ProductTour';
+import UpdateNotification from './UpdateNotification';
 
 const drawerWidth = 240;
 
@@ -327,7 +329,17 @@ const Layout: React.FC = () => {
           </ListItem>
         }
       >
-        {overviewItems.map((item) => renderNavItem(item))}
+        {overviewItems.map((item) => (
+          <Box
+            key={item.path}
+            data-tour={
+              item.path === '/dashboard' ? 'dashboard' :
+              item.path === '/statements' ? 'statements' : undefined
+            }
+          >
+            {renderNavItem(item)}
+          </Box>
+        ))}
       </List>
 
       <Divider />
@@ -348,7 +360,7 @@ const Layout: React.FC = () => {
       {/* ── Assets ── */}
       <List
         subheader={
-          <ListItem sx={{ py: 0.5 }}>
+          <ListItem sx={{ py: 0.5 }} data-tour="sidebar-assets">
             <ListItemText primary="Assets" primaryTypographyProps={sectionHeaderSx} />
           </ListItem>
         }
@@ -399,7 +411,11 @@ const Layout: React.FC = () => {
           </ListItem>
         }
       >
-        {adminItems.map((item) => renderNavItem(item))}
+        {adminItems.map((item) => (
+          <Box key={item.path} data-tour={item.path === '/settings' ? 'settings' : undefined}>
+            {renderNavItem(item)}
+          </Box>
+        ))}
       </List>
 
       <Divider />
@@ -419,7 +435,11 @@ const Layout: React.FC = () => {
 
       {/* ── Help ── */}
       <List>
-        {helpItems.map((item) => renderNavItem(item))}
+        {helpItems.map((item) => (
+          <Box key={item.path} data-tour="help">
+            {renderNavItem(item)}
+          </Box>
+        ))}
       </List>
     </Box>
   );
@@ -446,7 +466,9 @@ const Layout: React.FC = () => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {allNavItems.find((item) => item.path === location.pathname)?.text || 'PortAct'}
           </Typography>
-          <PortfolioSelector />
+          <Box data-tour="portfolio-selector">
+            <PortfolioSelector />
+          </Box>
           <IconButton
             size="large"
             edge="end"
@@ -513,7 +535,9 @@ const Layout: React.FC = () => {
           minWidth: 0,
         }}
       >
+        <UpdateNotification />
         <Outlet />
+        <ProductTour />
       </Box>
     </Box>
   );

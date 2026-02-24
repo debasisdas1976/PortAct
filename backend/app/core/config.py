@@ -1,6 +1,19 @@
+from pathlib import Path
 from typing import List, Optional, Union
 from pydantic_settings import BaseSettings
 from pydantic import AnyHttpUrl, field_validator
+
+
+def _read_version() -> str:
+    """Read version from the VERSION file at the project root.
+    Falls back to '0.0.0' if the file is missing."""
+    for candidate in [
+        Path(__file__).resolve().parents[3] / "VERSION",
+        Path("/app/VERSION"),
+    ]:
+        if candidate.is_file():
+            return candidate.read_text().strip()
+    return "0.0.0"
 
 
 class Settings(BaseSettings):
@@ -8,7 +21,7 @@ class Settings(BaseSettings):
 
     # Application
     APP_NAME: str = "PortAct"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = _read_version()
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
 

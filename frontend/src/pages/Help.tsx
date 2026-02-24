@@ -19,6 +19,7 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  Button,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -36,9 +37,13 @@ import {
   Lightbulb as TipsIcon,
   HelpOutline as FAQIcon,
   CheckCircle as CheckIcon,
+  Replay as ReplayIcon,
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
+import { TOUR_STORAGE_KEY } from '../components/ProductTour';
 
 const Help: React.FC = () => {
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState<string | false>('getting-started');
 
   const handleChange = (panel: string) => (_event: React.SyntheticEvent, isExpanded: boolean) => {
@@ -52,10 +57,24 @@ const Help: React.FC = () => {
       <Typography variant="h4" gutterBottom>
         Help & User Guide
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
         Welcome to PortAct — your personal portfolio tracker. This guide covers all features
         of the application to help you get the most out of it.
       </Typography>
+      <Button
+        variant="outlined"
+        startIcon={<ReplayIcon />}
+        onClick={() => {
+          localStorage.removeItem(TOUR_STORAGE_KEY);
+          navigate('/dashboard');
+          // Small delay so Layout re-renders and ProductTour sees the cleared key
+          setTimeout(() => window.location.reload(), 100);
+        }}
+        sx={{ mb: 3 }}
+        size="small"
+      >
+        Restart Product Tour
+      </Button>
 
       {/* ─── Section 1: Getting Started ─── */}
       <Accordion expanded={expanded === 'getting-started'} onChange={handleChange('getting-started')} sx={sectionSx}>

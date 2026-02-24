@@ -49,6 +49,7 @@ import { RootState } from '../store';
 import api, { brokersAPI, banksAPI, cryptoExchangesAPI, institutionsAPI, statementsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import UnmatchedMFDialog from '../components/UnmatchedMFDialog';
+import SupportedInstitutionsSection from '../components/SupportedInstitutionsSection';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 
@@ -472,6 +473,9 @@ const Statements: React.FC = () => {
 
   return (
     <Box>
+      {/* ========== Supported Institutions ========== */}
+      <SupportedInstitutionsSection />
+
       {/* Page header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">Accounts & Statements</Typography>

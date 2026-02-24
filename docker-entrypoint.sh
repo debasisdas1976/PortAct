@@ -15,8 +15,10 @@ PG_PASS="${POSTGRES_PASSWORD:-portact_password}"
 PG_DB="${POSTGRES_DB:-portact_db}"
 DATABASE_URL="postgresql://${PG_USER}:${PG_PASS}@localhost:5432/${PG_DB}"
 
+VERSION=$(cat /app/VERSION 2>/dev/null || echo "unknown")
+
 echo "──────────────────────────────────────────────"
-echo "  PortAct – Starting All-in-One Container"
+echo "  PortAct v${VERSION} – Starting All-in-One Container"
 echo "──────────────────────────────────────────────"
 
 # ── 1. Initialise PostgreSQL data directory if empty ─────────────────────────
@@ -69,7 +71,6 @@ SECRET_KEY="${SECRET_KEY:-$(python3 -c 'import secrets; print(secrets.token_urls
 
 cat > /app/backend/.env <<ENVEOF
 APP_NAME=PortAct
-APP_VERSION=1.0.0
 DEBUG=False
 ENVIRONMENT=production
 HOST=0.0.0.0

@@ -9,7 +9,7 @@
 
 # ── Stage 1: Build the React frontend ────────────────────────────────────────
 
-FROM node:18-alpine AS frontend-build
+FROM node:20-alpine AS frontend-build
 WORKDIR /app
 
 COPY frontend/package*.json ./
@@ -58,6 +58,9 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # Copy backend source code
 COPY backend/ ./
+
+# Copy version file
+COPY VERSION /app/VERSION
 
 # Create required directories
 RUN mkdir -p /app/backend/uploads /app/backend/logs /var/log/supervisor

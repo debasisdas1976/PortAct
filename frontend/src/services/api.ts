@@ -434,6 +434,14 @@ export const settingsAPI = {
   },
 };
 
+// System API (version check)
+export const systemAPI = {
+  checkUpdate: async () => {
+    const response = await api.get('/system/check-update');
+    return response.data;
+  },
+};
+
 export default api;
 
 // Made with Bob
