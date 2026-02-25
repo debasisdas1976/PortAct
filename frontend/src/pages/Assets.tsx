@@ -175,7 +175,7 @@ const Assets: React.FC = () => {
       notify.success('Snapshot created successfully!');
 
       // Refresh assets after snapshot
-      dispatch(fetchAssets());
+      dispatch(fetchAssets(selectedPortfolioId));
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to take snapshot'));
     } finally {
@@ -372,7 +372,7 @@ const Assets: React.FC = () => {
       await Promise.all(updatePromises);
 
       // Refresh assets
-      await dispatch(fetchAssets());
+      await dispatch(fetchAssets(selectedPortfolioId));
 
       notify.success(`Successfully reclassified ${selectedAsset.symbol} as ${getAssetTypeLabel(newType)}`);
     } catch (err) {
@@ -387,7 +387,7 @@ const Assets: React.FC = () => {
       setUpdatingAssetId(assetId);
       const response = await api.post(`/assets/${assetId}/update-price`, {});
 
-      await dispatch(fetchAssets());
+      await dispatch(fetchAssets(selectedPortfolioId));
 
       // Check if the price update actually succeeded by inspecting the response
       if (response.data?.price_update_failed) {

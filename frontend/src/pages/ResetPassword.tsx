@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link as RouterLink, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Container,
   Box,
   Paper,
   TextField,
@@ -15,6 +14,7 @@ import {
 } from '@mui/material';
 import { Visibility, VisibilityOff, CheckCircle } from '@mui/icons-material';
 import { authAPI } from '../services/api';
+import AuthLayout from '../components/AuthLayout';
 
 const ResetPassword: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -60,150 +60,168 @@ const ResetPassword: React.FC = () => {
 
   if (!token) {
     return (
-      <Container component="main" maxWidth="xs">
-        <Box sx={{ marginTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-            <Typography component="h1" variant="h4" align="center" gutterBottom>
-              PortAct
-            </Typography>
-            <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
-              No reset token found in the URL. Please request a new password reset link.
-            </Alert>
-            <Button
-              fullWidth
-              variant="contained"
-              component={RouterLink}
-              to="/forgot-password"
-            >
-              Request New Link
-            </Button>
-          </Paper>
-        </Box>
-      </Container>
+      <AuthLayout>
+        <Paper
+          elevation={0}
+          sx={{
+            p: 4,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Typography component="h1" variant="h5" sx={{ fontWeight: 600, mb: 2 }}>
+            Reset Password
+          </Typography>
+          <Alert severity="error" sx={{ mb: 3 }}>
+            No reset token found in the URL. Please request a new password reset link.
+          </Alert>
+          <Button
+            fullWidth
+            variant="contained"
+            component={RouterLink}
+            to="/forgot-password"
+            size="large"
+            sx={{ py: 1.5, fontSize: '1rem', borderRadius: 2 }}
+          >
+            Request New Link
+          </Button>
+        </Paper>
+      </AuthLayout>
     );
   }
 
   return (
-    <Container component="main" maxWidth="xs">
-      <Box
+    <AuthLayout>
+      <Paper
+        elevation={0}
         sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
+          p: 4,
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography component="h1" variant="h4" align="center" gutterBottom>
-            PortAct
-          </Typography>
-          <Typography component="h2" variant="h6" align="center" color="text.secondary" gutterBottom>
-            Set New Password
-          </Typography>
+        <Typography component="h1" variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
+          Set new password
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Choose a strong password for your account
+        </Typography>
 
-          {error && (
-            <Alert severity="error" sx={{ mt: 2, mb: 1 }}>
-              {error}
-              {error.includes('expired') && (
-                <>
-                  {' '}
-                  <Link component={RouterLink} to="/forgot-password">
-                    Request a new one
-                  </Link>
-                  .
-                </>
-              )}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+            {error.includes('expired') && (
+              <>
+                {' '}
+                <Link component={RouterLink} to="/forgot-password">
+                  Request a new one
+                </Link>
+                .
+              </>
+            )}
+          </Alert>
+        )}
+
+        {success ? (
+          <>
+            <Alert
+              icon={<CheckCircle fontSize="inherit" />}
+              severity="success"
+              sx={{ mb: 3 }}
+            >
+              Your password has been updated successfully.
             </Alert>
-          )}
+            <Button
+              fullWidth
+              variant="contained"
+              size="large"
+              onClick={() => navigate('/login')}
+              sx={{ py: 1.5, fontSize: '1rem', borderRadius: 2 }}
+            >
+              Go to Sign In
+            </Button>
+          </>
+        ) : (
+          <Box component="form" onSubmit={handleSubmit}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="newPassword"
+              label="New Password"
+              type={showNew ? 'text' : 'password'}
+              autoComplete="new-password"
+              autoFocus
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              disabled={loading}
+              error={tooShort}
+              helperText={tooShort ? 'Password must be at least 8 characters' : ''}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowNew((v) => !v)} edge="end">
+                      {showNew ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
 
-          {success ? (
-            <>
-              <Alert
-                icon={<CheckCircle fontSize="inherit" />}
-                severity="success"
-                sx={{ mt: 2, mb: 3 }}
-              >
-                Your password has been updated successfully.
-              </Alert>
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={() => navigate('/login')}
-              >
-                Go to Sign In
-              </Button>
-            </>
-          ) : (
-            <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="newPassword"
-                label="New Password"
-                type={showNew ? 'text' : 'password'}
-                autoComplete="new-password"
-                autoFocus
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                disabled={loading}
-                error={tooShort}
-                helperText={tooShort ? 'Password must be at least 8 characters' : ''}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton onClick={() => setShowNew((v) => !v)} edge="end">
-                        {showNew ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="confirmPassword"
+              label="Confirm Password"
+              type={showConfirm ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
+              error={passwordMismatch}
+              helperText={passwordMismatch ? 'Passwords do not match' : ''}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowConfirm((v) => !v)} edge="end">
+                      {showConfirm ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
 
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="confirmPassword"
-                label="Confirm Password"
-                type={showConfirm ? 'text' : 'password'}
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={loading}
-                error={passwordMismatch}
-                helperText={passwordMismatch ? 'Passwords do not match' : ''}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton onClick={() => setShowConfirm((v) => !v)} edge="end">
-                        {showConfirm ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                sx={{ mt: 3, mb: 2 }}
-                disabled={!canSubmit}
-              >
-                {loading ? <CircularProgress size={24} /> : 'Update Password'}
-              </Button>
-            </Box>
-          )}
-
-          <Box sx={{ textAlign: 'center', mt: 1 }}>
-            <Link component={RouterLink} to="/login" variant="body2">
-              Back to Sign In
-            </Link>
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              size="large"
+              sx={{
+                mt: 3,
+                mb: 2,
+                py: 1.5,
+                fontSize: '1rem',
+                borderRadius: 2,
+              }}
+              disabled={!canSubmit}
+            >
+              {loading ? <CircularProgress size={24} /> : 'Update Password'}
+            </Button>
           </Box>
-        </Paper>
-      </Box>
-    </Container>
+        )}
+
+        <Box sx={{ textAlign: 'center', mt: 1 }}>
+          <Link component={RouterLink} to="/login" variant="body2">
+            Back to Sign In
+          </Link>
+        </Box>
+      </Paper>
+    </AuthLayout>
   );
 };
 

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  Container,
   Box,
   Paper,
   TextField,
@@ -14,21 +13,22 @@ import {
 } from '@mui/material';
 import { AppDispatch, RootState } from '../store';
 import { login } from '../store/slices/authSlice';
+import AuthLayout from '../components/AuthLayout';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
   const { isAuthenticated, loading, error } = useSelector((state: RootState) => state.auth);
-  
+
   const [formData, setFormData] = useState({
     username: '',
     password: '',
   });
-  
+
   // Keep error in local state to prevent it from disappearing
   const [localError, setLocalError] = useState<string | null>(null);
-  
+
   // Get session timeout message from navigation state or query params
   const sessionMessage = (location.state as any)?.message ||
     (new URLSearchParams(location.search).get('session_expired') === 'true'
@@ -41,7 +41,7 @@ const Login: React.FC = () => {
       navigate('/dashboard');
     }
   }, [isAuthenticated, navigate]);
-  
+
   // Update local error when Redux error changes
   useEffect(() => {
     if (error) {
@@ -63,83 +63,92 @@ const Login: React.FC = () => {
   };
 
   return (
-    <Container component="main" maxWidth="xs">
-      <Box
+    <AuthLayout>
+      <Paper
+        elevation={0}
         sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
+          p: 4,
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography component="h1" variant="h4" align="center" gutterBottom>
-            PortAct
-          </Typography>
-          <Typography component="h2" variant="h6" align="center" color="text.secondary" gutterBottom>
-            Sign in to your account
-          </Typography>
-          
-          {sessionMessage && (
-            <Alert severity="warning" sx={{ mt: 2, mb: 2 }}>
-              {sessionMessage}
-            </Alert>
-          )}
-          
-          {localError && (
-            <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
-              {localError}
-            </Alert>
-          )}
-          
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="username"
-              label="Username or Email"
-              name="username"
-              autoComplete="username"
-              autoFocus
-              value={formData.username}
-              onChange={handleChange}
-              disabled={loading}
-            />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="password"
-              label="Password"
-              type="password"
-              id="password"
-              autoComplete="current-password"
-              value={formData.password}
-              onChange={handleChange}
-              disabled={loading}
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} /> : 'Sign In'}
-            </Button>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Link component={RouterLink} to="/forgot-password" variant="body2">
-                Forgot password?
-              </Link>
-              <Link component={RouterLink} to="/register" variant="body2">
-                Don't have an account? Sign Up
-              </Link>
-            </Box>
+        <Typography component="h1" variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
+          Welcome back
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Sign in to your account to continue
+        </Typography>
+
+        {sessionMessage && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {sessionMessage}
+          </Alert>
+        )}
+
+        {localError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {localError}
+          </Alert>
+        )}
+
+        <Box component="form" onSubmit={handleSubmit}>
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="username"
+            label="Username or Email"
+            name="username"
+            autoComplete="username"
+            autoFocus
+            value={formData.username}
+            onChange={handleChange}
+            disabled={loading}
+            size="medium"
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="password"
+            label="Password"
+            type="password"
+            id="password"
+            autoComplete="current-password"
+            value={formData.password}
+            onChange={handleChange}
+            disabled={loading}
+            size="medium"
+          />
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            size="large"
+            sx={{
+              mt: 3,
+              mb: 2,
+              py: 1.5,
+              fontSize: '1rem',
+              borderRadius: 2,
+            }}
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={24} /> : 'Sign In'}
+          </Button>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Link component={RouterLink} to="/forgot-password" variant="body2">
+              Forgot password?
+            </Link>
+            <Link component={RouterLink} to="/register" variant="body2">
+              Don't have an account? Sign Up
+            </Link>
           </Box>
-        </Paper>
-      </Box>
-    </Container>
+        </Box>
+      </Paper>
+    </AuthLayout>
   );
 };
 

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
-  Container,
   Box,
   Paper,
   TextField,
@@ -13,6 +12,7 @@ import {
 } from '@mui/material';
 import { LockReset } from '@mui/icons-material';
 import { authAPI } from '../services/api';
+import AuthLayout from '../components/AuthLayout';
 
 const ForgotPassword: React.FC = () => {
   const navigate = useNavigate();
@@ -53,97 +53,105 @@ const ForgotPassword: React.FC = () => {
   };
 
   return (
-    <Container component="main" maxWidth="xs">
-      <Box
+    <AuthLayout>
+      <Paper
+        elevation={0}
         sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
+          p: 4,
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography component="h1" variant="h4" align="center" gutterBottom>
-            PortAct
-          </Typography>
-          <Typography component="h2" variant="h6" align="center" color="text.secondary" gutterBottom>
-            Forgot Password
-          </Typography>
+        <Typography component="h1" variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
+          Forgot password
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          We'll help you get back into your account
+        </Typography>
 
-          {error && (
-            <Alert severity="error" sx={{ mt: 2, mb: 1 }}>
-              {error}
-            </Alert>
-          )}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
 
-          {!submitted ? (
-            <>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-                Enter the email address associated with your account and we'll generate a
-                reset link for you.
-              </Typography>
+        {!submitted ? (
+          <>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Enter the email address associated with your account and we'll generate a
+              reset link for you.
+            </Typography>
 
-              <Box component="form" onSubmit={handleSubmit}>
-                <TextField
-                  margin="normal"
-                  required
-                  fullWidth
-                  id="email"
-                  label="Email Address"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  autoFocus
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading}
-                />
-                <Button
-                  type="submit"
-                  fullWidth
-                  variant="contained"
-                  sx={{ mt: 3, mb: 2 }}
-                  disabled={loading || !email}
-                >
-                  {loading ? <CircularProgress size={24} /> : 'Generate Reset Link'}
-                </Button>
-              </Box>
-            </>
-          ) : resetToken ? (
-            <>
-              <Alert severity="success" sx={{ mt: 2, mb: 2 }}>
-                Reset link generated. Click the button below to set a new password.
-                This link is valid for <strong>{expiresInMinutes} minutes</strong>.
-              </Alert>
+            <Box component="form" onSubmit={handleSubmit}>
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                id="email"
+                label="Email Address"
+                name="email"
+                type="email"
+                autoComplete="email"
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+              />
               <Button
+                type="submit"
                 fullWidth
                 variant="contained"
-                startIcon={<LockReset />}
-                onClick={handleResetNavigation}
-                sx={{ mb: 2 }}
+                size="large"
+                sx={{
+                  mt: 3,
+                  mb: 2,
+                  py: 1.5,
+                  fontSize: '1rem',
+                  borderRadius: 2,
+                }}
+                disabled={loading || !email}
               >
-                Reset My Password
+                {loading ? <CircularProgress size={24} /> : 'Generate Reset Link'}
               </Button>
-            </>
-          ) : (
-            <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
-              No account is associated with <strong>{email}</strong>. Please check the
-              address or{' '}
-              <Link component={RouterLink} to="/register">
-                create an account
-              </Link>
-              .
+            </Box>
+          </>
+        ) : resetToken ? (
+          <>
+            <Alert severity="success" sx={{ mb: 3 }}>
+              Reset link generated. Click the button below to set a new password.
+              This link is valid for <strong>{expiresInMinutes} minutes</strong>.
             </Alert>
-          )}
-
-          <Box sx={{ textAlign: 'center', mt: 1 }}>
-            <Link component={RouterLink} to="/login" variant="body2">
-              Back to Sign In
+            <Button
+              fullWidth
+              variant="contained"
+              size="large"
+              startIcon={<LockReset />}
+              onClick={handleResetNavigation}
+              sx={{ mb: 2, py: 1.5, fontSize: '1rem', borderRadius: 2 }}
+            >
+              Reset My Password
+            </Button>
+          </>
+        ) : (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            No account is associated with <strong>{email}</strong>. Please check the
+            address or{' '}
+            <Link component={RouterLink} to="/register">
+              create an account
             </Link>
-          </Box>
-        </Paper>
-      </Box>
-    </Container>
+            .
+          </Alert>
+        )}
+
+        <Box sx={{ textAlign: 'center', mt: 1 }}>
+          <Link component={RouterLink} to="/login" variant="body2">
+            Back to Sign In
+          </Link>
+        </Box>
+      </Paper>
+    </AuthLayout>
   );
 };
 

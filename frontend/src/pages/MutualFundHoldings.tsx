@@ -17,10 +17,6 @@ import {
   Card,
   CardContent,
   Grid,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Tooltip,
   IconButton,
   Dialog,
   DialogTitle,
@@ -38,8 +34,6 @@ import {
   StepContent,
 } from '@mui/material';
 import {
-  ExpandMore as ExpandMoreIcon,
-  Refresh as RefreshIcon,
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   Info as InfoIcon,
@@ -51,33 +45,6 @@ import {
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
-
-interface MutualFundHolding {
-  id: number;
-  stock_name: string;
-  stock_symbol: string | null;
-  isin: string | null;
-  holding_percentage: number;
-  holding_value: number;
-  quantity_held: number;
-  stock_current_price: number;
-  sector: string | null;
-  industry: string | null;
-  market_cap: string | null;
-}
-
-interface MutualFundWithHoldings {
-  asset_id: number;
-  fund_name: string;
-  fund_symbol: string | null;
-  isin: string | null;
-  units_held: number;
-  current_nav: number;
-  total_value: number;
-  holdings: MutualFundHolding[];
-  holdings_count: number;
-  last_updated: string | null;
-}
 
 interface HoldingsDashboardStock {
   stock_name: string;
@@ -117,13 +84,9 @@ interface HoldingsDashboard {
 
 const MutualFundHoldings: React.FC = () => {
   const { notify } = useNotification();
-  const [mutualFunds, setMutualFunds] = useState<MutualFundWithHoldings[]>([]);
   const [dashboard, setDashboard] = useState<HoldingsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fetchingHoldings, setFetchingHoldings] = useState<number | null>(null);
   const [selectedStock, setSelectedStock] = useState<HoldingsDashboardStock | null>(null);
-  const [view, setView] = useState<'funds' | 'dashboard'>('dashboard');
-  const [uploadingFor, setUploadingFor] = useState<number | null>(null);
   const [uploadingConsolidatedFile, setUploadingConsolidatedFile] = useState(false);
   const [consolidatedFileResults, setConsolidatedFileResults] = useState<any>(null);
   const [showConsolidatedFileDialog, setShowConsolidatedFileDialog] = useState(false);
@@ -131,15 +94,6 @@ const MutualFundHoldings: React.FC = () => {
   const [showFundMappingDialog, setShowFundMappingDialog] = useState(false);
   const [confirmingImport, setConfirmingImport] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
-
-  const fetchMutualFunds = async () => {
-    try {
-      const response = await api.get<MutualFundWithHoldings[]>('/mutual-fund-holdings/');
-      setMutualFunds(response.data);
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to fetch mutual funds'));
-    }
-  };
 
   const fetchDashboard = async () => {
     try {
@@ -149,46 +103,6 @@ const MutualFundHoldings: React.FC = () => {
       notify.error(err.response?.data?.detail || 'Failed to fetch dashboard');
     }
   };
-
-  const fetchHoldingsForFund = async (assetId: number) => {
-    setFetchingHoldings(assetId);
-    try {
-      await api.post(`/mutual-fund-holdings/${assetId}/fetch?force_refresh=true`, {});
-      await fetchMutualFunds();
-      await fetchDashboard();
-    } catch (err: any) {
-      notify.error(err.response?.data?.detail || 'Failed to fetch holdings');
-    } finally {
-      setFetchingHoldings(null);
-    }
-  };
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>, assetId: number) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      uploadCSV(assetId, file);
-    }
-  };
-
-  const uploadCSV = async (assetId: number, file: File) => {
-    setUploadingFor(assetId);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      await api.post(`/mutual-fund-holdings/${assetId}/upload-csv`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      await fetchMutualFunds();
-      await fetchDashboard();
-    } catch (err: any) {
-      notify.error(err.response?.data?.detail || 'Failed to upload CSV');
-    } finally {
-      setUploadingFor(null);
-    }
-  };
-
 
   const handleConsolidatedFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -247,7 +161,6 @@ const MutualFundHoldings: React.FC = () => {
       setShowConsolidatedFileDialog(true);
       
       // Refresh data
-      await fetchMutualFunds();
       await fetchDashboard();
     } catch (err: any) {
       notify.error(err.response?.data?.detail || 'Failed to import consolidated file');
@@ -264,7 +177,7 @@ const MutualFundHoldings: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchMutualFunds(), fetchDashboard()]);
+      await fetchDashboard();
       setLoading(false);
     };
     loadData();
@@ -310,18 +223,6 @@ const MutualFundHoldings: React.FC = () => {
         </Box>
         <Box display="flex" gap={1}>
           <Button
-            variant={view === 'dashboard' ? 'contained' : 'outlined'}
-            onClick={() => setView('dashboard')}
-          >
-            Dashboard
-          </Button>
-          <Button
-            variant={view === 'funds' ? 'contained' : 'outlined'}
-            onClick={() => setView('funds')}
-          >
-            By Fund
-          </Button>
-          <Button
             variant="contained"
             color="success"
             component="label"
@@ -339,7 +240,7 @@ const MutualFundHoldings: React.FC = () => {
         </Box>
       </Box>
 
-      {view === 'dashboard' && dashboard && (
+      {dashboard && (
         <>
           {/* Summary Cards */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -528,107 +429,6 @@ const MutualFundHoldings: React.FC = () => {
             </Grid>
           </Grid>
         </>
-      )}
-
-      {view === 'funds' && (
-        <Box>
-          {mutualFunds.length === 0 ? (
-            <Alert severity="info">
-              No mutual fund holdings found. Add mutual funds to your portfolio and fetch their holdings.
-            </Alert>
-          ) : (
-            mutualFunds.map((fund) => (
-              <Accordion key={fund.asset_id} sx={{ mb: 2 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Box display="flex" justifyContent="space-between" width="100%" alignItems="center" pr={2}>
-                    <Box>
-                      <Typography variant="h6">{fund.fund_name}</Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        Units: {fund.units_held.toFixed(2)} | NAV: {formatCurrency(fund.current_nav)} | Value:{' '}
-                        {formatCurrency(fund.total_value)}
-                      </Typography>
-                    </Box>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Chip label={`${fund.holdings_count} stocks`} size="small" />
-                      <Tooltip title="Upload CSV">
-                        <IconButton
-                          size="small"
-                          component="label"
-                          disabled={uploadingFor === fund.asset_id}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {uploadingFor === fund.asset_id ? (
-                            <CircularProgress size={20} />
-                          ) : (
-                            <UploadIcon />
-                          )}
-                          <input
-                            type="file"
-                            hidden
-                            accept=".csv"
-                            onChange={(e) => handleFileSelect(e, fund.asset_id)}
-                          />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Fetch/Refresh Holdings (API)">
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            fetchHoldingsForFund(fund.asset_id);
-                          }}
-                          disabled={fetchingHoldings === fund.asset_id}
-                        >
-                          {fetchingHoldings === fund.asset_id ? (
-                            <CircularProgress size={20} />
-                          ) : (
-                            <RefreshIcon />
-                          )}
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {fund.holdings.length === 0 ? (
-                    <Alert severity="info">
-                      No holdings data available. Upload a CSV file with portfolio holdings or click the refresh button to fetch from API (if available).
-                    </Alert>
-                  ) : (
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Stock Name</TableCell>
-                            <TableCell>Symbol</TableCell>
-                            <TableCell align="right">Holding %</TableCell>
-                            <TableCell align="right">Value</TableCell>
-                            <TableCell align="right">Approx. Qty</TableCell>
-                            <TableCell align="right">Price</TableCell>
-                            <TableCell>Sector</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {fund.holdings.map((holding) => (
-                            <TableRow key={holding.id}>
-                              <TableCell>{holding.stock_name}</TableCell>
-                              <TableCell>{holding.stock_symbol || '-'}</TableCell>
-                              <TableCell align="right">{formatPercentage(holding.holding_percentage)}</TableCell>
-                              <TableCell align="right">{formatCurrency(holding.holding_value)}</TableCell>
-                              <TableCell align="right">{holding.quantity_held.toFixed(2)}</TableCell>
-                              <TableCell align="right">{formatCurrency(holding.stock_current_price)}</TableCell>
-                              <TableCell>{holding.sector || '-'}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  )}
-                </AccordionDetails>
-              </Accordion>
-            ))
-          )}
-        </Box>
       )}
 
       {/* Stock Details Dialog */}
