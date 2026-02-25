@@ -26,6 +26,16 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Link,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -34,6 +44,9 @@ import {
   TrendingDown as TrendingDownIcon,
   Info as InfoIcon,
   Upload as UploadIcon,
+  HelpOutline as HelpIcon,
+  Download as DownloadIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
@@ -117,6 +130,7 @@ const MutualFundHoldings: React.FC = () => {
   const [fundMappingPreview, setFundMappingPreview] = useState<any>(null);
   const [showFundMappingDialog, setShowFundMappingDialog] = useState(false);
   const [confirmingImport, setConfirmingImport] = useState(false);
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
 
   const fetchMutualFunds = async () => {
     try {
@@ -279,9 +293,21 @@ const MutualFundHoldings: React.FC = () => {
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" component="h1">
-          Mutual Fund Holdings
-        </Typography>
+        <Box display="flex" alignItems="center" gap={2}>
+          <Typography variant="h4" component="h1">
+            Mutual Fund Holdings
+          </Typography>
+          <Link
+            component="button"
+            variant="body2"
+            underline="hover"
+            onClick={() => setShowHowItWorks(true)}
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer' }}
+          >
+            <HelpIcon fontSize="small" />
+            How it works
+          </Link>
+        </Box>
         <Box display="flex" gap={1}>
           <Button
             variant={view === 'dashboard' ? 'contained' : 'outlined'}
@@ -977,6 +1003,193 @@ const MutualFundHoldings: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      {/* How It Works Dialog */}
+      <Dialog
+        open={showHowItWorks}
+        onClose={() => setShowHowItWorks(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <HelpIcon color="primary" />
+            How Mutual Fund Holdings Works
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" paragraph>
+            This page lets you visualize the <strong>individual stocks</strong> you are invested in through your various mutual funds.
+            By uploading portfolio disclosure data for each of your mutual funds, PortAct can show you your total exposure to
+            each stock — both through direct holdings and through mutual funds.
+          </Typography>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="h6" gutterBottom>
+            Step-by-Step Guide
+          </Typography>
+
+          <Stepper orientation="vertical" activeStep={-1}>
+            <Step active>
+              <StepLabel>
+                <Typography fontWeight="bold">Download the sample Excel template</Typography>
+              </StepLabel>
+              <StepContent>
+                <Typography variant="body2" paragraph>
+                  Start by downloading the sample file to understand the expected format. Each worksheet in the
+                  Excel file represents one mutual fund's holdings.
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<DownloadIcon />}
+                  onClick={async () => {
+                    try {
+                      const response = await api.get('/mutual-fund-holdings/sample-excel/download', {
+                        responseType: 'blob',
+                      });
+                      const url = window.URL.createObjectURL(new Blob([response.data]));
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.setAttribute('download', 'MF-Holdings-Sample.xlsx');
+                      document.body.appendChild(link);
+                      link.click();
+                      link.remove();
+                      window.URL.revokeObjectURL(url);
+                    } catch (err) {
+                      notify.error(getErrorMessage(err, 'Failed to download sample file'));
+                    }
+                  }}
+                >
+                  Download Sample Excel
+                </Button>
+              </StepContent>
+            </Step>
+
+            <Step active>
+              <StepLabel>
+                <Typography fontWeight="bold">Get portfolio disclosure data from AMFI</Typography>
+              </StepLabel>
+              <StepContent>
+                <Typography variant="body2" paragraph>
+                  Visit the AMFI Portfolio Disclosure page. Select the disclosure frequency — <strong>Monthly</strong>,{' '}
+                  <strong>Fortnightly</strong>, or <strong>Half Yearly</strong>. Then click on the mutual fund house
+                  (e.g., HDFC, SBI, ICICI Prudential) to navigate to their website.
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<OpenInNewIcon />}
+                  onClick={() => window.open('https://www.amfiindia.com/online-center/portfolio-disclosure', '_blank')}
+                  sx={{ mb: 1 }}
+                >
+                  Open AMFI Portfolio Disclosure
+                </Button>
+                <Typography variant="body2" paragraph sx={{ mt: 1 }}>
+                  From the fund house website, download the portfolio disclosure Excel for the specific mutual fund scheme.
+                  This file typically contains all the stocks the fund holds along with the holding percentage.
+                </Typography>
+              </StepContent>
+            </Step>
+
+            <Step active>
+              <StepLabel>
+                <Typography fontWeight="bold">Prepare your MF Holdings Excel file</Typography>
+              </StepLabel>
+              <StepContent>
+                <Typography variant="body2" component="div">
+                  <List dense>
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        <Typography variant="body2" fontWeight="bold">1.</Typography>
+                      </ListItemIcon>
+                      <ListItemText primary="Create a new Excel file (e.g., MF-Holdings.xlsx)" />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        <Typography variant="body2" fontWeight="bold">2.</Typography>
+                      </ListItemIcon>
+                      <ListItemText primary="For each mutual fund, create a separate worksheet" />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        <Typography variant="body2" fontWeight="bold">3.</Typography>
+                      </ListItemIcon>
+                      <ListItemText primary="Copy the relevant stock holdings section from the downloaded portfolio disclosure into each worksheet" />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        <Typography variant="body2" fontWeight="bold">4.</Typography>
+                      </ListItemIcon>
+                      <ListItemText primary="Use the worksheet name as the fund name (the system uses this to match with your portfolio)" />
+                    </ListItem>
+                  </List>
+                </Typography>
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  Refer to the sample Excel file for the exact format. You can include multiple mutual funds — one per worksheet — in a single Excel file.
+                </Alert>
+              </StepContent>
+            </Step>
+
+            <Step active>
+              <StepLabel>
+                <Typography fontWeight="bold">Upload the file</Typography>
+              </StepLabel>
+              <StepContent>
+                <Typography variant="body2" paragraph>
+                  Click the <strong>"Upload MF Holdings Excel"</strong> button at the top of this page and select your prepared
+                  Excel file. The system will:
+                </Typography>
+                <List dense>
+                  <ListItem>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      <Typography variant="body2" fontWeight="bold">a.</Typography>
+                    </ListItemIcon>
+                    <ListItemText primary="Read each worksheet and extract stock holdings" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      <Typography variant="body2" fontWeight="bold">b.</Typography>
+                    </ListItemIcon>
+                    <ListItemText primary="Match worksheet names to your portfolio's mutual fund assets using fuzzy string matching" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      <Typography variant="body2" fontWeight="bold">c.</Typography>
+                    </ListItemIcon>
+                    <ListItemText primary="Show a preview of mappings with similarity scores for your review" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      <Typography variant="body2" fontWeight="bold">d.</Typography>
+                    </ListItemIcon>
+                    <ListItemText primary="Import holdings for funds with similarity score ≥ 80%" />
+                  </ListItem>
+                </List>
+              </StepContent>
+            </Step>
+
+            <Step active>
+              <StepLabel>
+                <Typography fontWeight="bold">Explore the Dashboard</Typography>
+              </StepLabel>
+              <StepContent>
+                <Typography variant="body2" paragraph>
+                  After importing, switch to the <strong>Dashboard</strong> view to see your consolidated stock exposure.
+                  The dashboard shows your top stocks via mutual funds alongside your direct stock holdings, helping you
+                  understand your total exposure to each company across all investment vehicles.
+                </Typography>
+              </StepContent>
+            </Step>
+          </Stepper>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowHowItWorks(false)} variant="contained">
+            Got it
+          </Button>
+        </DialogActions>
+      </Dialog>
+
     </Container>
   );
 };

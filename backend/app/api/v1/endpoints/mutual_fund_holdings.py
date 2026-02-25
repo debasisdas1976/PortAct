@@ -1240,14 +1240,41 @@ async def download_sample_csv(
     Download a sample CSV template for portfolio holdings
     """
     from fastapi.responses import Response
-    
+
     csv_content = MutualFundHoldingsCSVParser.generate_sample_csv()
-    
+
     return Response(
         content=csv_content,
         media_type="text/csv",
         headers={
             "Content-Disposition": "attachment; filename=mutual_fund_holdings_template.csv"
+        }
+    )
+
+
+@router.get("/sample-excel/download")
+async def download_sample_excel(
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Download the sample MF Holdings Excel file
+    """
+    import os
+    from fastapi.responses import FileResponse
+
+    sample_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "static", "samples", "MF-Holdings-Sample.xlsx"
+    )
+    sample_path = os.path.normpath(sample_path)
+
+    if not os.path.exists(sample_path):
+        raise HTTPException(status_code=404, detail="Sample file not found")
+
+    return FileResponse(
+        path=sample_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename=MF-Holdings-Sample.xlsx"
         }
     )
 

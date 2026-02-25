@@ -166,9 +166,16 @@ const Help: React.FC = () => {
           </Box>
         </AccordionSummary>
         <AccordionDetails>
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>My Portfolios</Typography>
+          <Typography variant="body2" paragraph>
+            If you have multiple portfolios, a "My Portfolios" section appears at the top of the Dashboard showing clickable cards for each portfolio. Each card displays the portfolio name, current value, profit/loss (amount and percentage), and asset count. Click a card to filter the entire Dashboard to that portfolio. Click "All Portfolios" to reset the view. The Portfolio Selector dropdown in the top bar stays in sync with your selection.
+          </Typography>
+
+          <Divider sx={{ my: 2 }} />
+
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Summary Cards</Typography>
           <Typography variant="body2" paragraph>
-            The Dashboard displays four summary cards at the top:
+            The Dashboard displays four summary cards below the portfolio section:
           </Typography>
           <List dense>
             <ListItem>
@@ -246,7 +253,7 @@ const Help: React.FC = () => {
               <TableBody>
                 <TableRow>
                   <TableCell>Demat Holdings</TableCell>
-                  <TableCell>Stocks, US Stocks, Equity MF, Debt Funds, Commodities, Sovereign Gold Bonds</TableCell>
+                  <TableCell>Stocks, US Stocks, Equity MF, Hybrid MF, Debt Funds, Commodities, Sovereign Gold Bonds</TableCell>
                   <TableCell>Upload broker/demat statement or add manually</TableCell>
                 </TableRow>
                 <TableRow>
@@ -290,7 +297,7 @@ const Help: React.FC = () => {
 
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Assets Overview Page</Typography>
           <Typography variant="body2" paragraph>
-            The Assets page (sidebar: Assets &gt; Overview) shows a consolidated view of all your assets. You can filter by asset type, add new assets, edit existing ones, delete assets, and manually trigger price updates.
+            The Assets page (sidebar: Assets &gt; Overview) shows a consolidated view of all your assets grouped by symbol. Filter by asset type using tabs (All, Stocks, US Stocks, Equity MF, Hybrid MF, Debt MF, Commodities, Crypto, Cash, Other, Bank Accounts). Each tab shows the total count of individual assets. You can reclassify an asset's type by clicking the type chip, and manually trigger price updates per asset or for the entire portfolio.
           </Typography>
 
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Automatic Price Updates</Typography>
@@ -315,7 +322,7 @@ const Help: React.FC = () => {
         <AccordionDetails>
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>What Are Demat Accounts in PortAct?</Typography>
           <Typography variant="body2" paragraph>
-            Demat accounts represent your brokerage/trading accounts. They hold your stocks, mutual funds, ETFs, and other market-linked securities. Each demat account tracks its own cash balance and linked assets.
+            Demat accounts represent your brokerage/trading accounts. They hold your stocks, mutual funds (equity, hybrid, and debt), ETFs, and other market-linked securities. Each demat account tracks its own cash balance and linked assets.
           </Typography>
 
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Adding a Demat Account</Typography>
@@ -825,7 +832,7 @@ const Help: React.FC = () => {
 
           <Typography variant="subtitle1" fontWeight="bold">How do I add an asset type that doesn't have a dedicated page?</Typography>
           <Typography variant="body2" paragraph>
-            Go to Assets &gt; Overview and use the "Add Asset" button. You can select any supported asset type from the dropdown and enter details manually.
+            Navigate to the dedicated page for that asset type from the sidebar menu, or upload a broker/demat statement from the Statements page. Each asset type has its own page where you can add entries manually. For asset types under Demat Holdings, you can also upload statements that automatically import holdings.
           </Typography>
           <Divider sx={{ my: 1.5 }} />
 
