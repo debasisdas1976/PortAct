@@ -106,7 +106,7 @@ def lookup_isin_for_asset(asset_type: str, symbol: str, name: str) -> Optional[T
             return (isin, symbol)  # api_symbol is same as symbol for stocks
 
     # ISIN is only for Indian Mutual Funds
-    elif asset_type_lower in ['equity_mutual_fund', 'debt_mutual_fund']:
+    elif asset_type_lower in ['equity_mutual_fund', 'hybrid_mutual_fund', 'debt_mutual_fund']:
         # Step 1: Try exact substring match (fast, high confidence)
         isin, exact_name = get_isin_from_amfi(symbol)
         if not isin:

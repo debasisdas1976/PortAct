@@ -23,14 +23,9 @@ import {
   Menu,
   MenuItem,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
   Tooltip,
 } from '@mui/material';
-import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, AccountBalance, Refresh, Delete, Warning, Edit, CheckCircle, CameraAlt, Error as ErrorIcon } from '@mui/icons-material';
+import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, AccountBalance, Refresh, Warning, CheckCircle, CameraAlt, Error as ErrorIcon } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchAssets } from '../store/slices/assetsSlice';
 import api, { assetsAPI, assetTypesAPI } from '../services/api';
@@ -133,13 +128,7 @@ const Assets: React.FC = () => {
   const [dematAccountsLoading, setDematAccountsLoading] = useState(false);
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
-  const [editingUsdMode, setEditingUsdMode] = useState(false);
-  const [editingPriceUsd, setEditingPriceUsd] = useState<number>(0);
-  const [editingPurchasePriceUsd, setEditingPurchasePriceUsd] = useState<number>(0);
-  const [usdToInrRate, setUsdToInrRate] = useState<number>(85);
   const [assetTypes, setAssetTypes] = useState<{ value: string; label: string; category: string }[]>([]);
 
   useEffect(() => {
@@ -285,6 +274,7 @@ const Assets: React.FC = () => {
       stock: [],
       us_stock: [],
       equity_mutual_fund: [],
+      hybrid_mutual_fund: [],
       debt_mutual_fund: [],
       commodity: [],
       crypto: [],
@@ -306,7 +296,7 @@ const Assets: React.FC = () => {
 
   // Calculate summary statistics for current tab
   const getCurrentTabAssets = () => {
-    const tabMap = ['all', 'stock', 'us_stock', 'equity_mutual_fund', 'debt_mutual_fund', 'commodity', 'crypto', 'cash', 'other', 'bank_accounts'];
+    const tabMap = ['all', 'stock', 'us_stock', 'equity_mutual_fund', 'hybrid_mutual_fund', 'debt_mutual_fund', 'commodity', 'crypto', 'cash', 'other', 'bank_accounts'];
     return tabMap[currentTab] === 'bank_accounts' ? [] : assetsByType[tabMap[currentTab]] || [];
   };
 
@@ -326,14 +316,14 @@ const Assets: React.FC = () => {
     totalInvested += totalBankBalance + totalDematCash; // No gain/loss on cash
   }
 
-  // If on "Cash" tab (index 7), include bank accounts and demat cash
-  if (currentTab === 7) {
+  // If on "Cash" tab (index 8), include bank accounts and demat cash
+  if (currentTab === 8) {
     totalValue += totalBankBalance + totalDematCash;
     totalInvested += totalBankBalance + totalDematCash;
   }
 
-  // If on "Bank Accounts" tab (index 9), show only bank account totals
-  if (currentTab === 9) {
+  // If on "Bank Accounts" tab (index 10), show only bank account totals
+  if (currentTab === 10) {
     totalValue = totalBankBalance;
     totalInvested = totalBankBalance;
   }
@@ -392,23 +382,6 @@ const Assets: React.FC = () => {
     }
   };
 
-  const handleDeleteAsset = async (assetId: number, assetName: string) => {
-    if (!window.confirm(`Are you sure you want to delete ${assetName}? This action cannot be undone.`)) {
-      return;
-    }
-
-    setUpdating(true);
-    try {
-      await assetsAPI.delete(assetId);
-      await dispatch(fetchAssets());
-      notify.success('Asset deleted successfully');
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to delete asset'));
-    } finally {
-      setUpdating(false);
-    }
-  };
-
   const handleManualPriceUpdate = async (assetId: number, assetSymbol: string) => {
     try {
       setUpdatingAssetId(assetId);
@@ -426,61 +399,6 @@ const Assets: React.FC = () => {
       notify.error(getErrorMessage(err, `Failed to update price for ${assetSymbol}`));
     } finally {
       setUpdatingAssetId(null);
-    }
-  };
-
-  const handleEditAsset = (asset: Asset) => {
-    setEditingAsset(asset);
-    const isUsdAsset = asset.asset_type === 'us_stock' ||
-      (asset.details?.usd_to_inr_rate != null && asset.details?.price_usd != null);
-    if (isUsdAsset) {
-      const rate = asset.details?.usd_to_inr_rate || 85;
-      setEditingUsdMode(true);
-      setUsdToInrRate(rate);
-      setEditingPriceUsd(asset.details?.price_usd || (asset.current_price / rate));
-      setEditingPurchasePriceUsd(asset.details?.avg_cost_usd || (asset.purchase_price / rate));
-    } else {
-      setEditingUsdMode(false);
-    }
-    setEditDialogOpen(true);
-  };
-
-  const handleEditDialogClose = () => {
-    setEditDialogOpen(false);
-    setEditingAsset(null);
-    setEditingUsdMode(false);
-  };
-
-  const handleEditAssetSubmit = async () => {
-    if (!editingAsset) return;
-
-    try {
-      setUpdating(true);
-
-      let purchasePriceInr = editingAsset.purchase_price;
-      let currentPriceInr = editingAsset.current_price;
-
-      if (editingUsdMode) {
-        purchasePriceInr = editingPurchasePriceUsd * usdToInrRate;
-        currentPriceInr = editingPriceUsd * usdToInrRate;
-      }
-
-      await api.put(`/assets/${editingAsset.id}`, {
-        current_price: currentPriceInr,
-        quantity: editingAsset.quantity,
-        purchase_price: purchasePriceInr,
-        total_invested: editingAsset.quantity * purchasePriceInr,
-        api_symbol: editingAsset.api_symbol || null,
-        isin: editingAsset.isin || null,
-      });
-      
-      await dispatch(fetchAssets());
-      notify.success('Asset updated successfully');
-      handleEditDialogClose();
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to update asset'));
-    } finally {
-      setUpdating(false);
     }
   };
 
@@ -698,7 +616,7 @@ const Assets: React.FC = () => {
               const isExpanded = expandedRows.has(group.symbol);
               const hasMultipleInstances = group.instances.length > 1;
               const assetType = group.asset_type.toLowerCase();
-              const needsIsin = assetType === 'stock' || assetType === 'equity_mutual_fund' || assetType === 'debt_mutual_fund';
+              const needsIsin = assetType === 'stock' || assetType === 'equity_mutual_fund' || assetType === 'hybrid_mutual_fund' || assetType === 'debt_mutual_fund';
               const missingIsin = needsIsin && !group.instances[0]?.isin;
               const assetCategory = assetTypes.find(t => t.value.toLowerCase() === assetType)?.category || '';
               const hideRefreshPrice = ['Other', 'Fixed Income', 'Govt. Schemes'].includes(assetCategory);
@@ -775,42 +693,20 @@ const Assets: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                        {!hasMultipleInstances && (
-                          <>
-                            {!hideRefreshPrice && (
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={() => handleManualPriceUpdate(group.instances[0].id, group.symbol)}
-                                disabled={updatingAssetId === group.instances[0].id}
-                                title="Update price"
-                              >
-                                {updatingAssetId === group.instances[0].id ? (
-                                  <CircularProgress size={16} />
-                                ) : (
-                                  <Refresh fontSize="small" />
-                                )}
-                              </IconButton>
+                        {!hasMultipleInstances && !hideRefreshPrice && (
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handleManualPriceUpdate(group.instances[0].id, group.symbol)}
+                            disabled={updatingAssetId === group.instances[0].id}
+                            title="Update price"
+                          >
+                            {updatingAssetId === group.instances[0].id ? (
+                              <CircularProgress size={16} />
+                            ) : (
+                              <Refresh fontSize="small" />
                             )}
-                            <IconButton
-                              size="small"
-                              color="info"
-                              onClick={() => handleEditAsset(group.instances[0])}
-                              disabled={updating}
-                              title="Edit asset"
-                            >
-                              <Edit fontSize="small" />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => handleDeleteAsset(group.instances[0].id, group.symbol)}
-                              disabled={updating}
-                              title="Delete asset"
-                            >
-                              <Delete fontSize="small" />
-                            </IconButton>
-                          </>
+                          </IconButton>
                         )}
                         {hasMultipleInstances && (
                           <Typography variant="caption" color="text.secondary">Expand</Typography>
@@ -891,24 +787,6 @@ const Assets: React.FC = () => {
                                               )}
                                             </IconButton>
                                           )}
-                                          <IconButton
-                                            size="small"
-                                            color="info"
-                                            onClick={() => handleEditAsset(instance)}
-                                            disabled={updating}
-                                            title="Edit asset"
-                                          >
-                                            <Edit fontSize="small" />
-                                          </IconButton>
-                                          <IconButton
-                                            size="small"
-                                            color="error"
-                                            onClick={() => handleDeleteAsset(instance.id, `${instance.symbol} (${instance.account_id})`)}
-                                            disabled={updating}
-                                            title="Delete asset"
-                                          >
-                                            <Delete fontSize="small" />
-                                          </IconButton>
                                         </Box>
                                       </TableCell>
                                     </TableRow>
@@ -1060,15 +938,16 @@ const Assets: React.FC = () => {
       <Paper sx={{ overflow: 'hidden' }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={currentTab} onChange={handleTabChange} aria-label="asset type tabs" variant="scrollable" scrollButtons="auto">
-            <Tab label={`All (${assetsByType.all.length})`} />
-            <Tab label={`Stocks (${assetsByType.stock.length})`} />
-            <Tab label={`US Stocks (${assetsByType.us_stock.length})`} />
-            <Tab label={`Equity MF (${assetsByType.equity_mutual_fund.length})`} />
-            <Tab label={`Debt MF (${assetsByType.debt_mutual_fund.length})`} />
-            <Tab label={`Commodities (${assetsByType.commodity.length})`} />
-            <Tab label={`Crypto (${assetsByType.crypto.length})`} />
-            <Tab label={`Cash (${bankAccounts.length + dematAccounts.length + assetsByType.cash.length})`} />
-            <Tab label={`Other (${assetsByType.other.length})`} />
+            <Tab label={`All (${assetsByType.all.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Stocks (${assetsByType.stock.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`US Stocks (${assetsByType.us_stock.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Equity MF (${assetsByType.equity_mutual_fund.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Hybrid MF (${assetsByType.hybrid_mutual_fund.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Debt MF (${assetsByType.debt_mutual_fund.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Commodities (${assetsByType.commodity.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Crypto (${assetsByType.crypto.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Cash (${bankAccounts.length + dematAccounts.length + assetsByType.cash.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Other (${assetsByType.other.reduce((sum, g) => sum + g.instances.length, 0)})`} />
             <Tab label={`Bank Accounts (${bankAccounts.length})`} />
           </Tabs>
         </Box>
@@ -1086,21 +965,24 @@ const Assets: React.FC = () => {
           {renderAssetsTable(assetsByType.equity_mutual_fund)}
         </TabPanel>
         <TabPanel value={currentTab} index={4}>
-          {renderAssetsTable(assetsByType.debt_mutual_fund)}
+          {renderAssetsTable(assetsByType.hybrid_mutual_fund)}
         </TabPanel>
         <TabPanel value={currentTab} index={5}>
-          {renderAssetsTable(assetsByType.commodity)}
+          {renderAssetsTable(assetsByType.debt_mutual_fund)}
         </TabPanel>
         <TabPanel value={currentTab} index={6}>
-          {renderAssetsTable(assetsByType.crypto)}
+          {renderAssetsTable(assetsByType.commodity)}
         </TabPanel>
         <TabPanel value={currentTab} index={7}>
-          {renderCashHoldingsTable()}
+          {renderAssetsTable(assetsByType.crypto)}
         </TabPanel>
         <TabPanel value={currentTab} index={8}>
-          {renderAssetsTable(assetsByType.other)}
+          {renderCashHoldingsTable()}
         </TabPanel>
         <TabPanel value={currentTab} index={9}>
+          {renderAssetsTable(assetsByType.other)}
+        </TabPanel>
+        <TabPanel value={currentTab} index={10}>
           {renderBankAccountsTable()}
         </TabPanel>
       </Paper>
@@ -1121,130 +1003,6 @@ const Assets: React.FC = () => {
           </MenuItem>
         ))}
       </Menu>
-
-      {/* Edit Asset Dialog */}
-      <Dialog open={editDialogOpen} onClose={handleEditDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Asset</DialogTitle>
-        <DialogContent>
-          {editingAsset && (
-            <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField
-                fullWidth
-                label="Asset Name"
-                value={editingAsset.name}
-                disabled
-                helperText="Asset name cannot be changed"
-              />
-
-              <TextField
-                fullWidth
-                label="Symbol/Ticker"
-                value={editingAsset.symbol}
-                disabled
-                helperText="Symbol cannot be changed"
-              />
-
-              <TextField
-                fullWidth
-                label="Quantity"
-                type="number"
-                value={editingAsset.quantity}
-                onChange={(e) => setEditingAsset({ ...editingAsset, quantity: parseFloat(e.target.value) || 0 })}
-                inputProps={{ step: '0.01', min: '0' }}
-              />
-
-              {editingUsdMode && (
-                <TextField
-                  fullWidth
-                  label="USD/INR Exchange Rate"
-                  type="number"
-                  value={usdToInrRate}
-                  onChange={(e) => setUsdToInrRate(parseFloat(e.target.value) || 85)}
-                  inputProps={{ step: '0.01', min: '1' }}
-                  helperText="Rate used to convert USD prices to INR for storage"
-                />
-              )}
-
-              {editingUsdMode ? (
-                <TextField
-                  fullWidth
-                  label="Purchase Price (USD)"
-                  type="number"
-                  value={editingPurchasePriceUsd}
-                  onChange={(e) => setEditingPurchasePriceUsd(parseFloat(e.target.value) || 0)}
-                  inputProps={{ step: '0.0001', min: '0' }}
-                  helperText={`Average cost per share · ≈ ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(editingPurchasePriceUsd * usdToInrRate)} at rate ₹${usdToInrRate.toFixed(2)}/$`}
-                />
-              ) : (
-                <TextField
-                  fullWidth
-                  label="Purchase Price"
-                  type="number"
-                  value={editingAsset.purchase_price}
-                  onChange={(e) => setEditingAsset({ ...editingAsset, purchase_price: parseFloat(e.target.value) || 0 })}
-                  inputProps={{ step: '0.01', min: '0' }}
-                  helperText="Average purchase price per unit"
-                />
-              )}
-
-              <TextField
-                fullWidth
-                label="ISIN (Optional)"
-                value={editingAsset.isin || ''}
-                onChange={(e) => setEditingAsset({ ...editingAsset, isin: e.target.value })}
-                helperText="ISIN code for stocks/mutual funds (e.g., INF204KA1R66). System will auto-populate if available."
-              />
-
-              <TextField
-                fullWidth
-                label="API Symbol (Optional)"
-                value={editingAsset.api_symbol || ''}
-                onChange={(e) => setEditingAsset({ ...editingAsset, api_symbol: e.target.value })}
-                helperText="Symbol used for API price fetching (e.g., GOLDBEES for commodity ETFs traded as stocks)"
-              />
-
-              {editingUsdMode ? (
-                <TextField
-                  fullWidth
-                  label="Current Price (USD)"
-                  type="number"
-                  value={editingPriceUsd}
-                  onChange={(e) => setEditingPriceUsd(parseFloat(e.target.value) || 0)}
-                  inputProps={{ step: '0.0001', min: '0' }}
-                  helperText={`Current market price per share · ≈ ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(editingPriceUsd * usdToInrRate)} at rate ₹${usdToInrRate.toFixed(2)}/$`}
-                />
-              ) : (
-                <TextField
-                  fullWidth
-                  label="Current Price"
-                  type="number"
-                  value={editingAsset.current_price}
-                  onChange={(e) => setEditingAsset({ ...editingAsset, current_price: parseFloat(e.target.value) || 0 })}
-                  inputProps={{ step: '0.01', min: '0' }}
-                  helperText="Current market price per unit"
-                />
-              )}
-
-              {editingAsset.price_update_failed && (
-                <Alert severity="warning">
-                  <Typography variant="body2" fontWeight="bold">Price Update Failed</Typography>
-                  <Typography variant="caption">{editingAsset.price_update_error}</Typography>
-                </Alert>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleEditDialogClose}>Cancel</Button>
-          <Button
-            onClick={handleEditAssetSubmit}
-            variant="contained"
-            disabled={updating}
-          >
-            {updating ? <CircularProgress size={24} /> : 'Save Changes'}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
     </Box>
   );

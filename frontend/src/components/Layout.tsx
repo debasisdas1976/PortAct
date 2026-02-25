@@ -90,6 +90,7 @@ const assetGroups: AssetGroup[] = [
       { text: 'Stocks', icon: <StocksIcon />, path: '/stocks' },
       { text: 'US Stocks', icon: <USStocksIcon />, path: '/us-stocks' },
       { text: 'Equity MF', icon: <PieChartIcon />, path: '/equity-mf' },
+      { text: 'Hybrid MF', icon: <PieChartIcon />, path: '/hybrid-mf' },
       { text: 'Debt Funds', icon: <DebtFundIcon />, path: '/debt-funds' },
       { text: 'Commodities', icon: <CommodityIcon />, path: '/commodities' },
       { text: 'Sovereign Gold Bonds', icon: <DiamondIcon />, path: '/sovereign-gold-bonds' },

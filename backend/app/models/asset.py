@@ -10,6 +10,7 @@ class AssetType(str, enum.Enum):
     STOCK = "stock"
     US_STOCK = "us_stock"
     EQUITY_MUTUAL_FUND = "equity_mutual_fund"
+    HYBRID_MUTUAL_FUND = "hybrid_mutual_fund"
     DEBT_MUTUAL_FUND = "debt_mutual_fund"
     COMMODITY = "commodity"
     CRYPTO = "crypto"

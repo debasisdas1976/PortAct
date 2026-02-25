@@ -575,16 +575,22 @@
       "sort_order": 3
     },
     {
+      "name": "hybrid_mutual_fund",
+      "display_label": "Hybrid Mutual Fund",
+      "category": "Hybrid",
+      "sort_order": 4
+    },
+    {
       "name": "reit",
       "display_label": "REIT",
       "category": "Equity",
-      "sort_order": 4
+      "sort_order": 5
     },
     {
       "name": "invit",
       "display_label": "InvIT",
       "category": "Equity",
-      "sort_order": 5
+      "sort_order": 6
     },
     {
       "name": "debt_mutual_fund",

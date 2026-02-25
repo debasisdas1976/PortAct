@@ -791,6 +791,7 @@ async def generate_pdf_statement(
     ASSET_TYPE_LABELS = {
         "stock": "Stocks", "us_stock": "US Stocks",
         "equity_mutual_fund": "Equity Mutual Funds",
+        "hybrid_mutual_fund": "Hybrid Mutual Funds",
         "debt_mutual_fund": "Debt Mutual Funds",
         "commodity": "Commodities", "crypto": "Crypto",
         "ppf": "PPF", "pf": "PF / EPF", "nps": "NPS", "ssy": "SSY",

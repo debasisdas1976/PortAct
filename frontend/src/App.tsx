@@ -39,6 +39,7 @@ const Insurance = React.lazy(() => import('./pages/Insurance'));
 const Stocks = React.lazy(() => import('./pages/Stocks'));
 const USStocks = React.lazy(() => import('./pages/USStocks'));
 const EquityMF = React.lazy(() => import('./pages/EquityMF'));
+const HybridMF = React.lazy(() => import('./pages/HybridMF'));
 const Savings = React.lazy(() => import('./pages/Savings'));
 const CreditCards = React.lazy(() => import('./pages/CreditCards'));
 const FixedDeposit = React.lazy(() => import('./pages/FixedDeposit'));
@@ -144,6 +145,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="stocks" element={<Stocks />} />
             <Route path="us-stocks" element={<USStocks />} />
             <Route path="equity-mf" element={<EquityMF />} />
+            <Route path="hybrid-mf" element={<HybridMF />} />
             <Route path="savings" element={<Savings />} />
             <Route path="credit-cards" element={<CreditCards />} />
             <Route path="fixed-deposit" element={<FixedDeposit />} />
