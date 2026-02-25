@@ -18,6 +18,7 @@ import {
   IconButton,
   Tooltip,
   Chip,
+  Button,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -27,9 +28,10 @@ import {
   Visibility,
   VisibilityOff,
   ArrowBack,
+  SelectAll,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
-import { fetchPortfolioSummary } from '../store/slices/portfolioSlice';
+import { fetchPortfolioSummary, fetchPortfolios, setSelectedPortfolioId } from '../store/slices/portfolioSlice';
 import { fetchAssets } from '../store/slices/assetsSlice';
 import PortfolioChart from '../components/charts/PortfolioChart';
 import PerformanceChart from '../components/charts/PerformanceChart';
@@ -117,7 +119,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color, 
 
 const Dashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { summary, loading, error } = useSelector((state: RootState) => state.portfolio);
+  const { summary, loading, error, portfolios } = useSelector((state: RootState) => state.portfolio);
   const { notify } = useNotification();
   const { assets } = useSelector((state: RootState) => state.assets);
   const selectedPortfolioId = useSelectedPortfolio();
@@ -132,6 +134,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        dispatch(fetchPortfolios());
         await dispatch(fetchPortfolioSummary(selectedPortfolioId));
         await dispatch(fetchAssets(selectedPortfolioId));
         await Promise.all([fetchBankAccounts(), fetchDematAccounts()]);
@@ -216,6 +219,14 @@ const Dashboard: React.FC = () => {
   // Calculate cash totals
   const totalBankBalance = bankAccounts.reduce((sum, a) => sum + a.current_balance, 0);
   const totalDematCash = dematAccounts.reduce((sum, a) => sum + a.cash_balance, 0);
+
+  const handlePortfolioCardClick = (portfolioId: number) => {
+    dispatch(setSelectedPortfolioId(portfolioId));
+  };
+
+  const handleViewAllPortfolios = () => {
+    dispatch(setSelectedPortfolioId(null));
+  };
 
   // Build category-based allocation data
   const assetsByCategory: Record<string, { value: number; count: number; invested: number }> = {};
@@ -312,7 +323,88 @@ const Dashboard: React.FC = () => {
           </IconButton>
         </Tooltip>
       </Box>
-      
+
+      {/* Portfolio Overview Section */}
+      {portfolios.length > 1 && (
+        <Paper sx={{ p: 2.5, mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">
+              My Portfolios
+            </Typography>
+            {selectedPortfolioId !== null && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<SelectAll />}
+                onClick={handleViewAllPortfolios}
+              >
+                All Portfolios
+              </Button>
+            )}
+          </Box>
+
+          <Grid container spacing={2}>
+            {portfolios.map((p: any) => {
+              const pl = (p.total_current_value || 0) - (p.total_invested || 0);
+              const plPct = p.total_invested > 0 ? (pl / p.total_invested) * 100 : 0;
+              const isSelected = selectedPortfolioId === p.id;
+              return (
+                <Grid item xs={12} sm={6} md={4} lg={3} key={p.id}>
+                  <Card
+                    sx={{
+                      cursor: 'pointer',
+                      height: '100%',
+                      border: '2px solid',
+                      borderColor: isSelected ? 'primary.main' : 'transparent',
+                      backgroundColor: isSelected ? 'action.selected' : undefined,
+                      transition: 'all 0.2s ease-in-out',
+                      '&:hover': {
+                        borderColor: isSelected ? 'primary.main' : 'grey.300',
+                        boxShadow: 3,
+                      },
+                    }}
+                    onClick={() => handlePortfolioCardClick(p.id)}
+                  >
+                    <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                        <Typography variant="subtitle2" fontWeight={600} noWrap>
+                          {p.name}
+                        </Typography>
+                        {p.is_default && (
+                          <Chip label="Default" size="small" variant="outlined" color="primary" sx={{ height: 20, fontSize: '0.65rem' }} />
+                        )}
+                      </Box>
+                      <Typography variant="h6" fontWeight={700}>
+                        {hideNumbers ? '₹ ••••••' : formatCurrency(p.total_current_value || 0)}
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                        {pl >= 0 ? (
+                          <TrendingUp sx={{ fontSize: 16, color: 'success.main' }} />
+                        ) : (
+                          <TrendingDown sx={{ fontSize: 16, color: 'error.main' }} />
+                        )}
+                        <Typography
+                          variant="caption"
+                          sx={{ color: pl >= 0 ? 'success.main' : 'error.main', fontWeight: 500 }}
+                        >
+                          {hideNumbers
+                            ? '••••'
+                            : `${pl >= 0 ? '+' : ''}${formatCurrency(pl)} (${plPct >= 0 ? '+' : ''}${plPct.toFixed(1)}%)`
+                          }
+                        </Typography>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        {hideNumbers ? '•••' : `${p.asset_count} asset${p.asset_count !== 1 ? 's' : ''}`}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </Paper>
+      )}
+
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>

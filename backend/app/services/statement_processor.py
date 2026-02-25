@@ -96,11 +96,12 @@ def get_or_create_demat_account(
     if not account_id:
         account_id = f"{broker_enum.upper()}-AUTO-{user_id}"
     
-    # Check if demat account exists
+    # Check if demat account exists for this portfolio
     demat_account = db.query(DematAccount).filter(
         DematAccount.user_id == user_id,
         DematAccount.broker_name == broker_enum,
-        DematAccount.account_id == account_id
+        DematAccount.account_id == account_id,
+        DematAccount.portfolio_id == portfolio_id
     ).first()
     
     # Determine currency based on broker

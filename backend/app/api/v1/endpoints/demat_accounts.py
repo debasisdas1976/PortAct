@@ -202,17 +202,21 @@ async def create_demat_account(
     """
     Create a new demat account
     """
-    # Check if account already exists
+    # Resolve portfolio_id early so we can use it in the uniqueness check
+    portfolio_id = account_data.portfolio_id or get_default_portfolio_id(current_user.id, db)
+
+    # Check if account already exists in this portfolio
     existing = db.query(DematAccount).filter(
         DematAccount.user_id == current_user.id,
         DematAccount.account_id == account_data.account_id,
-        DematAccount.broker_name == account_data.broker_name
+        DematAccount.broker_name == account_data.broker_name,
+        DematAccount.portfolio_id == portfolio_id
     ).first()
-    
+
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Demat account with this account ID already exists for this broker"
+            detail="Demat account with this account ID already exists for this broker in this portfolio"
         )
     
     # If this is set as primary, unset other primary accounts
@@ -238,9 +242,8 @@ async def create_demat_account(
     else:
         account_dict['currency'] = 'INR'
     
-    # Auto-assign to default portfolio if not specified
-    if not account_dict.get('portfolio_id'):
-        account_dict['portfolio_id'] = get_default_portfolio_id(current_user.id, db)
+    # Use the already-resolved portfolio_id
+    account_dict['portfolio_id'] = portfolio_id
 
     account = DematAccount(
         **account_dict,
