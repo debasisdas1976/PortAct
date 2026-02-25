@@ -167,6 +167,19 @@ async def create_asset(
         if 'total_invested' in asset_dict and asset_dict['total_invested']:
             asset_dict['total_invested'] = convert_usd_to_inr(asset_dict['total_invested'])
 
+    # Convert USD to INR for ESOP/RSU assets if currency is USD
+    if asset_dict.get('asset_type') in [AssetType.ESOP, AssetType.RSU]:
+        esop_currency = None
+        if 'details' in asset_dict and asset_dict['details']:
+            esop_currency = asset_dict['details'].get('currency', 'INR')
+        if esop_currency == 'USD':
+            if 'purchase_price' in asset_dict and asset_dict['purchase_price']:
+                asset_dict['purchase_price'] = convert_usd_to_inr(asset_dict['purchase_price'])
+            if 'current_price' in asset_dict and asset_dict['current_price']:
+                asset_dict['current_price'] = convert_usd_to_inr(asset_dict['current_price'])
+            if 'total_invested' in asset_dict and asset_dict['total_invested']:
+                asset_dict['total_invested'] = convert_usd_to_inr(asset_dict['total_invested'])
+
     # Derive portfolio from demat account if provided
     if asset_dict.get('demat_account_id'):
         demat = db.query(DematAccount).filter(
@@ -241,6 +254,18 @@ async def update_asset(
         details = update_data.get('details') or {}
         currency = details.get('currency', 'USD') if details else None
         if currency == 'USD':
+            if 'purchase_price' in update_data and update_data['purchase_price']:
+                update_data['purchase_price'] = convert_usd_to_inr(update_data['purchase_price'])
+            if 'current_price' in update_data and update_data['current_price']:
+                update_data['current_price'] = convert_usd_to_inr(update_data['current_price'])
+            if 'total_invested' in update_data and update_data['total_invested']:
+                update_data['total_invested'] = convert_usd_to_inr(update_data['total_invested'])
+
+    # Convert USD to INR for ESOP/RSU assets if currency is USD
+    if asset.asset_type in [AssetType.ESOP, AssetType.RSU]:
+        details = update_data.get('details') or {}
+        esop_currency = details.get('currency', 'INR') if details else None
+        if esop_currency == 'USD':
             if 'purchase_price' in update_data and update_data['purchase_price']:
                 update_data['purchase_price'] = convert_usd_to_inr(update_data['purchase_price'])
             if 'current_price' in update_data and update_data['current_price']:

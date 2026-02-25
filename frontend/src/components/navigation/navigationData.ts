@@ -27,6 +27,8 @@ import {
   Business as BusinessIcon,
   Diamond as DiamondIcon,
   Home as HomeIcon,
+  WorkOutline as ESOPIcon,
+  CardGiftcard as RSUIcon,
   HelpOutline as HelpIcon,
   FolderSpecial as PortfoliosIcon,
   Description as DescriptionIcon,
@@ -82,6 +84,8 @@ export const assetGroups: AssetGroup[] = [
       { text: 'Debt Funds', icon: React.createElement(DebtFundIcon), path: '/debt-funds' },
       { text: 'Commodities', icon: React.createElement(CommodityIcon), path: '/commodities' },
       { text: 'Sovereign Gold Bonds', icon: React.createElement(DiamondIcon), path: '/sovereign-gold-bonds' },
+      { text: 'ESOPs', icon: React.createElement(ESOPIcon), path: '/esops' },
+      { text: 'RSUs', icon: React.createElement(RSUIcon), path: '/rsus' },
     ],
   },
   {

@@ -1,24 +1,25 @@
+from enum import auto
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import enum
 from app.core.database import Base
+from app.core.enums import UpperStrEnum
 
 
-class TransactionType(str, enum.Enum):
+class TransactionType(UpperStrEnum):
     """Enum for transaction types"""
-    BUY = "buy"
-    SELL = "sell"
-    DEPOSIT = "deposit"
-    WITHDRAWAL = "withdrawal"
-    DIVIDEND = "dividend"
-    INTEREST = "interest"
-    BONUS = "bonus"
-    SPLIT = "split"
-    TRANSFER_IN = "transfer_in"
-    TRANSFER_OUT = "transfer_out"
-    FEE = "fee"
-    TAX = "tax"
+    BUY = auto()
+    SELL = auto()
+    DEPOSIT = auto()
+    WITHDRAWAL = auto()
+    DIVIDEND = auto()
+    INTEREST = auto()
+    BONUS = auto()
+    SPLIT = auto()
+    TRANSFER_IN = auto()
+    TRANSFER_OUT = auto()
+    FEE = auto()
+    TAX = auto()
 
 
 class Transaction(Base):

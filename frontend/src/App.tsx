@@ -58,6 +58,8 @@ const REITs = React.lazy(() => import('./pages/REITs'));
 const InvITs = React.lazy(() => import('./pages/InvITs'));
 const SovereignGoldBond = React.lazy(() => import('./pages/SovereignGoldBond'));
 const RealEstate = React.lazy(() => import('./pages/RealEstate'));
+const ESOPs = React.lazy(() => import('./pages/ESOPs'));
+const RSUs = React.lazy(() => import('./pages/RSUs'));
 const BanksMaster = React.lazy(() => import('./pages/BanksMaster'));
 const BrokersMaster = React.lazy(() => import('./pages/BrokersMaster'));
 const Settings = React.lazy(() => import('./pages/Settings'));
@@ -167,6 +169,8 @@ window.location.href = '/login?session_expired=true';
             <Route path="reits" element={<REITs />} />
             <Route path="invits" element={<InvITs />} />
             <Route path="sovereign-gold-bonds" element={<SovereignGoldBond />} />
+            <Route path="esops" element={<ESOPs />} />
+            <Route path="rsus" element={<RSUs />} />
             <Route path="land" element={<RealEstate propertyType="land" title="Land" />} />
             <Route path="farm-land" element={<RealEstate propertyType="farm_land" title="Farm Land" />} />
             <Route path="house" element={<RealEstate propertyType="house" title="House" />} />

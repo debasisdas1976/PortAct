@@ -341,6 +341,106 @@ def seed_data(api: APIClient) -> Dict[str, Any]:
     a_nps.raise_for_status()
     ids["a_nps"] = a_nps.json()["id"]
 
+    # ESOP
+    a_esop = api.post_json("/assets", {
+        "asset_type": "esop",
+        "name": f"Startup ESOPs {UNIQUE}",
+        "symbol": "ESOP-001",
+        "quantity": 5000,
+        "purchase_price": 10.00,
+        "current_price": 45.00,
+        "total_invested": 50000.00,
+        "details": {"grant_date": "2022-01-15", "vesting_schedule": "4 years", "cliff_months": 12, "strike_price": 10.00},
+        "notes": "Employee stock options",
+        "purchase_date": "2022-01-15T00:00:00",
+    })
+    a_esop.raise_for_status()
+    ids["a_esop"] = a_esop.json()["id"]
+
+    # RSU
+    a_rsu = api.post_json("/assets", {
+        "asset_type": "rsu",
+        "name": f"Company RSUs {UNIQUE}",
+        "symbol": "RSU-001",
+        "quantity": 200,
+        "purchase_price": 0,
+        "current_price": 150.00,
+        "total_invested": 0,
+        "details": {"grant_date": "2023-06-01", "vesting_schedule": "4 years", "shares_vested": 50},
+        "notes": "Restricted stock units",
+        "purchase_date": "2023-06-01T00:00:00",
+    })
+    a_rsu.raise_for_status()
+    ids["a_rsu"] = a_rsu.json()["id"]
+
+    # Hybrid Mutual Fund
+    a_hybrid_mf = api.post_json("/assets", {
+        "asset_type": "hybrid_mutual_fund",
+        "name": f"ICICI Balanced Advantage {UNIQUE}",
+        "symbol": "ICICIBAF",
+        "api_symbol": "120587",
+        "isin": "INF109K01BD8",
+        "quantity": 500,
+        "purchase_price": 35.00,
+        "current_price": 42.50,
+        "total_invested": 17500.00,
+        "details": {"fund_house": "ICICI Prudential", "category": "Balanced Advantage"},
+        "notes": "Hybrid balanced fund",
+        "purchase_date": "2023-06-01T00:00:00",
+    })
+    a_hybrid_mf.raise_for_status()
+    ids["a_hybrid_mf"] = a_hybrid_mf.json()["id"]
+
+    # Debt Mutual Fund
+    a_debt_mf = api.post_json("/assets", {
+        "asset_type": "debt_mutual_fund",
+        "name": f"HDFC Short Term Debt {UNIQUE}",
+        "symbol": "HDFCSTD",
+        "api_symbol": "119065",
+        "isin": "INF179K01BY2",
+        "quantity": 1000,
+        "purchase_price": 25.00,
+        "current_price": 27.50,
+        "total_invested": 25000.00,
+        "details": {"fund_house": "HDFC AMC", "category": "Short Duration"},
+        "notes": "Debt fund for stability",
+        "purchase_date": "2024-01-01T00:00:00",
+    })
+    a_debt_mf.raise_for_status()
+    ids["a_debt_mf"] = a_debt_mf.json()["id"]
+
+    # Sovereign Gold Bond
+    a_sgb = api.post_json("/assets", {
+        "asset_type": "sovereign_gold_bond",
+        "name": f"SGB 2024-25 Series I {UNIQUE}",
+        "symbol": "SGB2024",
+        "quantity": 5,
+        "purchase_price": 6263.00,
+        "current_price": 7100.00,
+        "total_invested": 31315.00,
+        "details": {"series": "2024-25 Series I", "maturity_date": "2032-03-15", "interest_rate": 2.5},
+        "notes": "Gold bond investment",
+        "purchase_date": "2024-03-01T00:00:00",
+    })
+    a_sgb.raise_for_status()
+    ids["a_sgb"] = a_sgb.json()["id"]
+
+    # Corporate Bond
+    a_corp_bond = api.post_json("/assets", {
+        "asset_type": "corporate_bond",
+        "name": f"HDFC Corp Bond {UNIQUE}",
+        "symbol": "HDFCBOND",
+        "quantity": 10,
+        "purchase_price": 1000.00,
+        "current_price": 1050.00,
+        "total_invested": 10000.00,
+        "details": {"coupon_rate": 8.5, "maturity_date": "2027-06-15", "credit_rating": "AAA"},
+        "notes": "Corporate bond",
+        "purchase_date": "2024-06-15T00:00:00",
+    })
+    a_corp_bond.raise_for_status()
+    ids["a_corp_bond"] = a_corp_bond.json()["id"]
+
     # 5. Transactions
     txns = [
         {"asset_id": ids["a_stock"], "transaction_type": "buy", "transaction_date": "2024-03-15T10:30:00",
@@ -468,7 +568,7 @@ def seed_data(api: APIClient) -> Dict[str, Any]:
 
 
 def _seed_alerts_and_snapshots_via_db(ids: Dict[str, Any]):
-    """Seed alerts and portfolio snapshots directly via DB.
+    """Seed alerts, portfolio snapshots, and mutual fund holdings directly via DB.
     These don't have public create endpoints, so we insert directly."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from sqlalchemy import create_engine
@@ -476,6 +576,7 @@ def _seed_alerts_and_snapshots_via_db(ids: Dict[str, Any]):
     from app.core.config import settings
     from app.models.alert import Alert
     from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
+    from app.models.mutual_fund_holding import MutualFundHolding
 
     engine = create_engine(settings.DATABASE_URL)
     SessionLocal = sessionmaker(bind=engine)
@@ -535,6 +636,58 @@ def _seed_alerts_and_snapshots_via_db(ids: Dict[str, Any]):
             db.add(Alert(**ad))
         db.flush()
 
+        # Create mutual fund holdings for the equity MF asset
+        mf_holdings_data = [
+            {
+                "asset_id": ids["a_mf"],
+                "user_id": uid,
+                "stock_name": "Reliance Industries",
+                "stock_symbol": "RELIANCE",
+                "isin": "INE002A01018",
+                "holding_percentage": 8.5,
+                "holding_value": 543.68,
+                "quantity_held": 0.2,
+                "sector": "Energy",
+                "industry": "Oil & Gas",
+                "market_cap": "Large",
+                "stock_current_price": 2750.00,
+                "data_source": "mfapi",
+            },
+            {
+                "asset_id": ids["a_mf"],
+                "user_id": uid,
+                "stock_name": "HDFC Bank",
+                "stock_symbol": "HDFCBANK",
+                "isin": "INE040A01034",
+                "holding_percentage": 7.2,
+                "holding_value": 460.53,
+                "quantity_held": 0.28,
+                "sector": "Financial Services",
+                "industry": "Banking",
+                "market_cap": "Large",
+                "stock_current_price": 1650.00,
+                "data_source": "mfapi",
+            },
+            {
+                "asset_id": ids["a_mf"],
+                "user_id": uid,
+                "stock_name": "Infosys",
+                "stock_symbol": "INFY",
+                "isin": "INE009A01021",
+                "holding_percentage": 6.1,
+                "holding_value": 390.17,
+                "quantity_held": 0.22,
+                "sector": "IT",
+                "industry": "IT Services",
+                "market_cap": "Large",
+                "stock_current_price": 1780.00,
+                "data_source": "mfapi",
+            },
+        ]
+        for mfh in mf_holdings_data:
+            db.add(MutualFundHolding(**mfh))
+        db.flush()
+
         # Create portfolio snapshots with asset snapshots
         today = date.today()
         for days_ago in [7, 3, 1]:
@@ -579,7 +732,7 @@ def _seed_alerts_and_snapshots_via_db(ids: Dict[str, Any]):
                 db.add(a_snap)
 
         db.commit()
-        print("  ✓ Seeded alerts and portfolio snapshots via DB")
+        print("  ✓ Seeded alerts, mutual fund holdings, and portfolio snapshots via DB")
     except Exception as e:
         db.rollback()
         print(f"  ⚠ Error seeding alerts/snapshots: {e}")
@@ -713,8 +866,8 @@ def main():
         export_resp.raise_for_status()
         source_payload = export_resp.json()
 
-        if source_payload.get("export_version") == "2.0":
-            ok("Export version is 2.0")
+        if source_payload.get("export_version") == "4.0":
+            ok("Export version is 4.0")
         else:
             fail("Export version", f"got {source_payload.get('export_version')}")
 
@@ -722,10 +875,11 @@ def main():
             ("bank_accounts", 2),
             ("demat_accounts", 2),
             ("crypto_accounts", 1),
-            ("assets", 8),
+            ("assets", 14),
             ("expense_categories", 3),
             ("expenses", 3),
             ("transactions", 5),
+            ("mutual_fund_holdings", 3),
             ("alerts", 3),
             ("portfolio_snapshots", 3),
         ]
@@ -771,8 +925,9 @@ def main():
         stats = restore_data.get("stats", {})
         for entity, expected in [
             ("bank_accounts", 2), ("demat_accounts", 2), ("crypto_accounts", 1),
-            ("assets", 8), ("expense_categories", 3), ("expenses", 3),
-            ("transactions", 5), ("alerts", 3), ("portfolio_snapshots", 3),
+            ("assets", 14), ("expense_categories", 3), ("expenses", 3),
+            ("transactions", 5), ("mutual_fund_holdings", 3),
+            ("alerts", 3), ("portfolio_snapshots", 3),
             ("asset_snapshots", 9),
         ]:
             imported = stats.get(entity, {}).get("imported", 0)
@@ -854,6 +1009,16 @@ def main():
                           "fees", "taxes", "reference_number", "notes"],
         )
 
+        # Mutual fund holdings, key by stock_name + stock_symbol
+        compare_entity_lists(
+            "mutual_fund_holdings",
+            source_payload["mutual_fund_holdings"], target_payload["mutual_fund_holdings"],
+            key_fields=["stock_name", "stock_symbol"],
+            value_fields=["isin", "holding_percentage", "holding_value", "quantity_held",
+                          "sector", "industry", "market_cap", "stock_current_price",
+                          "data_source"],
+        )
+
         compare_entity_lists(
             "alerts",
             source_payload["alerts"], target_payload["alerts"],
@@ -905,7 +1070,7 @@ def main():
         all_skipped = True
         for entity in ["bank_accounts", "demat_accounts", "crypto_accounts",
                        "assets", "expense_categories", "expenses", "transactions",
-                       "alerts", "portfolio_snapshots"]:
+                       "mutual_fund_holdings", "alerts", "portfolio_snapshots"]:
             imp = idem_stats.get(entity, {}).get("imported", 0)
             skp = idem_stats.get(entity, {}).get("skipped", 0)
             if imp > 0:

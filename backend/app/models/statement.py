@@ -1,33 +1,34 @@
+from enum import auto
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import enum
 from app.core.database import Base
+from app.core.enums import UpperStrEnum
 
 
-class StatementStatus(str, enum.Enum):
+class StatementStatus(UpperStrEnum):
     """Enum for statement processing status"""
-    UPLOADED = "uploaded"
-    PROCESSING = "processing"
-    PROCESSED = "processed"
-    FAILED = "failed"
+    UPLOADED = auto()
+    PROCESSING = auto()
+    PROCESSED = auto()
+    FAILED = auto()
 
 
-class StatementType(str, enum.Enum):
+class StatementType(UpperStrEnum):
     """Enum for statement types"""
-    BANK_STATEMENT = "bank_statement"
-    BROKER_STATEMENT = "broker_statement"
-    MUTUAL_FUND_STATEMENT = "mutual_fund_statement"
-    DEMAT_STATEMENT = "demat_statement"
-    CRYPTO_STATEMENT = "crypto_statement"
-    INSURANCE_STATEMENT = "insurance_statement"
-    PPF_STATEMENT = "ppf_statement"
-    PF_STATEMENT = "pf_statement"
-    SSY_STATEMENT = "ssy_statement"
-    NPS_STATEMENT = "nps_statement"
-    VESTED_STATEMENT = "vested_statement"
-    INDMONEY_STATEMENT = "indmoney_statement"
-    OTHER = "other"
+    BANK_STATEMENT = auto()
+    BROKER_STATEMENT = auto()
+    MUTUAL_FUND_STATEMENT = auto()
+    DEMAT_STATEMENT = auto()
+    CRYPTO_STATEMENT = auto()
+    INSURANCE_STATEMENT = auto()
+    PPF_STATEMENT = auto()
+    PF_STATEMENT = auto()
+    SSY_STATEMENT = auto()
+    NPS_STATEMENT = auto()
+    VESTED_STATEMENT = auto()
+    INDMONEY_STATEMENT = auto()
+    OTHER = auto()
 
 
 class Statement(Base):

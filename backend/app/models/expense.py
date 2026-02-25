@@ -1,27 +1,28 @@
+from enum import auto
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import enum
 from app.core.database import Base
+from app.core.enums import UpperStrEnum
 
 
-class ExpenseType(str, enum.Enum):
+class ExpenseType(UpperStrEnum):
     """Enum for expense transaction types"""
-    DEBIT = "debit"  # Money out
-    CREDIT = "credit"  # Money in
-    TRANSFER = "transfer"  # Transfer between accounts
+    DEBIT = auto()  # Money out
+    CREDIT = auto()  # Money in
+    TRANSFER = auto()  # Transfer between accounts
 
 
-class PaymentMethod(str, enum.Enum):
+class PaymentMethod(UpperStrEnum):
     """Enum for payment methods"""
-    CASH = "cash"
-    DEBIT_CARD = "debit_card"
-    CREDIT_CARD = "credit_card"
-    UPI = "upi"
-    NET_BANKING = "net_banking"
-    CHEQUE = "cheque"
-    WALLET = "wallet"
-    OTHER = "other"
+    CASH = auto()
+    DEBIT_CARD = auto()
+    CREDIT_CARD = auto()
+    UPI = auto()
+    NET_BANKING = auto()
+    CHEQUE = auto()
+    WALLET = auto()
+    OTHER = auto()
 
 
 class Expense(Base):

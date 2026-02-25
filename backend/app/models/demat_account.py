@@ -1,14 +1,15 @@
+from enum import auto
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import enum
 from app.core.database import Base
+from app.core.enums import UpperStrEnum
 
 
-class AccountMarket(str, enum.Enum):
+class AccountMarket(UpperStrEnum):
     """Whether the demat account trades domestic (INR) or international stocks"""
-    DOMESTIC = "domestic"
-    INTERNATIONAL = "international"
+    DOMESTIC = auto()
+    INTERNATIONAL = auto()
 
 
 class DematAccount(Base):

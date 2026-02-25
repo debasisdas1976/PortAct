@@ -1,40 +1,43 @@
+from enum import auto
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, JSON, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import enum
 from app.core.database import Base
+from app.core.enums import UpperStrEnum
 
 
-class AssetType(str, enum.Enum):
+class AssetType(UpperStrEnum):
     """Enum for different asset types"""
-    STOCK = "stock"
-    US_STOCK = "us_stock"
-    EQUITY_MUTUAL_FUND = "equity_mutual_fund"
-    HYBRID_MUTUAL_FUND = "hybrid_mutual_fund"
-    DEBT_MUTUAL_FUND = "debt_mutual_fund"
-    COMMODITY = "commodity"
-    CRYPTO = "crypto"
-    SAVINGS_ACCOUNT = "savings_account"
-    RECURRING_DEPOSIT = "recurring_deposit"
-    FIXED_DEPOSIT = "fixed_deposit"
-    REAL_ESTATE = "real_estate"
-    PPF = "ppf"
-    PF = "pf"
-    NPS = "nps"
-    SSY = "ssy"
-    INSURANCE_POLICY = "insurance_policy"
-    GRATUITY = "gratuity"
-    CASH = "cash"  # For tracking cash balances in trading accounts
-    NSC = "nsc"
-    KVP = "kvp"
-    SCSS = "scss"
-    MIS = "mis"
-    CORPORATE_BOND = "corporate_bond"
-    RBI_BOND = "rbi_bond"
-    TAX_SAVING_BOND = "tax_saving_bond"
-    REIT = "reit"
-    INVIT = "invit"
-    SOVEREIGN_GOLD_BOND = "sovereign_gold_bond"
+    STOCK = auto()
+    US_STOCK = auto()
+    EQUITY_MUTUAL_FUND = auto()
+    HYBRID_MUTUAL_FUND = auto()
+    DEBT_MUTUAL_FUND = auto()
+    COMMODITY = auto()
+    CRYPTO = auto()
+    SAVINGS_ACCOUNT = auto()
+    RECURRING_DEPOSIT = auto()
+    FIXED_DEPOSIT = auto()
+    REAL_ESTATE = auto()
+    PPF = auto()
+    PF = auto()
+    NPS = auto()
+    SSY = auto()
+    INSURANCE_POLICY = auto()
+    GRATUITY = auto()
+    CASH = auto()
+    NSC = auto()
+    KVP = auto()
+    SCSS = auto()
+    MIS = auto()
+    CORPORATE_BOND = auto()
+    RBI_BOND = auto()
+    TAX_SAVING_BOND = auto()
+    REIT = auto()
+    INVIT = auto()
+    SOVEREIGN_GOLD_BOND = auto()
+    ESOP = auto()
+    RSU = auto()
 
 
 class Asset(Base):

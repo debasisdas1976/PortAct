@@ -29,11 +29,12 @@ from app.models.transaction import Transaction
 from app.models.alert import Alert
 from app.models.portfolio import Portfolio
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
+from app.models.mutual_fund_holding import MutualFundHolding
 
 router = APIRouter()
 
-EXPORT_VERSION = "3.0"
-SUPPORTED_VERSIONS = {"1.0", "2.0", "3.0"}
+EXPORT_VERSION = "4.0"
+SUPPORTED_VERSIONS = {"1.0", "2.0", "3.0", "4.0"}
 
 
 # ─── helpers ────────────────────────────────────────────────────────────────
@@ -93,6 +94,11 @@ async def export_portfolio(
         else []
     )
 
+    # Mutual fund holdings (stock-level breakdown of MF assets)
+    mutual_fund_holdings = (
+        db.query(MutualFundHolding).filter(MutualFundHolding.user_id == uid).all()
+    )
+
     # Portfolio snapshots with their nested asset snapshots
     portfolio_snapshots = (
         db.query(PortfolioSnapshot).filter(PortfolioSnapshot.user_id == uid).all()
@@ -115,6 +121,7 @@ async def export_portfolio(
         "expense_categories": [_to_dict(r) for r in categories],
         "expenses": [_to_dict(r) for r in expenses],
         "transactions": [_to_dict(r) for r in transactions],
+        "mutual_fund_holdings": [_to_dict(r) for r in mutual_fund_holdings],
         "alerts": [_to_dict(r) for r in alerts],
         "portfolio_snapshots": snapshots_data,
     }
@@ -163,7 +170,7 @@ async def restore_portfolio(
         k: {"imported": 0, "skipped": 0}
         for k in ("portfolios", "bank_accounts", "demat_accounts", "crypto_accounts",
                   "assets", "expense_categories", "expenses", "transactions",
-                  "alerts", "portfolio_snapshots", "asset_snapshots")
+                  "mutual_fund_holdings", "alerts", "portfolio_snapshots", "asset_snapshots")
     }
 
     # old_id → new_id maps
@@ -328,6 +335,7 @@ async def restore_portfolio(
         else:
             obj = CryptoAccount(
                 user_id=uid,
+                portfolio_id=portfolio_map.get(r.get("portfolio_id")) or default_portfolio.id,
                 exchange_name=r.get("exchange_name"),
                 account_id=r.get("account_id"),
                 account_holder_name=r.get("account_holder_name"),
@@ -338,6 +346,7 @@ async def restore_portfolio(
                 is_primary=r.get("is_primary", False),
                 nickname=r.get("nickname"),
                 notes=r.get("notes"),
+                last_sync_date=_parse_dt(r.get("last_sync_date")),
             )
             db.add(obj)
             db.flush()
@@ -513,6 +522,43 @@ async def restore_portfolio(
             )
             db.add(obj)
             stats["transactions"]["imported"] += 1
+
+    # ── 6b. Mutual fund holdings ──────────────────────────────────────────────
+    for r in data.get("mutual_fund_holdings", []):
+        new_asset_id = asset_map.get(r.get("asset_id"))
+        if not new_asset_id:
+            continue  # orphaned; skip
+
+        # Match by (asset_id, stock_symbol, isin) to detect duplicates
+        existing = (
+            db.query(MutualFundHolding)
+            .filter(
+                MutualFundHolding.asset_id == new_asset_id,
+                MutualFundHolding.stock_name == r.get("stock_name"),
+                MutualFundHolding.stock_symbol == r.get("stock_symbol"),
+            )
+            .first()
+        )
+        if existing:
+            stats["mutual_fund_holdings"]["skipped"] += 1
+        else:
+            obj = MutualFundHolding(
+                asset_id=new_asset_id,
+                user_id=uid,
+                stock_name=r.get("stock_name"),
+                stock_symbol=r.get("stock_symbol"),
+                isin=r.get("isin"),
+                holding_percentage=r.get("holding_percentage", 0),
+                holding_value=r.get("holding_value", 0),
+                quantity_held=r.get("quantity_held", 0),
+                sector=r.get("sector"),
+                industry=r.get("industry"),
+                market_cap=r.get("market_cap"),
+                stock_current_price=r.get("stock_current_price", 0),
+                data_source=r.get("data_source"),
+            )
+            db.add(obj)
+            stats["mutual_fund_holdings"]["imported"] += 1
 
     # ── 7. Expenses ──────────────────────────────────────────────────────────
     for r in data.get("expenses", []):
@@ -805,6 +851,7 @@ async def generate_pdf_statement(
         "tax_saving_bond": "Tax Saving Bonds",
         "reit": "REITs", "invit": "InvITs",
         "sovereign_gold_bond": "Sovereign Gold Bonds",
+        "esop": "ESOPs", "rsu": "RSUs",
     }
 
     story = []

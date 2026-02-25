@@ -593,6 +593,18 @@
       "sort_order": 6
     },
     {
+      "name": "esop",
+      "display_label": "ESOP",
+      "category": "Equity",
+      "sort_order": 7
+    },
+    {
+      "name": "rsu",
+      "display_label": "RSU",
+      "category": "Equity",
+      "sort_order": 8
+    },
+    {
       "name": "debt_mutual_fund",
       "display_label": "Debt Mutual Fund",
       "category": "Fixed Income",

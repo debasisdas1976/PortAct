@@ -288,7 +288,7 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
             else:
                 error_message = f"Failed to fetch US stock price for {lookup_symbol}"
         
-        elif asset.asset_type in [AssetType.EQUITY_MUTUAL_FUND, AssetType.DEBT_MUTUAL_FUND]:
+        elif asset.asset_type in [AssetType.EQUITY_MUTUAL_FUND, AssetType.DEBT_MUTUAL_FUND, AssetType.HYBRID_MUTUAL_FUND]:
             # Prioritize ISIN if available, then api_symbol, then symbol
             search_identifier = asset.isin if asset.isin else lookup_symbol
             
@@ -368,6 +368,30 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
             if not new_price:
                 error_message = f"Failed to fetch price for {asset.isin or lookup_symbol} ({asset.asset_type.value})"
 
+        elif asset.asset_type in [AssetType.ESOP, AssetType.RSU]:
+            # Route based on currency: USD → US stock API, INR → NSE
+            currency = (asset.details or {}).get('currency', 'INR')
+            if currency == 'USD':
+                us_price_usd = get_us_stock_price(lookup_symbol)
+                if us_price_usd:
+                    usd_to_inr = get_usd_to_inr_rate()
+                    new_price = us_price_usd * usd_to_inr
+                    if asset.details is None:
+                        asset.details = {}
+                    asset.details['price_usd'] = us_price_usd
+                    asset.details['usd_to_inr_rate'] = usd_to_inr
+                    asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
+                    logger.info(f"Updated {asset.asset_type.value} {asset.symbol}: ${us_price_usd} (₹{new_price:.2f})")
+                else:
+                    error_message = f"Failed to fetch US price for {lookup_symbol} ({asset.asset_type.value})"
+            else:
+                if asset.isin:
+                    new_price = get_stock_price_yfinance(asset.isin)
+                if not new_price:
+                    new_price = get_stock_price_nse(lookup_symbol)
+                if not new_price:
+                    error_message = f"Failed to fetch price for {asset.isin or lookup_symbol} ({asset.asset_type.value})"
+
         if new_price and new_price > 0:
             asset.current_price = new_price
             asset.current_value = asset.quantity * new_price
@@ -412,6 +436,7 @@ PRICE_UPDATABLE_TYPES = [
     AssetType.STOCK,
     AssetType.US_STOCK,
     AssetType.EQUITY_MUTUAL_FUND,
+    AssetType.HYBRID_MUTUAL_FUND,
     AssetType.DEBT_MUTUAL_FUND,
     AssetType.COMMODITY,
     AssetType.CRYPTO,
@@ -419,6 +444,8 @@ PRICE_UPDATABLE_TYPES = [
     AssetType.REIT,
     AssetType.INVIT,
     AssetType.SOVEREIGN_GOLD_BOND,
+    AssetType.ESOP,
+    AssetType.RSU,
 ]
 
 

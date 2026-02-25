@@ -665,7 +665,7 @@ class AINewsService:
         asset_type = asset.asset_type.value
 
         # Market-traded assets get a different focus than fixed-income / govt schemes
-        if asset_type in ("stock", "us_stock", "equity_mutual_fund", "hybrid_mutual_fund", "reit", "invit"):
+        if asset_type in ("stock", "us_stock", "equity_mutual_fund", "hybrid_mutual_fund", "reit", "invit", "esop", "rsu"):
             focus = """Focus areas:
 1. Key risks, red flags, or concerns investors should be aware of for this specific asset
 2. Known corporate governance issues, debt levels, or sector headwinds

@@ -1,17 +1,18 @@
+from enum import auto
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import enum
 from app.core.database import Base
+from app.core.enums import UpperStrEnum
 
 
-class BankType(str, enum.Enum):
+class BankType(UpperStrEnum):
     """Enum for bank account types"""
-    SAVINGS = "savings"
-    CURRENT = "current"
-    CREDIT_CARD = "credit_card"
-    FIXED_DEPOSIT = "fixed_deposit"
-    RECURRING_DEPOSIT = "recurring_deposit"
+    SAVINGS = auto()
+    CURRENT = auto()
+    CREDIT_CARD = auto()
+    FIXED_DEPOSIT = auto()
+    RECURRING_DEPOSIT = auto()
 
 
 class BankAccount(Base):

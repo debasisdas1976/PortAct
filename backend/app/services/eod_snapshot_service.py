@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.asset import Asset
 from app.models.bank_account import BankAccount
 from app.models.demat_account import DematAccount
+from app.models.crypto_account import CryptoAccount
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
 from app.core.database import SessionLocal
 
@@ -79,6 +80,12 @@ class EODSnapshotService:
         demat_accounts = db.query(DematAccount).filter(
             DematAccount.user_id == user_id,
             DematAccount.is_active == True
+        ).all()
+
+        # Get all active crypto accounts with cash balance
+        crypto_accounts = db.query(CryptoAccount).filter(
+            CryptoAccount.user_id == user_id,
+            CryptoAccount.is_active == True
         ).all()
         
         # Calculate metrics for each asset
@@ -161,6 +168,32 @@ class EODSnapshotService:
             total_invested += demat_account.cash_balance
             total_current_value += demat_account.cash_balance
 
+        # Add crypto account cash balances to the snapshot
+        for crypto_account in crypto_accounts:
+            if not crypto_account.cash_balance_usd or crypto_account.cash_balance_usd <= 0:
+                continue
+
+            asset_snapshot = AssetSnapshot(
+                portfolio_snapshot_id=portfolio_snapshot.id,
+                asset_id=None,
+                snapshot_date=snapshot_date,
+                asset_type='crypto_cash',
+                asset_name=f"{crypto_account.exchange_name} - Cash (USD)",
+                asset_symbol=crypto_account.account_id[-4:] if crypto_account.account_id else 'N/A',
+                quantity=1.0,
+                purchase_price=crypto_account.cash_balance_usd,
+                current_price=crypto_account.cash_balance_usd,
+                total_invested=crypto_account.cash_balance_usd,
+                current_value=crypto_account.cash_balance_usd,
+                profit_loss=0.0,
+                profit_loss_percentage=0.0
+            )
+            db.add(asset_snapshot)
+
+            # Crypto cash: invested = current value (no profit/loss)
+            total_invested += crypto_account.cash_balance_usd
+            total_current_value += crypto_account.cash_balance_usd
+
         # Update portfolio snapshot with totals
         total_profit_loss = total_current_value - total_invested
         total_profit_loss_percentage = (
@@ -172,15 +205,19 @@ class EODSnapshotService:
         portfolio_snapshot.total_profit_loss = total_profit_loss
         portfolio_snapshot.total_profit_loss_percentage = total_profit_loss_percentage
         demat_accounts_with_cash = [a for a in demat_accounts if a.cash_balance and a.cash_balance > 0]
-        portfolio_snapshot.total_assets_count = len(assets) + len(bank_accounts) + len(demat_accounts_with_cash)
-        
+        crypto_accounts_with_cash = [a for a in crypto_accounts if a.cash_balance_usd and a.cash_balance_usd > 0]
+        portfolio_snapshot.total_assets_count = (
+            len(assets) + len(bank_accounts) + len(demat_accounts_with_cash) + len(crypto_accounts_with_cash)
+        )
+
         db.commit()
         db.refresh(portfolio_snapshot)
-        
+
         logger.info(
             f"Snapshot captured for user {user_id}: "
             f"{len(assets)} assets, {len(bank_accounts)} bank accounts, "
             f"{len(demat_accounts_with_cash)} demat accounts with cash, "
+            f"{len(crypto_accounts_with_cash)} crypto accounts with cash, "
             f"Total Value: {total_current_value:.2f}, "
             f"P/L: {total_profit_loss:.2f} ({total_profit_loss_percentage:.2f}%)"
         )

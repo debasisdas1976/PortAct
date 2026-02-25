@@ -5,7 +5,7 @@ from app.models.statement import Statement, StatementStatus, StatementType
 from app.models.alert import Alert, AlertSeverity, AlertType
 from app.models.bank_account import BankAccount, BankType
 from app.models.bank import BankMaster
-from app.models.demat_account import DematAccount
+from app.models.demat_account import DematAccount, AccountMarket
 from app.models.broker import BrokerMaster
 from app.models.crypto_account import CryptoAccount
 from app.models.crypto_exchange import CryptoExchangeMaster
@@ -34,6 +34,7 @@ __all__ = [
     "BankType",
     "BankMaster",
     "DematAccount",
+    "AccountMarket",
     "BrokerMaster",
     "CryptoAccount",
     "CryptoExchangeMaster",

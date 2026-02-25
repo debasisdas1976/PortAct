@@ -1,27 +1,28 @@
+from enum import auto
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import enum
 from app.core.database import Base
+from app.core.enums import UpperStrEnum
 
 
-class AlertSeverity(str, enum.Enum):
+class AlertSeverity(UpperStrEnum):
     """Enum for alert severity levels"""
-    INFO = "info"
-    WARNING = "warning"
-    CRITICAL = "critical"
+    INFO = auto()
+    WARNING = auto()
+    CRITICAL = auto()
 
 
-class AlertType(str, enum.Enum):
+class AlertType(UpperStrEnum):
     """Enum for alert types"""
-    PRICE_CHANGE = "price_change"
-    NEWS_EVENT = "news_event"
-    DIVIDEND_ANNOUNCEMENT = "dividend_announcement"
-    EARNINGS_REPORT = "earnings_report"
-    REGULATORY_CHANGE = "regulatory_change"
-    MATURITY_REMINDER = "maturity_reminder"
-    REBALANCE_SUGGESTION = "rebalance_suggestion"
-    MARKET_VOLATILITY = "market_volatility"
+    PRICE_CHANGE = auto()
+    NEWS_EVENT = auto()
+    DIVIDEND_ANNOUNCEMENT = auto()
+    EARNINGS_REPORT = auto()
+    REGULATORY_CHANGE = auto()
+    MATURITY_REMINDER = auto()
+    REBALANCE_SUGGESTION = auto()
+    MARKET_VOLATILITY = auto()
 
 
 class Alert(Base):
