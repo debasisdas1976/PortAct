@@ -60,7 +60,9 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
     <Box sx={{ overflowY: 'auto' }}>
       <Toolbar>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <img src="/logo.svg" alt="PortAct" width={32} height={32} style={{ borderRadius: 6 }} />
+          <Box sx={{ bgcolor: 'primary.main', borderRadius: '10px', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <img src="/logo.png" alt="PortAct" width={36} height={36} />
+          </Box>
           <Typography variant="h6" noWrap component="div" fontWeight={700}>
             PortAct
           </Typography>

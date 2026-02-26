@@ -1,9 +1,9 @@
 from enum import auto
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Boolean, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
-from app.core.enums import UpperStrEnum
+from app.core.enums import UpperStrEnum, LowerEnum
 
 
 class BankType(UpperStrEnum):
@@ -27,7 +27,7 @@ class BankAccount(Base):
 
     # Account details
     bank_name = Column(String(50), nullable=False, index=True)  # References banks.name
-    account_type = Column(Enum(BankType), nullable=False, index=True)
+    account_type = Column(LowerEnum(BankType), nullable=False, index=True)
     account_number = Column(String, nullable=False)  # Masked or full account number
     account_holder_name = Column(String)
     ifsc_code = Column(String)

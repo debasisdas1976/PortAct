@@ -62,27 +62,26 @@ const IconRail: React.FC<IconRailProps> = ({ activeSection, activeFlyout, railSe
       <Box
         sx={{
           position: 'fixed',
-          top: 0,
+          top: 64,
           left: 0,
           width: RAIL_WIDTH,
-          height: '100vh',
-          bgcolor: 'background.paper',
+          height: 'calc(100vh - 64px)',
+          bgcolor: '#F1F5F9',
           borderRight: 1,
           borderColor: 'divider',
+          // Engraved line between AppBar and rail
+          borderTop: '1px solid',
+          borderTopColor: 'divider',
+          boxShadow: (theme) =>
+            `inset 0 1px 0 0 rgba(255,255,255,0.08), inset 0 2px 3px -2px ${theme.palette.divider}`,
           display: { xs: 'none', sm: 'flex' },
           flexDirection: 'column',
           alignItems: 'center',
-          zIndex: (theme) => theme.zIndex.drawer + 2,
+          zIndex: (theme) => theme.zIndex.drawer + 1,
           pt: 1.5,
           pb: 1.5,
         }}
       >
-        {/* Logo */}
-        <Box sx={{ mb: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src="/logo.svg" alt="PortAct" width={32} height={32} style={{ borderRadius: 6 }} />
-        </Box>
-
-        <Divider sx={{ width: '60%', my: 1 }} />
 
         {/* Top section icons */}
         <Box

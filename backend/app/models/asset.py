@@ -1,9 +1,9 @@
 from enum import auto
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, JSON, Text, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
-from app.core.enums import UpperStrEnum
+from app.core.enums import UpperStrEnum, LowerEnum
 
 
 class AssetType(UpperStrEnum):
@@ -52,7 +52,7 @@ class Asset(Base):
     portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=True)  # Link to portfolio
 
     # Asset identification
-    asset_type = Column(Enum(AssetType), nullable=False, index=True)
+    asset_type = Column(LowerEnum(AssetType), nullable=False, index=True)
     name = Column(String, nullable=False)  # Stock name, property address, etc.
     symbol = Column(String, index=True)  # Ticker symbol, ISIN, etc. (for display)
     api_symbol = Column(String, index=True)  # Symbol used for API price fetching (can be different from display symbol)

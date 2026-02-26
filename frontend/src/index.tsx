@@ -11,55 +11,61 @@ const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#1976d2',
-      light: '#42a5f5',
-      dark: '#1565c0',
+      main: '#1976D2',
+      light: '#42A5F5',
+      dark: '#1565C0',
     },
     secondary: {
-      main: '#9c27b0',
-      light: '#ba68c8',
-      dark: '#7b1fa2',
+      main: '#10B981',
+      light: '#34D399',
+      dark: '#059669',
     },
     success: {
-      main: '#2e7d32',
+      main: '#10B981',
+      light: '#34D399',
+      dark: '#059669',
     },
     error: {
-      main: '#d32f2f',
+      main: '#EF4444',
+      light: '#F87171',
+      dark: '#DC2626',
+    },
+    warning: {
+      main: '#F59E0B',
+      light: '#FBBF24',
+      dark: '#D97706',
+    },
+    info: {
+      main: '#1E88E5',
+      light: '#42A5F5',
+      dark: '#1565C0',
     },
     background: {
-      default: '#f5f5f5',
-      paper: '#ffffff',
+      default: '#F8FAFC',
+      paper: '#FFFFFF',
     },
+    text: {
+      primary: '#0F172A',
+      secondary: '#64748B',
+    },
+    divider: '#E2E8F0',
   },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    h1: {
-      fontSize: '2.5rem',
-      fontWeight: 600,
-    },
-    h2: {
-      fontSize: '2rem',
-      fontWeight: 600,
-    },
-    h3: {
-      fontSize: '1.75rem',
-      fontWeight: 600,
-    },
-    h4: {
-      fontSize: '1.5rem',
-      fontWeight: 600,
-    },
-    h5: {
-      fontSize: '1.25rem',
-      fontWeight: 600,
-    },
-    h6: {
-      fontSize: '1rem',
-      fontWeight: 600,
-    },
+    fontFamily: '"Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", sans-serif',
+    h1: { fontSize: '2.25rem', fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.2 },
+    h2: { fontSize: '1.875rem', fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.3 },
+    h3: { fontSize: '1.5rem', fontWeight: 600, letterSpacing: '-0.02em', lineHeight: 1.35 },
+    h4: { fontSize: '1.25rem', fontWeight: 600, letterSpacing: '-0.015em', lineHeight: 1.4 },
+    h5: { fontSize: '1.1rem', fontWeight: 600, lineHeight: 1.45 },
+    h6: { fontSize: '1rem', fontWeight: 600, lineHeight: 1.5 },
+    body1: { fontSize: '0.9375rem', lineHeight: 1.6 },
+    body2: { fontSize: '0.875rem', lineHeight: 1.6 },
+    subtitle1: { fontSize: '0.9375rem', fontWeight: 500, lineHeight: 1.5 },
+    subtitle2: { fontSize: '0.8125rem', fontWeight: 500, lineHeight: 1.5 },
+    caption: { fontSize: '0.75rem', lineHeight: 1.5, color: '#64748B' },
   },
   shape: {
-    borderRadius: 8,
+    borderRadius: 10,
   },
   components: {
     MuiButton: {
@@ -67,13 +73,58 @@ const theme = createTheme({
         root: {
           textTransform: 'none',
           fontWeight: 600,
+          borderRadius: 8,
+          padding: '8px 18px',
+        },
+        contained: {
+          boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+          '&:hover': {
+            boxShadow: '0 4px 12px rgba(25,118,210,0.25)',
+          },
         },
       },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+          border: '1px solid #F1F5F9',
+          '&:hover': {
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+          },
+          transition: 'box-shadow 0.2s ease',
+        },
+      },
+    },
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none',
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          fontWeight: 500,
+        },
+      },
+    },
+    MuiTableHead: {
+      styleOverrides: {
+        root: {
+          '& .MuiTableCell-head': {
+            fontWeight: 600,
+            color: '#475569',
+            backgroundColor: '#F8FAFC',
+          },
         },
       },
     },

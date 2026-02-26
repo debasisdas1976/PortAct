@@ -112,7 +112,7 @@ async def lifespan(app: FastAPI):
             sqlalchemy.text("SELECT enumlabel FROM pg_enum WHERE enumtypid = 'assettype'::regtype")
         ).fetchall()
         pg_labels = {row[0] for row in rows}
-        missing = [member.name for member in AssetType if member.name not in pg_labels]
+        missing = [member.value for member in AssetType if member.value not in pg_labels]
         if missing:
             raise RuntimeError(
                 f"PostgreSQL 'assettype' enum is missing values: {missing}. "

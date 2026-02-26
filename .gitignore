@@ -79,6 +79,7 @@ statements/
 
 # Test coverage
 htmlcov/
+frontend/coverage/
 .tox/
 .coverage
 .coverage.*

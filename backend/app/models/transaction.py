@@ -1,9 +1,9 @@
 from enum import auto
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
-from app.core.enums import UpperStrEnum
+from app.core.enums import UpperStrEnum, LowerEnum
 
 
 class TransactionType(UpperStrEnum):
@@ -31,7 +31,7 @@ class Transaction(Base):
     statement_id = Column(Integer, ForeignKey("statements.id"), nullable=True)
     
     # Transaction details
-    transaction_type = Column(Enum(TransactionType), nullable=False, index=True)
+    transaction_type = Column(LowerEnum(TransactionType), nullable=False, index=True)
     transaction_date = Column(DateTime(timezone=True), nullable=False, index=True)
     
     # Amounts

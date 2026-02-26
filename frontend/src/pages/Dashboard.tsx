@@ -233,7 +233,7 @@ const Dashboard: React.FC = () => {
   const assetsByTypeInCategory: Record<string, Record<string, { value: number; count: number; invested: number }>> = {};
 
   (assets || []).forEach((asset: any) => {
-    const type = asset.asset_type || 'other';
+    const type = (asset.asset_type || 'other').toLowerCase();
     const category = assetTypeMap[type]?.category || 'Other';
 
     if (!assetsByCategory[category]) {

@@ -1,9 +1,9 @@
 from enum import auto
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Boolean, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
-from app.core.enums import UpperStrEnum
+from app.core.enums import UpperStrEnum, LowerEnum
 
 
 class AlertSeverity(UpperStrEnum):
@@ -34,8 +34,8 @@ class Alert(Base):
     asset_id = Column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)  # Optional, for asset-specific alerts
     
     # Alert details
-    alert_type = Column(Enum(AlertType), nullable=False, index=True)
-    severity = Column(Enum(AlertSeverity), default=AlertSeverity.INFO)
+    alert_type = Column(LowerEnum(AlertType), nullable=False, index=True)
+    severity = Column(LowerEnum(AlertSeverity), default=AlertSeverity.INFO)
     title = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     

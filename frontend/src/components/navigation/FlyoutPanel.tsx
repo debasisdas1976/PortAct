@@ -108,11 +108,12 @@ const FlyoutPanel: React.FC<FlyoutPanelProps> = ({
       elevation={isOpen ? 8 : 0}
       sx={{
         position: 'fixed',
-        top: 0,
+        top: 64,
         left: RAIL_WIDTH,
         width: FLYOUT_WIDTH,
-        height: '100vh',
+        height: 'calc(100vh - 64px)',
         zIndex: (theme) => theme.zIndex.drawer + 1,
+        bgcolor: '#F8FAFC',
         overflowY: 'auto',
         borderRadius: 0,
         display: { xs: 'none', sm: 'block' },

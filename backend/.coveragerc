@@ -1,0 +1,14 @@
+[run]
+source = app
+omit =
+    app/services/seed_sync.py
+    app/services/scheduler.py
+    app/services/news_scheduler.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    pass
+fail_under = 15
+show_missing = true

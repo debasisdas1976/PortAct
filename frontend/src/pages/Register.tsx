@@ -104,7 +104,7 @@ const Register: React.FC = () => {
               component={RouterLink}
               to="/login"
               size="large"
-              sx={{ py: 1.5, fontSize: '1rem', borderRadius: 2 }}
+              sx={{ py: 1.5, fontSize: '1rem', borderRadius: 2, bgcolor: '#1E293B', '&:hover': { bgcolor: '#0F172A' } }}
             >
               Go to Sign In
             </Button>
@@ -200,6 +200,8 @@ const Register: React.FC = () => {
                   py: 1.5,
                   fontSize: '1rem',
                   borderRadius: 2,
+                  bgcolor: '#1E293B',
+                  '&:hover': { bgcolor: '#0F172A' },
                 }}
                 disabled={loading}
               >

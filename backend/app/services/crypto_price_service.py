@@ -7,6 +7,7 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import logging
 from app.core.config import settings
+from app.models.asset import AssetType
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +191,7 @@ def update_crypto_asset_price(asset, db_session):
         asset: Asset model instance
         db_session: Database session
     """
-    if asset.asset_type.value != "crypto":
+    if asset.asset_type != AssetType.CRYPTO:
         return False
     
     # Get coin ID from symbol or details

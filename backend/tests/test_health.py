@@ -1,7 +1,8 @@
-"""Basic health check tests for CI pipeline."""
-from fastapi.testclient import TestClient
+"""Health check and root endpoint tests for CI pipeline."""
+import pytest
 
 
+@pytest.mark.unit
 def test_app_imports():
     """Verify the FastAPI app can be imported without errors."""
     from app.main import app
@@ -9,11 +10,32 @@ def test_app_imports():
     assert app.title is not None
 
 
-def test_health_endpoint():
-    """Test the app starts and responds to requests."""
-    from app.main import app
+@pytest.mark.api
+def test_root_endpoint(client):
+    """GET / returns app name and version."""
+    resp = client.get("/")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "message" in data
+    assert "version" in data
+    assert "PortAct" in data["message"]
 
-    client = TestClient(app)
-    response = client.get("/api/v1/health")
-    # Accept 200 or 404 (if no health endpoint defined yet)
-    assert response.status_code in (200, 404)
+
+@pytest.mark.api
+def test_health_endpoint(client):
+    """GET /health returns status, version, environment, database keys."""
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "status" in data
+    assert "version" in data
+    assert "environment" in data
+    assert "database" in data
+
+
+@pytest.mark.api
+def test_app_version_not_empty(client):
+    """The version string should be non-empty."""
+    resp = client.get("/")
+    data = resp.json()
+    assert data["version"] != ""

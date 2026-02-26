@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(gh run view:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(python:*)"
     ]
   }
 }

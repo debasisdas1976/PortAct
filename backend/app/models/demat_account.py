@@ -1,9 +1,9 @@
 from enum import auto
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Boolean, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
-from app.core.enums import UpperStrEnum
+from app.core.enums import UpperStrEnum, LowerEnum
 
 
 class AccountMarket(UpperStrEnum):
@@ -24,7 +24,7 @@ class DematAccount(Base):
 
     # Account details
     broker_name = Column(String(50), nullable=False, index=True)  # References brokers.name
-    account_market = Column(Enum(AccountMarket), nullable=False, default=AccountMarket.DOMESTIC, server_default='DOMESTIC')
+    account_market = Column(LowerEnum(AccountMarket), nullable=False, default=AccountMarket.DOMESTIC, server_default='domestic')
     account_id = Column(String, nullable=False)  # Client ID / Account Number
     account_holder_name = Column(String)
     demat_account_number = Column(String)  # DP ID + Client ID

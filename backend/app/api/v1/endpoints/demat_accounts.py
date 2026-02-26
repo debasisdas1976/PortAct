@@ -290,7 +290,7 @@ async def update_demat_account(
     
     # Handle USD to INR conversion for international accounts
     effective_market = update_data.get('account_market', account.account_market)
-    if effective_market == AccountMarket.INTERNATIONAL or (isinstance(effective_market, str) and effective_market == 'INTERNATIONAL'):
+    if effective_market == AccountMarket.INTERNATIONAL or (isinstance(effective_market, str) and effective_market.lower() == 'international'):
         if 'cash_balance_usd' in update_data and update_data['cash_balance_usd'] is not None:
             # User updated USD amount, convert to INR
             usd_to_inr = get_usd_to_inr_rate()

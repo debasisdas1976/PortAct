@@ -1,9 +1,9 @@
 from enum import auto
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Boolean, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
-from app.core.enums import UpperStrEnum
+from app.core.enums import UpperStrEnum, LowerEnum
 
 
 class ExpenseType(UpperStrEnum):
@@ -40,7 +40,7 @@ class Expense(Base):
     
     # Transaction details
     transaction_date = Column(DateTime(timezone=True), nullable=False, index=True)
-    transaction_type = Column(Enum(ExpenseType), nullable=False, index=True)
+    transaction_type = Column(LowerEnum(ExpenseType), nullable=False, index=True)
     
     # Amount information
     amount = Column(Float, nullable=False)  # Transaction amount
@@ -52,7 +52,7 @@ class Expense(Base):
     reference_number = Column(String)  # Bank reference/transaction ID
     
     # Payment details
-    payment_method = Column(Enum(PaymentMethod), nullable=True)
+    payment_method = Column(LowerEnum(PaymentMethod), nullable=True)
     
     # Categorization
     is_categorized = Column(Boolean, default=False)

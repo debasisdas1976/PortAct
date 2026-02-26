@@ -29,12 +29,12 @@ def test_all_model_enums_inherit_upper_str_enum():
 
 
 def test_enum_values_match_names():
-    """Every enum member's .value must equal its .name (UPPERCASE)."""
+    """Every enum member's .value must equal its .name lowercased."""
     for cls in _all_model_enums():
         for member in cls:
-            assert member.value == member.name, (
+            assert member.value == member.name.lower(), (
                 f"{cls.__name__}.{member.name} has value '{member.value}' "
-                f"but should be '{member.name}'"
+                f"but should be '{member.name.lower()}'"
             )
 
 

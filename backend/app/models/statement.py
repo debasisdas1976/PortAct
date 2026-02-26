@@ -1,9 +1,9 @@
 from enum import auto
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Boolean, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
-from app.core.enums import UpperStrEnum
+from app.core.enums import UpperStrEnum, LowerEnum
 
 
 class StatementStatus(UpperStrEnum):
@@ -45,14 +45,14 @@ class Statement(Base):
     file_type = Column(String)  # MIME type
     
     # Statement details
-    statement_type = Column(Enum(StatementType), nullable=False)
+    statement_type = Column(LowerEnum(StatementType), nullable=False)
     statement_date = Column(DateTime(timezone=True))  # Statement period date
     institution_name = Column(String)  # Bank/broker name
     account_number = Column(String)  # Masked account number
     password = Column(String)  # Password for encrypted PDFs (stored encrypted)
     
     # Processing status
-    status = Column(Enum(StatementStatus), default=StatementStatus.UPLOADED)
+    status = Column(LowerEnum(StatementStatus), default=StatementStatus.UPLOADED)
     processing_started_at = Column(DateTime(timezone=True))
     processing_completed_at = Column(DateTime(timezone=True))
     error_message = Column(Text)  # Error details if processing failed

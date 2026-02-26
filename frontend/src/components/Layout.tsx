@@ -11,7 +11,10 @@ import {
   Menu,
   MenuItem,
   Divider,
+  Dialog,
+  DialogContent,
 } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import {
   Menu as MenuIcon,
   AccountCircle,
@@ -44,6 +47,7 @@ const Layout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const prevPathnameRef = useRef(location.pathname);
 
   // Close flyout synchronously on route change (no async useEffect race)
@@ -114,11 +118,30 @@ const Layout: React.FC = () => {
       <AppBar
         position="fixed"
         sx={{
-          width: { sm: `calc(100% - ${RAIL_WIDTH}px)` },
-          ml: { sm: `${RAIL_WIDTH}px` },
+          width: '100%',
+          zIndex: (theme) => theme.zIndex.drawer + 3,
+          background: 'linear-gradient(to right, #0F172A 0%, #1E293B 100%)',
         }}
       >
         <Toolbar>
+          {/* Logo area — sits over the rail column */}
+          <Box
+            onClick={() => setAboutOpen(true)}
+            sx={{
+              display: { xs: 'none', sm: 'flex' },
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: RAIL_WIDTH,
+              flexShrink: 0,
+              mr: 2,
+              ml: -3,
+              cursor: 'pointer',
+              '&:hover': { opacity: 0.85 },
+              transition: 'opacity 0.15s ease',
+            }}
+          >
+            <img src="/logo.png" alt="PortAct" width={52} height={52} />
+          </Box>
           <IconButton
             color="inherit"
             aria-label="open drawer"
@@ -143,7 +166,7 @@ const Layout: React.FC = () => {
             onClick={handleProfileMenuOpen}
             color="inherit"
           >
-            <Avatar sx={{ width: 32, height: 32 }}>
+            <Avatar sx={{ width: 34, height: 34, bgcolor: 'rgba(255,255,255,0.2)', fontSize: '0.9rem', fontWeight: 600 }}>
               {user?.email?.charAt(0).toUpperCase() || <AccountCircle />}
             </Avatar>
           </IconButton>
@@ -186,7 +209,7 @@ const Layout: React.FC = () => {
             onClick={() => setActiveFlyout(null)}
             sx={{
               position: 'fixed',
-              top: 0,
+              top: 64,
               left: RAIL_WIDTH,
               right: 0,
               bottom: 0,
@@ -219,6 +242,61 @@ const Layout: React.FC = () => {
         <Outlet />
         <ProductTour />
       </Box>
+
+      {/* ── About Dialog ── */}
+      <Dialog
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 3, overflow: 'hidden' },
+        }}
+      >
+        {/* Header band */}
+        <Box
+          sx={{
+            background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            pt: 4,
+            pb: 3,
+            position: 'relative',
+          }}
+        >
+          <IconButton
+            onClick={() => setAboutOpen(false)}
+            sx={{ position: 'absolute', top: 8, right: 8, color: 'rgba(255,255,255,0.6)' }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+          <img src="/logo.png" alt="PortAct" width={80} height={80} />
+          <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, mt: 1.5 }}>
+            PortAct
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mt: 0.5 }}>
+            Portfolio Activity Tracker
+          </Typography>
+        </Box>
+
+        <DialogContent sx={{ pt: 3, pb: 4, px: 4 }}>
+          {[
+            { label: 'Version', value: '1.1.0' },
+            { label: 'Developer', value: 'Debasis Das' },
+            { label: 'Stack', value: 'React, FastAPI, PostgreSQL' },
+            { label: 'License', value: 'Private' },
+          ].map((row) => (
+            <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="body2" color="text.secondary">{row.label}</Typography>
+              <Typography variant="body2" fontWeight={500}>{row.value}</Typography>
+            </Box>
+          ))}
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 3 }}>
+            &copy; {new Date().getFullYear()} Debasis Das. All rights reserved.
+          </Typography>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

@@ -51,7 +51,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
         <Box
           sx={{
             width: '55%',
-            background: `linear-gradient(135deg, #0d47a1 0%, ${theme.palette.primary.main} 50%, #1e88e5 100%)`,
+            background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
@@ -109,20 +109,19 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
           {/* Content */}
           <Box sx={{ position: 'relative', zIndex: 1, maxWidth: 520 }}>
             {/* Brand */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, mb: 3 }}>
               <img
-                src="/logo.svg"
+                src="/logo.png"
                 alt="PortAct"
-                width={48}
-                height={48}
-                style={{ borderRadius: 14 }}
+                width={120}
+                height={120}
               />
               <Typography
                 sx={{
                   color: 'white',
-                  fontWeight: 700,
-                  fontSize: '2rem',
-                  letterSpacing: '-0.02em',
+                  fontWeight: 800,
+                  fontSize: '2.75rem',
+                  letterSpacing: '-0.03em',
                 }}
               >
                 PortAct
@@ -230,11 +229,11 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
         {isMobile && (
           <Box sx={{ mb: 4, textAlign: 'center' }}>
             <img
-              src="/logo.svg"
+              src="/logo.png"
               alt="PortAct"
-              width={56}
-              height={56}
-              style={{ borderRadius: 16, marginBottom: 12 }}
+              width={110}
+              height={110}
+              style={{ marginBottom: 12 }}
             />
             <Typography
               variant="h4"

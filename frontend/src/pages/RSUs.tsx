@@ -62,6 +62,8 @@ interface RSUAsset {
     fmv_at_grant?: number;
     shares_granted?: number;
     shares_vested?: number;
+    price_usd?: number;
+    usd_to_inr_rate?: number;
   };
 }
 
@@ -164,7 +166,7 @@ const RSUs: React.FC = () => {
         grant_date: asset.details?.grant_date || '',
         vesting_date: asset.details?.vesting_date || '',
         fmv_at_grant: asset.details?.fmv_at_grant || asset.purchase_price || 0,
-        current_price: asset.details?.currency === 'USD' ? (asset.details?.fmv_at_grant ? asset.current_price : 0) : asset.current_price || 0,
+        current_price: asset.details?.currency === 'USD' ? (asset.details?.price_usd || 0) : asset.current_price || 0,
         shares_granted: asset.details?.shares_granted || 0,
         shares_vested: asset.details?.shares_vested || asset.quantity || 0,
         demat_broker_name: linkedDemat?.broker_name || asset.broker_name || '',
@@ -235,6 +237,7 @@ const RSUs: React.FC = () => {
           fmv_at_grant: formData.fmv_at_grant,
           shares_granted: formData.shares_granted,
           shares_vested: formData.shares_vested,
+          ...(formData.currency === 'USD' ? { price_usd: formData.current_price } : {}),
         },
       };
       if (editingAsset) {
@@ -423,8 +426,22 @@ const RSUs: React.FC = () => {
                           <TableCell align="right">
                             {asset.details?.shares_vested ?? asset.quantity} / {asset.details?.shares_granted ?? '—'}
                           </TableCell>
-                          <TableCell align="right">{formatPrice(fmv, ccy)}</TableCell>
-                          <TableCell align="right">{formatPrice(asset.current_price, ccy)}</TableCell>
+                          <TableCell align="right">
+                            {formatPrice(fmv, ccy)}
+                            {ccy === 'USD' && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {formatINR(asset.purchase_price)}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell align="right">
+                            {formatINR(asset.current_price)}
+                            {ccy === 'USD' && asset.details?.price_usd && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {formatUSD(asset.details.price_usd)}
+                              </Typography>
+                            )}
+                          </TableCell>
                           <TableCell align="right">{formatINR(asset.total_invested)}</TableCell>
                           <TableCell align="right">{formatINR(asset.current_value)}</TableCell>
                           <TableCell align="right" sx={{ color: asset.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>

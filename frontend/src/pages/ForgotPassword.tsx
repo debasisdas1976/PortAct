@@ -110,6 +110,8 @@ const ForgotPassword: React.FC = () => {
                   py: 1.5,
                   fontSize: '1rem',
                   borderRadius: 2,
+                  bgcolor: '#1E293B',
+                  '&:hover': { bgcolor: '#0F172A' },
                 }}
                 disabled={loading || !email}
               >
@@ -129,7 +131,7 @@ const ForgotPassword: React.FC = () => {
               size="large"
               startIcon={<LockReset />}
               onClick={handleResetNavigation}
-              sx={{ mb: 2, py: 1.5, fontSize: '1rem', borderRadius: 2 }}
+              sx={{ mb: 2, py: 1.5, fontSize: '1rem', borderRadius: 2, bgcolor: '#1E293B', '&:hover': { bgcolor: '#0F172A' } }}
             >
               Reset My Password
             </Button>
