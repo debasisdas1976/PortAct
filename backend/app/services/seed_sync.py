@@ -30,7 +30,7 @@ _BANK_COLS = ["name", "display_label", "bank_type", "website", "has_parser", "su
 _BROKER_COLS = ["name", "display_label", "broker_type", "supported_markets", "website", "has_parser", "supported_formats", "sort_order"]
 _EXCHANGE_COLS = ["name", "display_label", "exchange_type", "website", "sort_order"]
 _INSTITUTION_COLS = ["name", "display_label", "category", "website", "sort_order"]
-_ASSET_TYPE_COLS = ["name", "display_label", "category", "sort_order"]
+_ASSET_TYPE_COLS = ["name", "display_label", "category", "sort_order", "allowed_conversions"]
 _EXPENSE_CAT_COLS = ["name", "description", "icon", "color", "is_income", "keywords"]
 
 

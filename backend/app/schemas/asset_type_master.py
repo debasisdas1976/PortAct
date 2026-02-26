@@ -8,6 +8,7 @@ class AssetTypeMasterUpdate(BaseModel):
     category: Optional[str] = Field(None, min_length=1, max_length=50)
     is_active: Optional[bool] = None
     sort_order: Optional[int] = None
+    allowed_conversions: Optional[list[str]] = None
 
 
 class AssetTypeMasterInDB(BaseModel):
@@ -17,6 +18,7 @@ class AssetTypeMasterInDB(BaseModel):
     category: str
     is_active: bool
     sort_order: int
+    allowed_conversions: Optional[list[str]] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

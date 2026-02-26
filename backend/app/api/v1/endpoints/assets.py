@@ -17,6 +17,7 @@ from app.services.price_updater import update_asset_price
 from app.services.currency_converter import convert_usd_to_inr
 from app.models.portfolio import Portfolio
 from app.models.demat_account import DematAccount
+from app.models.asset_type_master import AssetTypeMaster
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import AssetSnapshot
 from app.models.mutual_fund_holding import MutualFundHolding
@@ -248,6 +249,19 @@ async def update_asset(
     
     # Update fields
     update_data = asset_update.model_dump(exclude_unset=True)
+
+    # Validate asset type change against allowed_conversions from DB
+    new_type = update_data.get('asset_type')
+    if new_type and new_type != asset.asset_type:
+        type_master = db.query(AssetTypeMaster).filter(
+            AssetTypeMaster.name == asset.asset_type.value
+        ).first()
+        allowed = type_master.allowed_conversions if type_master else None
+        if not allowed or new_type.value not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot change asset type from {asset.asset_type.value} to {new_type.value}"
+            )
 
     # Convert USD to INR for crypto assets if currency is USD
     if asset.asset_type == AssetType.CRYPTO:

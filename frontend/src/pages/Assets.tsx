@@ -129,7 +129,7 @@ const Assets: React.FC = () => {
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
-  const [assetTypes, setAssetTypes] = useState<{ value: string; label: string; category: string }[]>([]);
+  const [assetTypes, setAssetTypes] = useState<{ value: string; label: string; category: string; allowedConversions: string[] | null }[]>([]);
 
   useEffect(() => {
     dispatch(fetchAssets(selectedPortfolioId));
@@ -142,7 +142,7 @@ const Assets: React.FC = () => {
     try {
       const data = await assetTypesAPI.getAll({ is_active: true });
       setAssetTypes(
-        Array.isArray(data) ? data.map((t: any) => ({ value: t.name, label: t.display_label, category: t.category })) : []
+        Array.isArray(data) ? data.map((t: any) => ({ value: t.name, label: t.display_label, category: t.category, allowedConversions: t.allowed_conversions ?? null })) : []
       );
     } catch {
       setAssetTypes([]);
@@ -619,7 +619,7 @@ const Assets: React.FC = () => {
               const needsIsin = assetType === 'stock' || assetType === 'equity_mutual_fund' || assetType === 'hybrid_mutual_fund' || assetType === 'debt_mutual_fund';
               const missingIsin = needsIsin && !group.instances[0]?.isin;
               const assetCategory = assetTypes.find(t => t.value.toLowerCase() === assetType)?.category || '';
-              const hideRefreshPrice = ['Other', 'Fixed Income', 'Govt. Schemes'].includes(assetCategory);
+              const hideRefreshPrice = ['Other', 'Fixed Income', 'Govt. Schemes'].includes(assetCategory) && assetType !== 'debt_mutual_fund';
 
               return (
                 <React.Fragment key={group.symbol}>
@@ -655,8 +655,10 @@ const Assets: React.FC = () => {
                         label={getAssetTypeLabel(group.asset_type)}
                         color={getAssetTypeColor(group.asset_type)}
                         size="small"
-                        onClick={(e) => handleAssetTypeClick(e, group)}
-                        sx={{ cursor: 'pointer' }}
+                        {...(assetTypes.find(t => t.value === group.asset_type.toLowerCase())?.allowedConversions?.length ? {
+                          onClick: (e: React.MouseEvent<HTMLElement>) => handleAssetTypeClick(e, group),
+                          sx: { cursor: 'pointer' },
+                        } : {})}
                       />
                     </TableCell>
                     <TableCell align="right">{group.totalQuantity.toFixed(2)}</TableCell>
@@ -987,21 +989,27 @@ const Assets: React.FC = () => {
         </TabPanel>
       </Paper>
 
-      {/* Asset Type Change Menu */}
+      {/* Asset Type Change Menu — filtered to allowed conversions */}
       <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleAssetTypeMenuClose}
       >
-        {assetTypes.map((type) => (
-          <MenuItem
-            key={type.value}
-            onClick={() => handleAssetTypeChange(type.value)}
-            selected={selectedAsset?.asset_type.toLowerCase() === type.value}
-          >
-            {type.label}
-          </MenuItem>
-        ))}
+        {assetTypes
+          .filter((type) => {
+            const currentType = selectedAsset?.asset_type.toLowerCase();
+            if (!currentType) return false;
+            const currentTypeData = assetTypes.find(t => t.value === currentType);
+            return currentTypeData?.allowedConversions?.includes(type.value) ?? false;
+          })
+          .map((type) => (
+            <MenuItem
+              key={type.value}
+              onClick={() => handleAssetTypeChange(type.value)}
+            >
+              {type.label}
+            </MenuItem>
+          ))}
       </Menu>
 
     </Box>

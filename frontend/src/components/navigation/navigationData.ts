@@ -35,6 +35,8 @@ import {
   ViewList as ViewListIcon,
   Insights as InsightsIcon,
   BarChart as BarChartIcon,
+  Paid as PaidIcon,
+  Wallet as WalletIcon,
 } from '@mui/icons-material';
 
 // ── Constants ──
@@ -171,8 +173,8 @@ const insightsItems: NavItem[] = [
 ];
 
 const assetOverviewItem: NavItem = {
-  text: 'Overview',
-  icon: React.createElement(AccountBalanceIcon),
+  text: 'Asset Overview',
+  icon: React.createElement(PaidIcon),
   path: '/assets',
 };
 
@@ -206,6 +208,12 @@ export const railSections: RailSection[] = [
     dataTour: 'dashboard',
   },
   {
+    key: 'asset-overview',
+    label: 'Asset Overview',
+    icon: React.createElement(PaidIcon),
+    path: '/assets',
+  },
+  {
     key: 'statements',
     label: 'Statements',
     icon: React.createElement(DescriptionIcon),
@@ -221,8 +229,7 @@ export const railSections: RailSection[] = [
   {
     key: 'assets',
     label: 'Assets',
-    icon: React.createElement(AccountBalanceIcon),
-    items: [assetOverviewItem],
+    icon: React.createElement(WalletIcon),
     assetGroups: assetGroups,
     dataTour: 'sidebar-assets',
   },
