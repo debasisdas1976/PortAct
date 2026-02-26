@@ -393,14 +393,14 @@ async def add_nps_transaction(
     
     # Map NPS transaction type to Transaction type
     trans_type_map = {
-        'contribution': TransactionType.BUY,
-        'employer_contribution': TransactionType.BUY,
-        'returns': TransactionType.DIVIDEND,
-        'withdrawal': TransactionType.SELL,
-        'switch': TransactionType.BUY
+        'contribution': TransactionType.DEPOSIT,
+        'employer_contribution': TransactionType.TRANSFER_IN,
+        'returns': TransactionType.INTEREST,
+        'withdrawal': TransactionType.WITHDRAWAL,
+        'switch': TransactionType.TRANSFER_IN
     }
-    
-    trans_type = trans_type_map.get(transaction_data.transaction_type, TransactionType.BUY)
+
+    trans_type = trans_type_map.get(transaction_data.transaction_type, TransactionType.DEPOSIT)
     
     # Check for duplicate
     existing = db.query(Transaction).filter(
@@ -550,14 +550,14 @@ async def upload_nps_statement_auto(
         # Add transactions with duplicate detection
         for trans_data in transactions:
             trans_type_map = {
-                'contribution': TransactionType.BUY,
-                'employer_contribution': TransactionType.BUY,
-                'returns': TransactionType.DIVIDEND,
-                'withdrawal': TransactionType.SELL,
-                'switch': TransactionType.BUY
+                'contribution': TransactionType.DEPOSIT,
+                'employer_contribution': TransactionType.TRANSFER_IN,
+                'returns': TransactionType.INTEREST,
+                'withdrawal': TransactionType.WITHDRAWAL,
+                'switch': TransactionType.TRANSFER_IN
             }
 
-            trans_type = trans_type_map.get(trans_data.get('transaction_type', 'contribution'), TransactionType.BUY)
+            trans_type = trans_type_map.get(trans_data.get('transaction_type', 'contribution'), TransactionType.DEPOSIT)
             trans_date = datetime.strptime(trans_data['transaction_date'], '%Y-%m-%d')
 
             existing = db.query(Transaction).filter(
@@ -691,14 +691,14 @@ async def upload_nps_statement(
         # Add transactions
         for trans_data in transactions:
             trans_type_map = {
-                'contribution': TransactionType.BUY,
-                'employer_contribution': TransactionType.BUY,
-                'returns': TransactionType.DIVIDEND,
-                'withdrawal': TransactionType.SELL,
-                'switch': TransactionType.BUY
+                'contribution': TransactionType.DEPOSIT,
+                'employer_contribution': TransactionType.TRANSFER_IN,
+                'returns': TransactionType.INTEREST,
+                'withdrawal': TransactionType.WITHDRAWAL,
+                'switch': TransactionType.TRANSFER_IN
             }
-            
-            trans_type = trans_type_map.get(trans_data['transaction_type'], TransactionType.BUY)
+
+            trans_type = trans_type_map.get(trans_data['transaction_type'], TransactionType.DEPOSIT)
             trans_date = datetime.strptime(trans_data['transaction_date'], '%Y-%m-%d')
             
             # Check for duplicate

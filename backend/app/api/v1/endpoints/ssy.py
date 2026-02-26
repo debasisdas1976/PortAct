@@ -392,13 +392,13 @@ async def add_ssy_transaction(
     
     # Map SSY transaction type to Transaction type
     trans_type_map = {
-        'deposit': TransactionType.BUY,
-        'interest': TransactionType.DIVIDEND,
-        'withdrawal': TransactionType.SELL,
-        'maturity': TransactionType.SELL
+        'deposit': TransactionType.DEPOSIT,
+        'interest': TransactionType.INTEREST,
+        'withdrawal': TransactionType.WITHDRAWAL,
+        'maturity': TransactionType.WITHDRAWAL
     }
-    
-    trans_type = trans_type_map.get(transaction_data.transaction_type, TransactionType.BUY)
+
+    trans_type = trans_type_map.get(transaction_data.transaction_type, TransactionType.DEPOSIT)
     
     # Check for duplicate
     existing = db.query(Transaction).filter(
@@ -525,13 +525,13 @@ async def upload_ssy_statement(
         # Add transactions
         for trans_data in transactions:
             trans_type_map = {
-                'deposit': TransactionType.BUY,
-                'interest': TransactionType.DIVIDEND,
-                'withdrawal': TransactionType.SELL,
-                'maturity': TransactionType.SELL
+                'deposit': TransactionType.DEPOSIT,
+                'interest': TransactionType.INTEREST,
+                'withdrawal': TransactionType.WITHDRAWAL,
+                'maturity': TransactionType.WITHDRAWAL
             }
-            
-            trans_type = trans_type_map.get(trans_data['transaction_type'], TransactionType.BUY)
+
+            trans_type = trans_type_map.get(trans_data['transaction_type'], TransactionType.DEPOSIT)
             trans_date = datetime.strptime(trans_data['transaction_date'], '%Y-%m-%d')
             
             # Check for duplicate

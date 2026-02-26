@@ -566,6 +566,11 @@ async def restore_portfolio(
         new_cat_id = cat_map.get(r.get("category_id"))
         txn_date = _parse_dt(r.get("transaction_date"))
 
+        # bank_account_id is NOT NULL — skip if we can't remap
+        if not new_ba_id:
+            stats["expenses"]["skipped"] += 1
+            continue
+
         existing = (
             db.query(Expense)
             .filter(
@@ -758,6 +763,7 @@ async def generate_pdf_statement(
     assets = db.query(Asset).filter(Asset.user_id == uid, Asset.is_active == True).all()
     bank_accounts = db.query(BankAccount).filter(BankAccount.user_id == uid, BankAccount.is_active == True).all()
     demat_accounts = db.query(DematAccount).filter(DematAccount.user_id == uid, DematAccount.is_active == True).all()
+    crypto_accounts = db.query(CryptoAccount).filter(CryptoAccount.user_id == uid, CryptoAccount.is_active == True).all()
 
     # ── Recalculate metrics in-memory (same as Dashboard) ────────────────────
     # The dashboard calls calculate_metrics() + commit before summing; we do
@@ -772,11 +778,12 @@ async def generate_pdf_statement(
     asset_pl_pct = (asset_pl / asset_invested * 100) if asset_invested else 0
     bank_total = sum(b.current_balance or 0 for b in bank_accounts)
     demat_cash_total = sum(d.cash_balance or 0 for d in demat_accounts)
+    crypto_cash_total = sum(c.cash_balance_usd or 0 for c in crypto_accounts)
 
-    # Dashboard-matching totals: include bank + demat cash in invested & value
-    total_invested = asset_invested + bank_total + demat_cash_total
-    total_value = asset_value + bank_total + demat_cash_total
-    # P&L is only from assets (bank & demat cash have zero gain)
+    # Dashboard-matching totals: include bank + demat + crypto cash in invested & value
+    total_invested = asset_invested + bank_total + demat_cash_total + crypto_cash_total
+    total_value = asset_value + bank_total + demat_cash_total + crypto_cash_total
+    # P&L is only from assets (bank, demat & crypto cash have zero gain)
     total_pl = asset_pl
     total_pl_pct = (total_pl / total_invested * 100) if total_invested else 0
 
@@ -951,8 +958,16 @@ async def generate_pdf_statement(
             inr(demat_cash_total), inr(demat_cash_total),
             "+Rs.0", "+0.00%",
         ])
+    # Crypto Cash row (invested = value = cash balance in USD, P&L = 0)
+    crypto_with_cash = [c for c in crypto_accounts if (c.cash_balance_usd or 0) > 0]
+    if crypto_with_cash:
+        alloc_rows.append([
+            "Crypto Cash", str(len(crypto_with_cash)),
+            inr(crypto_cash_total), inr(crypto_cash_total),
+            "+Rs.0", "+0.00%",
+        ])
     alloc_rows.append([
-        "TOTAL", str(len(assets) + len(bank_accounts) + len(demat_with_cash)),
+        "TOTAL", str(len(assets) + len(bank_accounts) + len(demat_with_cash) + len(crypto_with_cash)),
         inr(total_invested), inr(total_value),
         ("+" if total_pl >= 0 else "") + inr(total_pl),
         pct(total_pl_pct),
@@ -1054,6 +1069,24 @@ async def generate_pdf_statement(
         da_tbl = Table(da_rows, colWidths=[3.5*cm, 3.0*cm, 3.0*cm, 4.5*cm, 3.0*cm])
         da_tbl.setStyle(TableStyle(BASE + TOTALS_ROW))
         story.append(da_tbl)
+
+    # ── Crypto accounts (5 cols, 17 cm: [3.5, 3.0, 3.5, 4.0, 3.0]) ────────
+    if crypto_accounts:
+        story.append(Paragraph("Crypto Accounts", section_style))
+        ca_rows = [["Exchange", "Account", "Currency", "Nickname", "Cash (USD)"]]
+        for c in crypto_accounts:
+            exchange = str(c.exchange_name)
+            ca_rows.append([
+                exchange.replace("_", " ").title(),
+                c.account_id or "—",
+                "USD",
+                c.account_name or "—",
+                inr(c.cash_balance_usd or 0),
+            ])
+        ca_rows.append(["", "", "", "Total", inr(crypto_cash_total)])
+        ca_tbl = Table(ca_rows, colWidths=[3.5*cm, 3.0*cm, 3.5*cm, 4.0*cm, 3.0*cm])
+        ca_tbl.setStyle(TableStyle(BASE + TOTALS_ROW))
+        story.append(ca_tbl)
 
     # ── Footer ────────────────────────────────────────────────────────────────
     story.append(Spacer(1, 0.5 * cm))

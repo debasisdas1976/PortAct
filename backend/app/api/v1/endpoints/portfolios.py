@@ -6,6 +6,10 @@ from app.api.dependencies import get_current_active_user
 from app.models.user import User
 from app.models.portfolio import Portfolio
 from app.models.asset import Asset
+from app.models.bank_account import BankAccount
+from app.models.demat_account import DematAccount
+from app.models.crypto_account import CryptoAccount
+from app.models.expense import Expense
 from app.schemas.portfolio import (
     Portfolio as PortfolioSchema,
     PortfolioCreate,
@@ -143,14 +147,16 @@ async def delete_portfolio(
     if portfolio.is_default:
         raise HTTPException(status_code=400, detail="Cannot delete the default portfolio")
 
-    # Move assets to default portfolio
+    # Move all portfolio-scoped entities to the default portfolio
     default = db.query(Portfolio).filter(
         Portfolio.user_id == current_user.id,
         Portfolio.is_default == True,
     ).first()
-    db.query(Asset).filter(Asset.portfolio_id == portfolio_id).update(
-        {Asset.portfolio_id: default.id}, synchronize_session=False
-    )
+    for model in (Asset, BankAccount, DematAccount, CryptoAccount, Expense):
+        db.query(model).filter(
+            model.portfolio_id == portfolio_id
+        ).update({model.portfolio_id: default.id}, synchronize_session=False)
+
     db.delete(portfolio)
     db.commit()
     return None

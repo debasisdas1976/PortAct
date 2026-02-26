@@ -414,15 +414,15 @@ async def add_pf_transaction(
         raise HTTPException(status_code=404, detail="PF account not found")
     
     trans_type_map = {
-        'employee_contribution': TransactionType.BUY,
-        'employer_contribution': TransactionType.BUY,
-        'pension_contribution': TransactionType.BUY,
-        'interest': TransactionType.DIVIDEND,
-        'withdrawal': TransactionType.SELL,
-        'transfer': TransactionType.SELL
+        'employee_contribution': TransactionType.DEPOSIT,
+        'employer_contribution': TransactionType.TRANSFER_IN,
+        'pension_contribution': TransactionType.DEPOSIT,
+        'interest': TransactionType.INTEREST,
+        'withdrawal': TransactionType.WITHDRAWAL,
+        'transfer': TransactionType.TRANSFER_OUT
     }
-    
-    trans_type = trans_type_map.get(transaction_data.transaction_type, TransactionType.BUY)
+
+    trans_type = trans_type_map.get(transaction_data.transaction_type, TransactionType.DEPOSIT)
     
     existing = db.query(Transaction).filter(
         Transaction.asset_id == asset.id,
@@ -600,7 +600,7 @@ async def upload_pf_statement(
                 'transfer': TransactionType.TRANSFER_OUT
             }
             
-            trans_type = trans_type_map.get(trans_data['transaction_type'], TransactionType.BUY)
+            trans_type = trans_type_map.get(trans_data['transaction_type'], TransactionType.DEPOSIT)
             trans_date = datetime.strptime(trans_data['transaction_date'], '%Y-%m-%d')
             
             existing = db.query(Transaction).filter(

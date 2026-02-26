@@ -33,11 +33,11 @@ async def get_dashboard_overview(
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
     
-    # Calculate metrics
+    # Calculate metrics in-memory only (no commit — avoids overwriting
+    # fresh prices set by the price_updater running concurrently)
     for asset in assets:
         asset.calculate_metrics()
-    db.commit()
-    
+
     # Portfolio summary
     total_invested = sum(asset.total_invested for asset in assets)
     total_current_value = sum(asset.current_value for asset in assets)
@@ -162,8 +162,7 @@ async def get_asset_allocation(
     
     for asset in assets:
         asset.calculate_metrics()
-    db.commit()
-    
+
     total_value = sum(asset.current_value for asset in assets)
     
     allocation = {}

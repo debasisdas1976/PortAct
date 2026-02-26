@@ -32,7 +32,7 @@ class Expense(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=False)
-    category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=True)
+    category_id = Column(Integer, ForeignKey("expense_categories.id", ondelete="SET NULL"), nullable=True)
     statement_id = Column(Integer, ForeignKey("statements.id"), nullable=True)
 
     # Portfolio association

@@ -60,11 +60,11 @@ const Alerts: React.FC = () => {
 
   const getSeverityIcon = (severity: string) => {
     switch (severity.toLowerCase()) {
-      case 'high':
+      case 'critical':
         return <ErrorIcon sx={{ color: 'error.main' }} />;
-      case 'medium':
+      case 'warning':
         return <Warning sx={{ color: 'warning.main' }} />;
-      case 'low':
+      case 'info':
         return <CheckCircle sx={{ color: 'info.main' }} />;
       default:
         return <CheckCircle sx={{ color: 'info.main' }} />;
@@ -73,11 +73,11 @@ const Alerts: React.FC = () => {
 
   const getSeverityColor = (severity: string) => {
     switch (severity.toLowerCase()) {
-      case 'high':
+      case 'critical':
         return 'error';
-      case 'medium':
+      case 'warning':
         return 'warning';
-      case 'low':
+      case 'info':
         return 'info';
       default:
         return 'default';

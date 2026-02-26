@@ -60,6 +60,14 @@ interface DematAccount {
   is_active: boolean;
 }
 
+interface CryptoAccount {
+  id: number;
+  exchange_name: string;
+  account_name?: string;
+  cash_balance_usd: number;
+  is_active: boolean;
+}
+
 interface StatCardProps {
   title: string;
   value: string;
@@ -127,6 +135,8 @@ const Dashboard: React.FC = () => {
   const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
   const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematAccountsLoading, setDematAccountsLoading] = useState(false);
+  const [cryptoAccounts, setCryptoAccounts] = useState<CryptoAccount[]>([]);
+  const [cryptoAccountsLoading, setCryptoAccountsLoading] = useState(false);
   const [hideNumbers, setHideNumbers] = useState(false);
   const [assetTypeMap, setAssetTypeMap] = useState<Record<string, { category: string; displayLabel: string }>>({});
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -137,7 +147,7 @@ const Dashboard: React.FC = () => {
         dispatch(fetchPortfolios());
         await dispatch(fetchPortfolioSummary(selectedPortfolioId));
         await dispatch(fetchAssets(selectedPortfolioId));
-        await Promise.all([fetchBankAccounts(), fetchDematAccounts()]);
+        await Promise.all([fetchBankAccounts(), fetchDematAccounts(), fetchCryptoAccounts()]);
       } catch (err) {
         notify.error(getErrorMessage(err, 'Failed to load dashboard data'));
       }
@@ -185,7 +195,19 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  if (loading || bankAccountsLoading || dematAccountsLoading) {
+  const fetchCryptoAccounts = async () => {
+    try {
+      setCryptoAccountsLoading(true);
+      const response = await api.get('/crypto-accounts/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} });
+      setCryptoAccounts(response.data);
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to load data'));
+    } finally {
+      setCryptoAccountsLoading(false);
+    }
+  };
+
+  if (loading || bankAccountsLoading || dematAccountsLoading || cryptoAccountsLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
         <CircularProgress />
@@ -219,6 +241,7 @@ const Dashboard: React.FC = () => {
   // Calculate cash totals
   const totalBankBalance = bankAccounts.reduce((sum, a) => sum + a.current_balance, 0);
   const totalDematCash = dematAccounts.reduce((sum, a) => sum + a.cash_balance, 0);
+  const totalCryptoCash = cryptoAccounts.reduce((sum, a) => sum + (a.cash_balance_usd || 0), 0);
 
   const handlePortfolioCardClick = (portfolioId: number) => {
     dispatch(setSelectedPortfolioId(portfolioId));
@@ -272,6 +295,15 @@ const Dashboard: React.FC = () => {
     };
   }
 
+  const cryptoWithCash = cryptoAccounts.filter(a => (a.cash_balance_usd || 0) > 0);
+  if (cryptoWithCash.length > 0) {
+    assetsByCategory['Crypto Cash'] = {
+      value: totalCryptoCash,
+      count: cryptoWithCash.length,
+      invested: totalCryptoCash,
+    };
+  }
+
   // Get display name for an asset type key
   const getDisplayName = (type: string) => {
     return assetTypeMap[type]?.displayLabel || type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
@@ -307,7 +339,7 @@ const Dashboard: React.FC = () => {
     .sort((a, b) => b.value - a.value);
 
   const handleCategoryClick = (categoryName: string) => {
-    if (categoryName === 'Bank Accounts' || categoryName === 'Demat Cash') return;
+    if (categoryName === 'Bank Accounts' || categoryName === 'Demat Cash' || categoryName === 'Crypto Cash') return;
     setSelectedCategory(categoryName);
   };
 
@@ -410,7 +442,7 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Total Value"
-            value={formatCurrency((summary?.portfolio_summary?.total_current_value || 0) + totalBankBalance + totalDematCash)}
+            value={formatCurrency((summary?.portfolio_summary?.total_current_value || 0) + totalBankBalance + totalDematCash + totalCryptoCash)}
             change={summary?.portfolio_summary?.total_profit_loss_percentage}
             icon={<AccountBalance sx={{ color: 'white' }} />}
             color="primary.main"
@@ -420,7 +452,7 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Total Investment"
-            value={formatCurrency((summary?.portfolio_summary?.total_invested || 0) + totalBankBalance + totalDematCash)}
+            value={formatCurrency((summary?.portfolio_summary?.total_invested || 0) + totalBankBalance + totalDematCash + totalCryptoCash)}
             icon={<ShowChart sx={{ color: 'white' }} />}
             color="secondary.main"
             hideNumbers={hideNumbers}
@@ -445,7 +477,7 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Total Assets"
-            value={hideNumbers ? '•••' : ((summary?.portfolio_summary?.total_assets || 0) + bankAccounts.length).toString()}
+            value={hideNumbers ? '•••' : ((summary?.portfolio_summary?.total_assets || 0) + bankAccounts.length + cryptoAccounts.length).toString()}
             icon={<AccountBalance sx={{ color: 'white' }} />}
             color="info.main"
             hideNumbers={false}
@@ -521,12 +553,12 @@ const Dashboard: React.FC = () => {
                         <TableRow
                           key={row.type}
                           hover
-                          sx={isShowingCategories && row.type !== 'Bank Accounts' && row.type !== 'Demat Cash'
+                          sx={isShowingCategories && row.type !== 'Bank Accounts' && row.type !== 'Demat Cash' && row.type !== 'Crypto Cash'
                             ? { cursor: 'pointer' }
                             : {}
                           }
                           onClick={() => {
-                            if (isShowingCategories && row.type !== 'Bank Accounts' && row.type !== 'Demat Cash') {
+                            if (isShowingCategories && row.type !== 'Bank Accounts' && row.type !== 'Demat Cash' && row.type !== 'Crypto Cash') {
                               handleCategoryClick(row.type);
                             }
                           }}
