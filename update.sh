@@ -58,8 +58,32 @@ echo ""
 OLD_VERSION=$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo "unknown")
 print_info "Current version: $OLD_VERSION"
 
-TOTAL_STEPS=6
+TOTAL_STEPS=8
 STEP=1
+
+BACKUP_DIR="$PROJECT_DIR/backups"
+DB_NAME="portact_db"
+DB_USER="portact_user"
+DB_PASS="portact_password"
+DB_HOST="localhost"
+DB_PORT="5432"
+
+# Read DB connection from backend .env if it exists
+if [[ -f "$BACKEND_DIR/.env" ]]; then
+    DB_URL=$(grep -E "^DATABASE_URL=" "$BACKEND_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+    if [[ -n "$DB_URL" ]]; then
+        DB_USER_PARSED=$(echo "$DB_URL" | sed -n 's|postgresql://\([^:]*\):.*|\1|p')
+        DB_PASS_PARSED=$(echo "$DB_URL" | sed -n 's|postgresql://[^:]*:\([^@]*\)@.*|\1|p')
+        DB_HOST_PARSED=$(echo "$DB_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
+        DB_PORT_PARSED=$(echo "$DB_URL" | sed -n 's|.*:\([0-9]*\)/.*|\1|p')
+        DB_NAME_PARSED=$(echo "$DB_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+        [[ -n "$DB_USER_PARSED" ]] && DB_USER="$DB_USER_PARSED"
+        [[ -n "$DB_PASS_PARSED" ]] && DB_PASS="$DB_PASS_PARSED"
+        [[ -n "$DB_HOST_PARSED" ]] && DB_HOST="$DB_HOST_PARSED"
+        [[ -n "$DB_PORT_PARSED" ]] && DB_PORT="$DB_PORT_PARSED"
+        [[ -n "$DB_NAME_PARSED" ]] && DB_NAME="$DB_NAME_PARSED"
+    fi
+fi
 
 # ── Step 1: Stop running servers ─────────────────────────────────────────────
 
@@ -70,9 +94,31 @@ pkill -f "node.*frontend" 2>/dev/null || true
 sleep 2
 ((STEP++))
 
-# ── Step 2: Pull latest code ─────────────────────────────────────────────────
+# ── Step 2: Create database backup ──────────────────────────────────────────
 
-print_step $STEP $TOTAL_STEPS "Pulling latest code from GitHub"
+print_step $STEP $TOTAL_STEPS "Creating database backup"
+mkdir -p "$BACKUP_DIR"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/portact_pre_update_${TIMESTAMP}.sql.gz"
+
+if command -v pg_dump &>/dev/null; then
+    if PGPASSWORD="$DB_PASS" pg_dump \
+        -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" \
+        --no-owner --no-acl "$DB_NAME" 2>/dev/null | gzip > "$BACKUP_FILE"; then
+        BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+        print_success "Backup created: $BACKUP_FILE ($BACKUP_SIZE)"
+    else
+        rm -f "$BACKUP_FILE"
+        print_warning "Could not create backup (continuing anyway)"
+    fi
+else
+    print_warning "pg_dump not found — skipping backup"
+fi
+((STEP++))
+
+# ── Step 3: Pull latest code ─────────────────────────────────────────────────
+
+print_step $STEP $TOTAL_STEPS "Pulling latest code"
 cd "$PROJECT_DIR"
 if git pull --ff-only 2>/dev/null; then
     print_success "Code updated"
@@ -89,7 +135,7 @@ NEW_VERSION=$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo "unknown")
 print_info "New version: $NEW_VERSION"
 ((STEP++))
 
-# ── Step 3: Update backend dependencies ──────────────────────────────────────
+# ── Step 4: Update backend dependencies ──────────────────────────────────────
 
 print_step $STEP $TOTAL_STEPS "Updating backend dependencies"
 cd "$BACKEND_DIR"
@@ -103,7 +149,7 @@ else
 fi
 ((STEP++))
 
-# ── Step 4: Run database migrations ──────────────────────────────────────────
+# ── Step 5: Run database migrations ──────────────────────────────────────────
 
 print_step $STEP $TOTAL_STEPS "Running database migrations"
 cd "$BACKEND_DIR"
@@ -114,7 +160,22 @@ else
 fi
 ((STEP++))
 
-# ── Step 5: Update frontend dependencies ─────────────────────────────────────
+# ── Step 6: Apply post-migration data fixes ──────────────────────────────────
+
+print_step $STEP $TOTAL_STEPS "Applying data fixes"
+cd "$BACKEND_DIR"
+if [[ -f "scripts/post_migrate_fix.py" ]]; then
+    if python scripts/post_migrate_fix.py 2>&1; then
+        print_success "Data fixes applied"
+    else
+        print_warning "Data fix script had issues (non-critical)"
+    fi
+else
+    print_success "No data fixes needed"
+fi
+((STEP++))
+
+# ── Step 7: Update frontend dependencies ─────────────────────────────────────
 
 print_step $STEP $TOTAL_STEPS "Updating frontend dependencies"
 cd "$FRONTEND_DIR"
@@ -125,7 +186,7 @@ else
 fi
 ((STEP++))
 
-# ── Step 6: Restart application ──────────────────────────────────────────────
+# ── Step 8: Restart application ──────────────────────────────────────────────
 
 print_step $STEP $TOTAL_STEPS "Restarting application"
 

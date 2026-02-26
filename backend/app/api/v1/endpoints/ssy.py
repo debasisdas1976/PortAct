@@ -135,16 +135,13 @@ async def get_ssy_account(
     
     ssy_transactions = []
     for trans in transactions:
-        # Map transaction types
-        trans_type_value = trans.transaction_type.value if hasattr(trans.transaction_type, 'value') else str(trans.transaction_type)
-        if trans_type_value in ['buy', 'deposit']:
+        # Map generic TransactionType enum to SSY-specific display types
+        if trans.transaction_type in (TransactionType.BUY, TransactionType.DEPOSIT):
             ssy_type = 'deposit'
-        elif trans_type_value in ['dividend', 'interest']:
+        elif trans.transaction_type in (TransactionType.DIVIDEND, TransactionType.INTEREST):
             ssy_type = 'interest'
-        elif trans_type_value in ['sell', 'withdrawal']:
+        elif trans.transaction_type in (TransactionType.SELL, TransactionType.WITHDRAWAL):
             ssy_type = 'withdrawal'
-        elif trans_type_value == 'maturity':
-            ssy_type = 'maturity'
         else:
             ssy_type = 'deposit'
         

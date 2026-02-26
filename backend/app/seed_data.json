@@ -561,77 +561,118 @@
       "display_label": "Stock",
       "category": "Equity",
       "sort_order": 1,
-      "allowed_conversions": ["us_stock", "reit", "invit", "esop", "rsu", "commodity"]
+      "allowed_conversions": [
+        "us_stock",
+        "reit",
+        "invit",
+        "esop",
+        "rsu",
+        "commodity"
+      ]
     },
     {
       "name": "us_stock",
       "display_label": "US Stock",
       "category": "Equity",
       "sort_order": 2,
-      "allowed_conversions": ["stock", "esop", "rsu"]
+      "allowed_conversions": [
+        "stock",
+        "esop",
+        "rsu"
+      ]
     },
     {
       "name": "equity_mutual_fund",
       "display_label": "Equity Mutual Fund",
       "category": "Equity",
       "sort_order": 3,
-      "allowed_conversions": ["hybrid_mutual_fund", "debt_mutual_fund", "commodity"]
+      "allowed_conversions": [
+        "hybrid_mutual_fund",
+        "debt_mutual_fund",
+        "commodity"
+      ]
     },
     {
       "name": "hybrid_mutual_fund",
       "display_label": "Hybrid Mutual Fund",
       "category": "Hybrid",
       "sort_order": 4,
-      "allowed_conversions": ["equity_mutual_fund", "debt_mutual_fund", "commodity"]
+      "allowed_conversions": [
+        "equity_mutual_fund",
+        "debt_mutual_fund",
+        "commodity"
+      ]
     },
     {
       "name": "reit",
       "display_label": "REIT",
       "category": "Equity",
       "sort_order": 5,
-      "allowed_conversions": ["stock", "invit"]
+      "allowed_conversions": [
+        "stock",
+        "invit"
+      ]
     },
     {
       "name": "invit",
       "display_label": "InvIT",
       "category": "Equity",
       "sort_order": 6,
-      "allowed_conversions": ["stock", "reit"]
+      "allowed_conversions": [
+        "stock",
+        "reit"
+      ]
     },
     {
       "name": "esop",
       "display_label": "ESOP",
       "category": "Equity",
       "sort_order": 7,
-      "allowed_conversions": ["rsu", "stock", "us_stock"]
+      "allowed_conversions": [
+        "rsu",
+        "stock",
+        "us_stock"
+      ]
     },
     {
       "name": "rsu",
       "display_label": "RSU",
       "category": "Equity",
       "sort_order": 8,
-      "allowed_conversions": ["esop", "stock", "us_stock"]
+      "allowed_conversions": [
+        "esop",
+        "stock",
+        "us_stock"
+      ]
     },
     {
       "name": "debt_mutual_fund",
       "display_label": "Debt Mutual Fund",
       "category": "Fixed Income",
       "sort_order": 10,
-      "allowed_conversions": ["equity_mutual_fund", "hybrid_mutual_fund", "commodity"]
+      "allowed_conversions": [
+        "equity_mutual_fund",
+        "hybrid_mutual_fund",
+        "commodity"
+      ]
     },
     {
       "name": "fixed_deposit",
       "display_label": "Fixed Deposit",
       "category": "Fixed Income",
       "sort_order": 11,
-      "allowed_conversions": ["recurring_deposit"]
+      "allowed_conversions": [
+        "recurring_deposit"
+      ]
     },
     {
       "name": "recurring_deposit",
       "display_label": "Recurring Deposit",
       "category": "Fixed Income",
       "sort_order": 12,
-      "allowed_conversions": ["fixed_deposit"]
+      "allowed_conversions": [
+        "fixed_deposit"
+      ]
     },
     {
       "name": "savings_account",
@@ -645,21 +686,30 @@
       "display_label": "Corporate Bond",
       "category": "Fixed Income",
       "sort_order": 14,
-      "allowed_conversions": ["rbi_bond", "tax_saving_bond"]
+      "allowed_conversions": [
+        "rbi_bond",
+        "tax_saving_bond"
+      ]
     },
     {
       "name": "rbi_bond",
       "display_label": "RBI Bond",
       "category": "Fixed Income",
       "sort_order": 15,
-      "allowed_conversions": ["corporate_bond", "tax_saving_bond"]
+      "allowed_conversions": [
+        "corporate_bond",
+        "tax_saving_bond"
+      ]
     },
     {
       "name": "tax_saving_bond",
       "display_label": "Tax Saving Bond",
       "category": "Fixed Income",
       "sort_order": 16,
-      "allowed_conversions": ["corporate_bond", "rbi_bond"]
+      "allowed_conversions": [
+        "corporate_bond",
+        "rbi_bond"
+      ]
     },
     {
       "name": "ppf",
@@ -694,28 +744,36 @@
       "display_label": "NSC",
       "category": "Govt. Schemes",
       "sort_order": 24,
-      "allowed_conversions": ["kvp"]
+      "allowed_conversions": [
+        "kvp"
+      ]
     },
     {
       "name": "kvp",
       "display_label": "KVP",
       "category": "Govt. Schemes",
       "sort_order": 25,
-      "allowed_conversions": ["nsc"]
+      "allowed_conversions": [
+        "nsc"
+      ]
     },
     {
       "name": "scss",
       "display_label": "SCSS",
       "category": "Govt. Schemes",
       "sort_order": 26,
-      "allowed_conversions": ["mis"]
+      "allowed_conversions": [
+        "mis"
+      ]
     },
     {
       "name": "mis",
       "display_label": "MIS",
       "category": "Govt. Schemes",
       "sort_order": 27,
-      "allowed_conversions": ["scss"]
+      "allowed_conversions": [
+        "scss"
+      ]
     },
     {
       "name": "gratuity",
@@ -729,14 +787,21 @@
       "display_label": "Commodity",
       "category": "Commodities",
       "sort_order": 30,
-      "allowed_conversions": ["stock", "equity_mutual_fund", "hybrid_mutual_fund", "debt_mutual_fund"]
+      "allowed_conversions": [
+        "stock",
+        "equity_mutual_fund",
+        "hybrid_mutual_fund",
+        "debt_mutual_fund"
+      ]
     },
     {
       "name": "sovereign_gold_bond",
       "display_label": "Sovereign Gold Bond",
       "category": "Commodities",
       "sort_order": 31,
-      "allowed_conversions": ["stock"]
+      "allowed_conversions": [
+        "stock"
+      ]
     },
     {
       "name": "crypto",

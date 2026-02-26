@@ -43,12 +43,12 @@ def _asset_to_response(asset: Asset) -> RealEstateResponse:
         user_id=asset.user_id,
         asset_id=asset.id,
         nickname=asset.name,
-        property_type=d.get("property_type", "land"),
+        property_type=d.get("property_type", "land").lower(),
         location=d.get("location", ""),
         city=d.get("city"),
         state=d.get("state"),
         pincode=d.get("pincode"),
-        area=d.get("area", 0),
+        area=d.get("area") or d.get("area_sqft") or 1,
         area_unit=d.get("area_unit", "sqft"),
         purchase_price=purchase_price,
         current_market_value=current_market_value,
@@ -81,7 +81,8 @@ def _get_properties(db: Session, user_id: int, property_type: Optional[str] = No
         .all()
     )
     if property_type:
-        assets = [a for a in assets if (a.details or {}).get("property_type") == property_type]
+        pt_lower = property_type.lower()
+        assets = [a for a in assets if (a.details or {}).get("property_type", "").lower() == pt_lower]
     return assets
 
 

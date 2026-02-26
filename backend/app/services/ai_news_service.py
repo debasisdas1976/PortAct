@@ -662,10 +662,11 @@ class AINewsService:
             asset_info += f" ({asset.symbol})"
 
         current_price = f"₹{asset.current_price}" if asset.current_price else "N/A"
-        asset_type = asset.asset_type.value
+        asset_type = asset.asset_type  # enum instance for comparisons
+        asset_type_value = asset_type.value  # string for prompt
 
         # Market-traded assets get a different focus than fixed-income / govt schemes
-        if asset_type in ("stock", "us_stock", "equity_mutual_fund", "hybrid_mutual_fund", "reit", "invit", "esop", "rsu"):
+        if asset_type in (AssetType.STOCK, AssetType.US_STOCK, AssetType.EQUITY_MUTUAL_FUND, AssetType.HYBRID_MUTUAL_FUND, AssetType.REIT, AssetType.INVIT, AssetType.ESOP, AssetType.RSU):
             focus = """Focus areas:
 1. Key risks, red flags, or concerns investors should be aware of for this specific asset
 2. Known corporate governance issues, debt levels, or sector headwinds
@@ -673,28 +674,28 @@ class AINewsService:
 4. Upcoming catalysts: earnings seasons, regulatory decisions, or sector trends
 5. Dividend history and payout sustainability
 6. Any well-known analyst consensus or outlook (bullish/bearish)"""
-        elif asset_type in ("crypto",):
+        elif asset_type == AssetType.CRYPTO:
             focus = """Focus areas:
 1. Regulatory landscape for this cryptocurrency in India and globally
 2. Technology risks, network upgrades, or protocol changes
 3. Market sentiment and adoption trends
 4. Security concerns, exchange risks, or known vulnerabilities
 5. Tax implications for Indian crypto investors"""
-        elif asset_type in ("commodity", "sovereign_gold_bond"):
+        elif asset_type in (AssetType.COMMODITY, AssetType.SOVEREIGN_GOLD_BOND):
             focus = """Focus areas:
 1. Supply-demand dynamics and global price drivers
 2. Indian government policies affecting this commodity (import duties, taxes)
 3. Inflation hedge value and historical performance patterns
 4. Seasonal trends and cyclical factors
 5. Currency impact (USD/INR) on commodity prices in India"""
-        elif asset_type in ("debt_mutual_fund", "corporate_bond", "rbi_bond", "tax_saving_bond"):
+        elif asset_type in (AssetType.DEBT_MUTUAL_FUND, AssetType.CORPORATE_BOND, AssetType.RBI_BOND, AssetType.TAX_SAVING_BOND):
             focus = """Focus areas:
 1. Interest rate outlook and its impact on bond/debt fund returns
 2. Credit risk assessment and rating agency concerns
 3. RBI monetary policy direction and yield curve analysis
 4. Liquidity risk and exit load considerations
 5. Tax efficiency compared to alternatives (FD, govt schemes)"""
-        elif asset_type in ("ppf", "pf", "nps", "ssy", "nsc", "kvp", "scss", "mis"):
+        elif asset_type in (AssetType.PPF, AssetType.PF, AssetType.NPS, AssetType.SSY, AssetType.NSC, AssetType.KVP, AssetType.SCSS, AssetType.MIS):
             focus = """Focus areas:
 1. Current and recent interest rate changes for this scheme
 2. Government policy changes or proposed reforms
@@ -702,21 +703,21 @@ class AINewsService:
 4. Contribution limits, lock-in periods, and withdrawal rules
 5. Comparison with alternative investment options
 6. Any maturity or renewal considerations"""
-        elif asset_type in ("fixed_deposit", "recurring_deposit"):
+        elif asset_type in (AssetType.FIXED_DEPOSIT, AssetType.RECURRING_DEPOSIT):
             focus = """Focus areas:
 1. Current interest rate environment and RBI rate outlook
 2. Comparison of rates across major banks
 3. Tax implications and TDS rules
 4. Premature withdrawal penalties and liquidity options
 5. Senior citizen rate benefits and special FD schemes"""
-        elif asset_type in ("insurance_policy",):
+        elif asset_type == AssetType.INSURANCE_POLICY:
             focus = """Focus areas:
 1. Policy type analysis (term, endowment, ULIP) and adequacy
 2. Claim settlement ratio of the insurer
 3. IRDAI regulatory changes affecting policyholders
 4. Tax benefits under Section 80C and 10(10D)
 5. Surrender value considerations and policy review recommendations"""
-        elif asset_type in ("real_estate",):
+        elif asset_type == AssetType.REAL_ESTATE:
             focus = """Focus areas:
 1. Real estate market trends in India — residential and commercial
 2. RERA regulations and buyer protection updates
@@ -736,7 +737,7 @@ class AINewsService:
 Analyse the following asset and provide ONE important insight, risk alert, or actionable recommendation.
 
 Asset: {asset_info}
-Type: {asset_type}
+Type: {asset_type_value}
 Current Price: {current_price}
 
 {focus}

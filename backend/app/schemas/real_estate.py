@@ -1,7 +1,7 @@
 """Real Estate Schemas"""
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 PROPERTY_TYPES = ["land", "farm_land", "house"]
@@ -17,6 +17,22 @@ class RealEstateBase(BaseModel):
     pincode: Optional[str] = Field(None, max_length=10)
     area: float = Field(..., gt=0)
     area_unit: str = Field("sqft", description=f"One of: {', '.join(AREA_UNITS)}")
+
+    @field_validator("property_type")
+    @classmethod
+    def validate_property_type(cls, v: str) -> str:
+        v = v.lower()
+        if v not in PROPERTY_TYPES:
+            raise ValueError(f"Invalid property_type '{v}'. Must be one of: {', '.join(PROPERTY_TYPES)}")
+        return v
+
+    @field_validator("area_unit")
+    @classmethod
+    def validate_area_unit(cls, v: str) -> str:
+        v = v.lower()
+        if v not in AREA_UNITS:
+            raise ValueError(f"Invalid area_unit '{v}'. Must be one of: {', '.join(AREA_UNITS)}")
+        return v
     purchase_price: float = Field(..., gt=0)
     current_market_value: float = Field(..., gt=0)
     purchase_date: date
@@ -40,6 +56,26 @@ class RealEstateUpdate(BaseModel):
     pincode: Optional[str] = Field(None, max_length=10)
     area: Optional[float] = Field(None, gt=0)
     area_unit: Optional[str] = None
+
+    @field_validator("property_type")
+    @classmethod
+    def validate_property_type(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.lower()
+        if v not in PROPERTY_TYPES:
+            raise ValueError(f"Invalid property_type '{v}'. Must be one of: {', '.join(PROPERTY_TYPES)}")
+        return v
+
+    @field_validator("area_unit")
+    @classmethod
+    def validate_area_unit(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.lower()
+        if v not in AREA_UNITS:
+            raise ValueError(f"Invalid area_unit '{v}'. Must be one of: {', '.join(AREA_UNITS)}")
+        return v
     purchase_price: Optional[float] = Field(None, gt=0)
     current_market_value: Optional[float] = Field(None, gt=0)
     purchase_date: Optional[date] = None

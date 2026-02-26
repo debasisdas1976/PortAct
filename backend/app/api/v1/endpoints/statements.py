@@ -86,11 +86,11 @@ async def get_portfolio_accounts(
             # Determine statement type based on broker
             broker_lower = (da.broker_name or "").lower()
             if broker_lower == "vested":
-                stmt_type = "vested_statement"
+                stmt_type = StatementType.VESTED_STATEMENT.value
             elif broker_lower == "indmoney":
-                stmt_type = "indmoney_statement"
+                stmt_type = StatementType.INDMONEY_STATEMENT.value
             else:
-                stmt_type = "broker_statement"
+                stmt_type = StatementType.BROKER_STATEMENT.value
 
             display = da.nickname or da.broker_name or "Demat Account"
             if da.account_id:
@@ -196,7 +196,7 @@ async def get_portfolio_accounts(
                 upload_config=UploadConfig(
                     endpoint="/statements/upload",
                     pre_filled={
-                        "statement_type": "crypto_statement",
+                        "statement_type": StatementType.CRYPTO_STATEMENT.value,
                         "institution_name": ca.exchange_name,
                     },
                     fields_needed=["file"],
@@ -253,7 +253,7 @@ async def get_portfolio_accounts(
             "display_name": "Insurance Policies",
             "endpoint_template": "/statements/upload",
             "per_account": False,
-            "statement_type": "insurance_statement",
+            "statement_type": StatementType.INSURANCE_STATEMENT.value,
             "fields_needed": ["file", "password"],
             "accepts": ".pdf,.xlsx,.xls,.csv",
         },
@@ -346,7 +346,7 @@ async def get_portfolio_accounts(
                 upload_config=UploadConfig(
                     endpoint="/statements/upload",
                     pre_filled={
-                        "statement_type": "mutual_fund_statement",
+                        "statement_type": StatementType.MUTUAL_FUND_STATEMENT.value,
                         "institution_name": info["broker"],
                     },
                     fields_needed=["file", "password"],

@@ -15,6 +15,7 @@ from app.models.demat_account import DematAccount
 from app.models.crypto_account import CryptoAccount
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
 from app.core.database import SessionLocal
+from app.core.enums import SnapshotSource
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -99,8 +100,9 @@ class EODSnapshotService:
             # Create asset snapshot
             asset_snapshot = AssetSnapshot(
                 portfolio_snapshot_id=portfolio_snapshot.id,
-                asset_id=asset.id,
                 snapshot_date=snapshot_date,
+                snapshot_source=SnapshotSource.ASSET.value,
+                asset_id=asset.id,
                 asset_type=asset.asset_type.value,
                 asset_name=asset.name,
                 asset_symbol=asset.symbol,
@@ -120,12 +122,12 @@ class EODSnapshotService:
         # Add bank accounts to the snapshot
         # Bank accounts are treated as cash with no profit/loss
         for bank_account in bank_accounts:
-            # Create asset snapshot for bank account
             asset_snapshot = AssetSnapshot(
                 portfolio_snapshot_id=portfolio_snapshot.id,
-                asset_id=None,  # Bank accounts don't have asset_id
                 snapshot_date=snapshot_date,
-                asset_type='bank_account',
+                snapshot_source=SnapshotSource.BANK_ACCOUNT.value,
+                bank_account_id=bank_account.id,
+                asset_type=None,
                 asset_name=f"{bank_account.bank_name} - {bank_account.account_type.value}",
                 asset_symbol=bank_account.account_number[-4:] if bank_account.account_number else 'N/A',
                 quantity=1.0,
@@ -149,9 +151,10 @@ class EODSnapshotService:
 
             asset_snapshot = AssetSnapshot(
                 portfolio_snapshot_id=portfolio_snapshot.id,
-                asset_id=None,
                 snapshot_date=snapshot_date,
-                asset_type='demat_cash',
+                snapshot_source=SnapshotSource.DEMAT_CASH.value,
+                demat_account_id=demat_account.id,
+                asset_type=None,
                 asset_name=f"{demat_account.broker_name} - Cash",
                 asset_symbol=demat_account.account_id[-4:] if demat_account.account_id else 'N/A',
                 quantity=1.0,
@@ -175,9 +178,10 @@ class EODSnapshotService:
 
             asset_snapshot = AssetSnapshot(
                 portfolio_snapshot_id=portfolio_snapshot.id,
-                asset_id=None,
                 snapshot_date=snapshot_date,
-                asset_type='crypto_cash',
+                snapshot_source=SnapshotSource.CRYPTO_CASH.value,
+                crypto_account_id=crypto_account.id,
+                asset_type=None,
                 asset_name=f"{crypto_account.exchange_name} - Cash (USD)",
                 asset_symbol=crypto_account.account_id[-4:] if crypto_account.account_id else 'N/A',
                 quantity=1.0,

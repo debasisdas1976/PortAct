@@ -6,6 +6,7 @@ import logging
 import requests
 from typing import Optional, Tuple
 from app.core.config import settings
+from app.models.asset import AssetType
 
 logger = logging.getLogger(__name__)
 
@@ -97,16 +98,19 @@ def lookup_isin_for_asset(asset_type: str, symbol: str, name: str) -> Optional[T
         (isin, api_symbol) tuple or (None, None) if not found
         api_symbol is the exact name to use for API calls (for mutual funds)
     """
-    asset_type_lower = asset_type.lower()
+    try:
+        asset_type_enum = AssetType(asset_type.lower())
+    except ValueError:
+        return (None, None)
 
     # ISIN is only for Indian Stocks (not commodities, not US stocks)
-    if asset_type_lower == 'stock':
+    if asset_type_enum == AssetType.STOCK:
         isin = get_isin_from_nse(symbol)
         if isin:
             return (isin, symbol)  # api_symbol is same as symbol for stocks
 
     # ISIN is only for Indian Mutual Funds
-    elif asset_type_lower in ['equity_mutual_fund', 'hybrid_mutual_fund', 'debt_mutual_fund']:
+    elif asset_type_enum in (AssetType.EQUITY_MUTUAL_FUND, AssetType.HYBRID_MUTUAL_FUND, AssetType.DEBT_MUTUAL_FUND):
         # Step 1: Try exact substring match (fast, high confidence)
         isin, exact_name = get_isin_from_amfi(symbol)
         if not isin:

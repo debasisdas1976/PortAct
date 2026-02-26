@@ -102,22 +102,21 @@ async def lifespan(app: FastAPI):
         logger.info("Production mode — skipping create_all (Alembic manages schema).")
 
     # Validate that every Python AssetType enum member has a corresponding
-    # value in the PostgreSQL 'assettype' enum.  This catches missing migration
-    # entries at startup instead of at runtime during statement uploads.
+    # row in the asset_types master table.  This catches missing seed data
+    # at startup instead of at runtime during statement uploads.
     _check_db = SessionLocal()
     try:
         from app.models.asset import AssetType
         import sqlalchemy
         rows = _check_db.execute(
-            sqlalchemy.text("SELECT enumlabel FROM pg_enum WHERE enumtypid = 'assettype'::regtype")
+            sqlalchemy.text("SELECT name FROM asset_types")
         ).fetchall()
-        pg_labels = {row[0] for row in rows}
-        missing = [member.value for member in AssetType if member.value not in pg_labels]
+        db_names = {row[0] for row in rows}
+        missing = [member.value for member in AssetType if member.value not in db_names]
         if missing:
             raise RuntimeError(
-                f"PostgreSQL 'assettype' enum is missing values: {missing}. "
-                f"Create an Alembic migration to add them with: "
-                f"ALTER TYPE assettype ADD VALUE IF NOT EXISTS '<VALUE>';"
+                f"asset_types table is missing values: {missing}. "
+                f"Run seed_data.json sync or add them manually."
             )
         logger.info("AssetType enum validation passed.")
     finally:

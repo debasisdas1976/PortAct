@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 from app.models.demat_account import AccountMarket
@@ -7,6 +7,11 @@ from app.models.demat_account import AccountMarket
 class DematAccountBase(BaseModel):
     """Base demat account schema"""
     broker_name: str
+
+    @field_validator("broker_name")
+    @classmethod
+    def normalize_broker_name(cls, v: str) -> str:
+        return v.strip().lower().replace(" ", "_")
     account_market: AccountMarket = Field(default=AccountMarket.DOMESTIC)
     account_id: str = Field(..., min_length=1, max_length=50)
     account_holder_name: Optional[str] = Field(None, max_length=200)
@@ -29,6 +34,11 @@ class DematAccountCreate(DematAccountBase):
 class DematAccountUpdate(BaseModel):
     """Schema for updating a demat account"""
     broker_name: Optional[str] = None
+
+    @field_validator("broker_name")
+    @classmethod
+    def normalize_broker_name(cls, v: str | None) -> str | None:
+        return v.strip().lower().replace(" ", "_") if v is not None else v
     account_market: Optional[AccountMarket] = None
     account_id: Optional[str] = Field(None, min_length=1, max_length=50)
     account_holder_name: Optional[str] = Field(None, max_length=200)

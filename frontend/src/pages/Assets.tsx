@@ -24,6 +24,7 @@ import {
   MenuItem,
   Button,
   Tooltip,
+  TableSortLabel,
 } from '@mui/material';
 import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, AccountBalance, Refresh, Warning, CheckCircle, CameraAlt, Error as ErrorIcon } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
@@ -32,6 +33,52 @@ import api, { assetsAPI, assetTypesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { useNavigate } from 'react-router-dom';
+
+const ASSET_TYPE_ROUTES: Record<string, string> = {
+  stock: '/stocks',
+  us_stock: '/us-stocks',
+  equity_mutual_fund: '/equity-mf',
+  hybrid_mutual_fund: '/hybrid-mf',
+  debt_mutual_fund: '/debt-funds',
+  commodity: '/commodities',
+  sovereign_gold_bond: '/sovereign-gold-bonds',
+  esop: '/esops',
+  rsu: '/rsus',
+  reit: '/reits',
+  invit: '/invits',
+  savings_account: '/savings',
+  fixed_deposit: '/fixed-deposit',
+  recurring_deposit: '/recurring-deposit',
+  corporate_bond: '/corporate-bond',
+  rbi_bond: '/rbi-bond',
+  tax_saving_bond: '/tax-saving-bond',
+  ppf: '/ppf',
+  pf: '/pf',
+  nps: '/nps',
+  ssy: '/ssy',
+  gratuity: '/gratuity',
+  insurance_policy: '/insurance',
+  crypto: '/crypto-assets',
+  nsc: '/nsc',
+  kvp: '/kvp',
+  scss: '/scss',
+  mis: '/mis',
+};
+
+const REAL_ESTATE_ROUTES: Record<string, string> = {
+  land: '/land',
+  farm_land: '/farm-land',
+  house: '/house',
+};
+
+const getAssetRoute = (assetType: string, details?: Record<string, any>): string | undefined => {
+  if (assetType === 'real_estate') {
+    const propType = (details?.property_type || '').toLowerCase();
+    return REAL_ESTATE_ROUTES[propType];
+  }
+  return ASSET_TYPE_ROUTES[assetType];
+};
 
 interface Asset {
   id: number;
@@ -79,6 +126,7 @@ interface DematAccount {
 }
 
 interface GroupedAsset {
+  groupKey: string;
   symbol: string;
   name: string;
   asset_type: string;
@@ -117,6 +165,7 @@ const Assets: React.FC = () => {
   const { assets, loading, error } = useSelector((state: RootState) => state.assets);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
+  const navigate = useNavigate();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [currentTab, setCurrentTab] = useState(0);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -130,6 +179,8 @@ const Assets: React.FC = () => {
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [assetTypes, setAssetTypes] = useState<{ value: string; label: string; category: string; allowedConversions: string[] | null }[]>([]);
+  const [sortColumn, setSortColumn] = useState<'asset' | 'type' | 'invested' | 'value' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     dispatch(fetchAssets(selectedPortfolioId));
@@ -219,16 +270,53 @@ const Assets: React.FC = () => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
-  const getAssetTypeColor = (type: string) => {
-    const colors: { [key: string]: any } = {
-      stock: 'primary',
-      equity_mutual_fund: 'secondary',
-      debt_mutual_fund: 'info',
-      bond: 'success',
-      commodity: 'warning',
-      crypto: 'error',
+  const getAssetTypeColor = (type: string): string => {
+    const colors: { [key: string]: string } = {
+      // Stocks — Blue
+      stock: '#1976D2',
+      esop: '#1976D2',
+      rsu: '#1976D2',
+      reit: '#1976D2',
+      invit: '#1976D2',
+      // US Stocks — Indigo
+      us_stock: '#5C6BC0',
+      // Equity Mutual Funds — Green
+      equity_mutual_fund: '#2E7D32',
+      // Debt Mutual Funds — Teal
+      debt_mutual_fund: '#00838F',
+      // Hybrid Mutual Funds — Purple
+      hybrid_mutual_fund: '#7B1FA2',
+      // Bonds — Brown
+      corporate_bond: '#5D4037',
+      rbi_bond: '#5D4037',
+      tax_saving_bond: '#5D4037',
+      // Banks / FD / RD — Deep Orange
+      fixed_deposit: '#E65100',
+      recurring_deposit: '#E65100',
+      savings_account: '#E65100',
+      // Post Office Saving Schemes — Amber
+      nsc: '#F9A825',
+      kvp: '#F9A825',
+      scss: '#F9A825',
+      mis: '#F9A825',
+      // Retirement Savings — Dark Red
+      ppf: '#C62828',
+      pf: '#C62828',
+      nps: '#C62828',
+      ssy: '#C62828',
+      gratuity: '#C62828',
+      // Commodities — Gold/Amber
+      commodity: '#FF8F00',
+      sovereign_gold_bond: '#FF8F00',
+      // Crypto — Pink
+      crypto: '#AD1457',
+      // Real Estate — Blue Grey
+      real_estate: '#546E7A',
+      // Other
+      insurance_policy: '#78909C',
+      cash: '#78909C',
     };
-    return colors[type.toLowerCase()] || 'default';
+    return colors[type.toLowerCase()] || '#9E9E9E';
   };
 
   const getAssetTypeLabel = (type: string) => {
@@ -247,6 +335,7 @@ const Assets: React.FC = () => {
       const key = asset.symbol ? asset.symbol : `__no_symbol_${asset.id}`;
       if (!groups.has(key)) {
         groups.set(key, {
+          groupKey: key,
           symbol: asset.symbol,
           name: asset.name,
           asset_type: asset.asset_type,
@@ -267,10 +356,10 @@ const Assets: React.FC = () => {
     return Array.from(groups.values());
   }, [assets]);
 
-  // Group assets by type
+  // Group assets by type, then apply sorting
   const assetsByType = React.useMemo(() => {
     const types: { [key: string]: GroupedAsset[] } = {
-      all: groupedAssets,
+      all: [],
       stock: [],
       us_stock: [],
       equity_mutual_fund: [],
@@ -291,8 +380,34 @@ const Assets: React.FC = () => {
       }
     });
 
+    types.all = [...groupedAssets];
+
+    if (sortColumn) {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      const compareFn = (a: GroupedAsset, b: GroupedAsset): number => {
+        switch (sortColumn) {
+          case 'asset':
+            return dir * (a.symbol || a.name).localeCompare(b.symbol || b.name);
+          case 'type': {
+            const labelA = assetTypes.find(t => t.value === a.asset_type.toLowerCase())?.label || a.asset_type;
+            const labelB = assetTypes.find(t => t.value === b.asset_type.toLowerCase())?.label || b.asset_type;
+            return dir * labelA.localeCompare(labelB);
+          }
+          case 'invested':
+            return dir * (a.totalInvested - b.totalInvested);
+          case 'value':
+            return dir * (a.totalCurrentValue - b.totalCurrentValue);
+          default:
+            return 0;
+        }
+      };
+      for (const key of Object.keys(types)) {
+        types[key] = [...types[key]].sort(compareFn);
+      }
+    }
+
     return types;
-  }, [groupedAssets]);
+  }, [groupedAssets, sortColumn, sortDirection, assetTypes]);
 
   // Calculate summary statistics for current tab
   const getCurrentTabAssets = () => {
@@ -345,6 +460,15 @@ const Assets: React.FC = () => {
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
+  };
+
+  const handleSort = (column: 'asset' | 'type' | 'invested' | 'value') => {
+    if (sortColumn === column) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
   };
 
   const handleAssetTypeClick = (event: React.MouseEvent<HTMLElement>, asset: GroupedAsset) => {
@@ -586,12 +710,28 @@ const Assets: React.FC = () => {
         <TableHead>
           <TableRow>
             <TableCell width="40px" />
-            <TableCell>Asset</TableCell>
-            <TableCell>Type</TableCell>
+            <TableCell sortDirection={sortColumn === 'asset' ? sortDirection : false}>
+              <TableSortLabel active={sortColumn === 'asset'} direction={sortColumn === 'asset' ? sortDirection : 'asc'} onClick={() => handleSort('asset')}>
+                Asset
+              </TableSortLabel>
+            </TableCell>
+            <TableCell sortDirection={sortColumn === 'type' ? sortDirection : false}>
+              <TableSortLabel active={sortColumn === 'type'} direction={sortColumn === 'type' ? sortDirection : 'asc'} onClick={() => handleSort('type')}>
+                Type
+              </TableSortLabel>
+            </TableCell>
             <TableCell align="right">Qty</TableCell>
             <TableCell align="right">Current Price</TableCell>
-            <TableCell align="right">Invested</TableCell>
-            <TableCell align="right">Value</TableCell>
+            <TableCell align="right" sortDirection={sortColumn === 'invested' ? sortDirection : false}>
+              <TableSortLabel active={sortColumn === 'invested'} direction={sortColumn === 'invested' ? sortDirection : 'asc'} onClick={() => handleSort('invested')}>
+                Invested
+              </TableSortLabel>
+            </TableCell>
+            <TableCell align="right" sortDirection={sortColumn === 'value' ? sortDirection : false}>
+              <TableSortLabel active={sortColumn === 'value'} direction={sortColumn === 'value' ? sortDirection : 'asc'} onClick={() => handleSort('value')}>
+                Value
+              </TableSortLabel>
+            </TableCell>
             <TableCell align="right">P&L</TableCell>
             <TableCell align="center">Actions</TableCell>
           </TableRow>
@@ -622,7 +762,7 @@ const Assets: React.FC = () => {
               const hideRefreshPrice = ['Other', 'Fixed Income', 'Govt. Schemes'].includes(assetCategory) && assetType !== 'debt_mutual_fund';
 
               return (
-                <React.Fragment key={group.symbol}>
+                <React.Fragment key={group.groupKey}>
                   {/* Main Row */}
                   <TableRow sx={{
                     '& > *': { borderBottom: hasMultipleInstances && isExpanded ? 'none' : undefined },
@@ -637,23 +777,33 @@ const Assets: React.FC = () => {
                     </TableCell>
                     {/* Asset: symbol + name combined */}
                     <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Typography variant="body2" fontWeight="medium">
-                          {group.symbol}
+                      <Box
+                        sx={{
+                          cursor: getAssetRoute(assetType, group.instances[0]?.details) ? 'pointer' : 'default',
+                          '&:hover': getAssetRoute(assetType, group.instances[0]?.details) ? { '& .asset-symbol': { color: 'primary.main', textDecoration: 'underline' } } : {},
+                        }}
+                        onClick={() => {
+                          const route = getAssetRoute(assetType, group.instances[0]?.details);
+                          if (route) navigate(route);
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography className="asset-symbol" variant="body2" fontWeight="medium">
+                            {group.symbol}
+                          </Typography>
+                          {missingIsin && (
+                            <Warning color="error" fontSize="small" titleAccess="ISIN Missing" />
+                          )}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          {group.name}
+                          {hasMultipleInstances && ` · ${group.instances.length} accounts`}
                         </Typography>
-                        {missingIsin && (
-                          <Warning color="error" fontSize="small" titleAccess="ISIN Missing" />
-                        )}
                       </Box>
-                      <Typography variant="caption" color="text.secondary">
-                        {group.name}
-                        {hasMultipleInstances && ` · ${group.instances.length} accounts`}
-                      </Typography>
                     </TableCell>
                     <TableCell>
                       <Chip
                         label={getAssetTypeLabel(group.asset_type)}
-                        color={getAssetTypeColor(group.asset_type)}
                         size="small"
                         {...(assetTypes.find(t => t.value === group.asset_type.toLowerCase())?.allowedConversions?.length ? {
                           onClick: (e: React.MouseEvent<HTMLElement>) => handleAssetTypeClick(e, group),
@@ -661,6 +811,8 @@ const Assets: React.FC = () => {
                         sx={{
                           minWidth: 150,
                           justifyContent: 'center',
+                          backgroundColor: getAssetTypeColor(group.asset_type),
+                          color: '#fff',
                           ...(assetTypes.find(t => t.value === group.asset_type.toLowerCase())?.allowedConversions?.length ? { cursor: 'pointer' } : {}),
                         }}
                       />

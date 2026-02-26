@@ -455,9 +455,9 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
                 else:
                     # Try generic parsing
                     text = data.to_string()
-                    if statement.statement_type.value in ['bank_statement', 'broker_statement']:
+                    if statement.statement_type in (StatementType.BANK_STATEMENT, StatementType.BROKER_STATEMENT):
                         assets, transactions = parse_financial_statement(text, statement)
-                    elif statement.statement_type.value == 'mutual_fund_statement':
+                    elif statement.statement_type == StatementType.MUTUAL_FUND_STATEMENT:
                         assets, transactions = parse_mutual_fund_statement(text, statement)
                     else:
                         assets, transactions = parse_generic_statement(text, statement)
@@ -501,10 +501,10 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
                     elif is_zerodha_format(df, statement):
                         assets, transactions = parse_zerodha_holdings(df, statement, None, account_info)
             # Parse based on statement type
-            elif statement.statement_type.value in ['bank_statement', 'broker_statement']:
+            elif statement.statement_type in (StatementType.BANK_STATEMENT, StatementType.BROKER_STATEMENT):
                 text = data if isinstance(data, str) else str(data)
                 assets, transactions = parse_financial_statement(text, statement)
-            elif statement.statement_type.value == 'mutual_fund_statement':
+            elif statement.statement_type == StatementType.MUTUAL_FUND_STATEMENT:
                 text = data if isinstance(data, str) else str(data)
                 assets, transactions = parse_mutual_fund_statement(text, statement)
             else:

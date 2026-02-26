@@ -14,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from datetime import datetime, date, timedelta, timezone
 import bcrypt
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.models import (
@@ -22,6 +23,7 @@ from app.models import (
     BankAccount, BankType, DematAccount, CryptoAccount,
     ExpenseCategory, Expense, ExpenseType, PaymentMethod,
     PortfolioSnapshot, AssetSnapshot,
+    Portfolio, MutualFundHolding,
 )
 from app.models.demat_account import AccountMarket
 
@@ -39,7 +41,24 @@ def seed_demo_user():
         existing = db.query(User).filter(User.email == "demouser@portact.com").first()
         if existing:
             print("Demo user already exists. Deleting and re-creating...")
-            db.delete(existing)
+            # Delete all user data in dependency order using raw SQL.
+            # ORM cascade doesn't match DB-level FK constraints, so we
+            # handle the teardown explicitly to avoid integrity errors.
+            uid = existing.id
+            db.execute(text("DELETE FROM asset_snapshots WHERE portfolio_snapshot_id IN (SELECT id FROM portfolio_snapshots WHERE user_id = :uid)"), {"uid": uid})
+            db.execute(text("DELETE FROM portfolio_snapshots WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM mutual_fund_holdings WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM transactions WHERE asset_id IN (SELECT id FROM assets WHERE user_id = :uid)"), {"uid": uid})
+            db.execute(text("DELETE FROM alerts WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM expenses WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM expense_categories WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM assets WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM bank_accounts WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM demat_accounts WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM crypto_accounts WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM portfolios WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM statements WHERE user_id = :uid"), {"uid": uid})
+            db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": uid})
             db.commit()
 
         # ══════════════════════════════════════════════════════════════════════════
@@ -74,31 +93,63 @@ def seed_demo_user():
         print(f"  User created (id={user_id})")
 
         # ══════════════════════════════════════════════════════════════════════════
+        # 1b. CREATE DEFAULT PORTFOLIO
+        # ══════════════════════════════════════════════════════════════════════════
+        print("Creating default portfolio...")
+        portfolio = Portfolio(
+            user_id=user_id,
+            name="Default",
+            is_default=True,
+            is_active=True,
+        )
+        db.add(portfolio)
+        db.flush()
+        portfolio_id = portfolio.id
+        print(f"  Default portfolio created (id={portfolio_id})")
+
+        # ── Second portfolio: Retirement ──
+        retirement_portfolio = Portfolio(
+            user_id=user_id,
+            name="Retirement",
+            description="Long-term retirement savings and pension investments",
+            is_default=False,
+            is_active=True,
+        )
+        db.add(retirement_portfolio)
+        db.flush()
+        retirement_portfolio_id = retirement_portfolio.id
+        print(f"  Retirement portfolio created (id={retirement_portfolio_id})")
+
+        # ══════════════════════════════════════════════════════════════════════════
         # 2. BANK ACCOUNTS
         # ══════════════════════════════════════════════════════════════════════════
         print("Creating bank accounts...")
         ba_icici = BankAccount(
-            user_id=user_id, bank_name="icici_bank", account_type=BankType.SAVINGS,
+            user_id=user_id, portfolio_id=portfolio_id,
+            bank_name="icici_bank", account_type=BankType.SAVINGS,
             account_number="XXXX1234", account_holder_name="Rahul Sharma",
             ifsc_code="ICIC0001234", branch_name="Indiranagar Branch",
             current_balance=250000.0, is_active=True, is_primary=True,
             nickname="ICICI Salary Account",
         )
         ba_hdfc = BankAccount(
-            user_id=user_id, bank_name="hdfc_bank", account_type=BankType.SAVINGS,
+            user_id=user_id, portfolio_id=portfolio_id,
+            bank_name="hdfc_bank", account_type=BankType.SAVINGS,
             account_number="XXXX5678", account_holder_name="Rahul Sharma",
             ifsc_code="HDFC0005678", branch_name="Koramangala Branch",
             current_balance=185000.0, is_active=True,
             nickname="HDFC Savings",
         )
         ba_sbi = BankAccount(
-            user_id=user_id, bank_name="state_bank_of_india", account_type=BankType.CREDIT_CARD,
+            user_id=user_id, portfolio_id=portfolio_id,
+            bank_name="state_bank_of_india", account_type=BankType.CREDIT_CARD,
             account_number="XXXX9012", account_holder_name="Rahul Sharma",
             current_balance=42000.0, credit_limit=200000.0, available_balance=158000.0,
             is_active=True, nickname="SBI Credit Card",
         )
         ba_axis = BankAccount(
-            user_id=user_id, bank_name="axis_bank", account_type=BankType.CURRENT,
+            user_id=user_id, portfolio_id=portfolio_id,
+            bank_name="axis_bank", account_type=BankType.CURRENT,
             account_number="XXXX3456", account_holder_name="Rahul Sharma",
             ifsc_code="UTIB0003456", branch_name="HSR Layout Branch",
             current_balance=525000.0, is_active=True,
@@ -113,7 +164,8 @@ def seed_demo_user():
         # ══════════════════════════════════════════════════════════════════════════
         print("Creating demat accounts...")
         da_zerodha = DematAccount(
-            user_id=user_id, broker_name="zerodha",
+            user_id=user_id, portfolio_id=portfolio_id,
+            broker_name="zerodha",
             account_market=AccountMarket.DOMESTIC,
             account_id="ZR1234", account_holder_name="Rahul Sharma",
             demat_account_number="1208160012345678",
@@ -122,14 +174,16 @@ def seed_demo_user():
             nickname="Zerodha Trading",
         )
         da_groww = DematAccount(
-            user_id=user_id, broker_name="groww",
+            user_id=user_id, portfolio_id=portfolio_id,
+            broker_name="groww",
             account_market=AccountMarket.DOMESTIC,
             account_id="GW5678", account_holder_name="Rahul Sharma",
             cash_balance=8000.0, currency="INR",
             is_active=True, nickname="Groww MF Account",
         )
         da_indmoney = DematAccount(
-            user_id=user_id, broker_name="indmoney",
+            user_id=user_id, portfolio_id=portfolio_id,
+            broker_name="indmoney",
             account_market=AccountMarket.INTERNATIONAL,
             account_id="IM9012", account_holder_name="Rahul Sharma",
             cash_balance_usd=250.0, currency="USD",
@@ -144,14 +198,16 @@ def seed_demo_user():
         # ══════════════════════════════════════════════════════════════════════════
         print("Creating crypto accounts...")
         ca_binance = CryptoAccount(
-            user_id=user_id, exchange_name="binance",
+            user_id=user_id, portfolio_id=portfolio_id,
+            exchange_name="binance",
             account_id="binance_rahul_01", account_holder_name="Rahul Sharma",
             cash_balance_usd=120.0, total_value_usd=4920.0,
             is_active=True, is_primary=True,
             nickname="Binance Main",
         )
         ca_wazirx = CryptoAccount(
-            user_id=user_id, exchange_name="wazirx",
+            user_id=user_id, portfolio_id=portfolio_id,
+            exchange_name="wazirx",
             account_id="wazirx_rahul_01", account_holder_name="Rahul Sharma",
             cash_balance_usd=85.0, total_value_usd=505.0,
             is_active=True, nickname="WazirX",
@@ -178,6 +234,7 @@ def seed_demo_user():
             kwargs.setdefault("profit_loss_percentage", round(pl_pct, 2))
             kwargs.setdefault("is_active", True)
             kwargs.setdefault("user_id", user_id)
+            kwargs.setdefault("portfolio_id", portfolio_id)
             asset = Asset(**kwargs)
             all_assets.append(asset)
             return asset
@@ -246,6 +303,20 @@ def seed_demo_user():
             broker_name="groww", account_holder_name="Rahul Sharma",
             purchase_date=now - timedelta(days=540),
             details={"fund_house": "HDFC", "category": "Debt", "plan": "Direct Growth"},
+        )
+
+        # ── 5d2. Hybrid Mutual Fund (1) ───────────────────────────────────────
+        make_asset(
+            asset_type=AssetType.HYBRID_MUTUAL_FUND,
+            name="ICICI Prudential Balanced Advantage Fund", symbol="ICICI_BAF",
+            api_symbol="120242", isin="INF109K01BD0",
+            quantity=5000, purchase_price=52.0, current_price=60.8,
+            total_invested=260000, current_value=304000,
+            demat_account_id=da_groww.id, broker_name="groww",
+            account_holder_name="Rahul Sharma",
+            purchase_date=now - timedelta(days=700),
+            details={"fund_house": "ICICI Prudential", "category": "Hybrid",
+                     "sub_category": "Balanced Advantage", "plan": "Direct Growth"},
         )
 
         # ── 5e. Commodities (2) ─────────────────────────────────────────────────
@@ -523,9 +594,10 @@ def seed_demo_user():
             quantity=1, purchase_price=6500000.0, current_price=8200000.0,
             total_invested=6500000, current_value=8200000,
             purchase_date=now - timedelta(days=1825),
-            details={"property_type": "Apartment", "area_sqft": 1150,
+            details={"property_type": "house", "area": 1150, "area_unit": "sqft",
                      "property_address": "Prestige Shantiniketan, Whitefield, Bangalore 560066",
                      "location": "Whitefield, Bangalore",
+                     "purchase_price": 6500000.0, "current_market_value": 8200000.0,
                      "registration_date": (today - timedelta(days=1825)).isoformat(),
                      "carpet_area_sqft": 950, "floor": 12, "total_floors": 25,
                      "facing": "East", "furnishing": "Semi-Furnished"},
@@ -536,9 +608,10 @@ def seed_demo_user():
             quantity=1, purchase_price=2500000.0, current_price=3500000.0,
             total_invested=2500000, current_value=3500000,
             purchase_date=now - timedelta(days=1095),
-            details={"property_type": "Plot", "area_sqft": 2400,
+            details={"property_type": "land", "area": 2400, "area_unit": "sqft",
                      "property_address": "BDA Layout, Electronic City Phase 2, Bangalore 560100",
                      "location": "Electronic City, Bangalore",
+                     "purchase_price": 2500000.0, "current_market_value": 3500000.0,
                      "registration_date": (today - timedelta(days=1095)).isoformat(),
                      "dimensions": "40x60 ft", "facing": "North"},
         )
@@ -551,9 +624,289 @@ def seed_demo_user():
             total_invested=50000, current_value=50000,
         )
 
+        # ── 5p. ESOP (1) ──────────────────────────────────────────────────────
+        make_asset(
+            asset_type=AssetType.ESOP,
+            name="TechVista Solutions ESOP", symbol="TECHVISTA-ESOP",
+            quantity=500, purchase_price=120.0, current_price=185.0,
+            total_invested=60000, current_value=92500,
+            purchase_date=now - timedelta(days=1095),
+            details={
+                "company": "TechVista Solutions Pvt Ltd",
+                "grant_date": (today - timedelta(days=1095)).isoformat(),
+                "vesting_schedule": "25% per year over 4 years",
+                "exercise_price": 120.0,
+                "total_granted": 2000,
+                "vested": 1500,
+                "exercised": 500,
+                "currency": "INR",
+                "cliff_months": 12,
+                "expiry_date": (today + timedelta(days=2555)).isoformat(),
+            },
+        )
+
+        # ── 5q. RSU (1) ───────────────────────────────────────────────────────
+        make_asset(
+            asset_type=AssetType.RSU,
+            name="Google RSU (Alphabet Inc)", symbol="GOOGL", api_symbol="GOOGL",
+            quantity=8, purchase_price=0.0, current_price=178.0,
+            total_invested=0, current_value=1424,
+            demat_account_id=da_indmoney.id, broker_name="indmoney",
+            account_holder_name="Rahul Sharma",
+            purchase_date=now - timedelta(days=365),
+            details={
+                "company": "Alphabet Inc",
+                "grant_date": (today - timedelta(days=730)).isoformat(),
+                "vesting_schedule": "25% per year over 4 years",
+                "total_granted": 32,
+                "vested": 16,
+                "released": 8,
+                "currency": "USD",
+                "price_usd": 178.0,
+                "usd_to_inr_rate": 83.5,
+            },
+        )
+
+        # ── 5r. Savings Account (1) ───────────────────────────────────────────
+        make_asset(
+            asset_type=AssetType.SAVINGS_ACCOUNT,
+            name="ICICI Savings Account", symbol="ICICI-SAV",
+            quantity=1, purchase_price=250000.0, current_price=250000.0,
+            total_invested=250000, current_value=250000,
+            details={
+                "bank_name": "ICICI Bank",
+                "account_number": "XXXX1234",
+                "interest_rate": 3.0,
+                "account_type": "Savings",
+            },
+        )
+
+        # ══════════════════════════════════════════════════════════════════════════
+        # 5.R  RETIREMENT PORTFOLIO ASSETS
+        # ══════════════════════════════════════════════════════════════════════════
+        print("Creating retirement portfolio assets...")
+        retirement_assets_start = len(all_assets)
+
+        # ── R1. Blue-chip Stocks (3) — Zerodha ─────────────────────────────────
+        ret_stocks = [
+            ("Bajaj Finance", "BAJFINANCE", "BAJFINANCE.BSE", "INE296A01024", 30, 6200.0, 7100.0, 186000, 213000, "zerodha", {"exchange": "NSE", "sector": "Finance", "market_cap": "Large"}),
+            ("HUL", "HINDUNILVR", "HINDUNILVR.BSE", "INE030A01027", 60, 2200.0, 2500.0, 132000, 150000, "zerodha", {"exchange": "NSE", "sector": "FMCG", "market_cap": "Large"}),
+            ("Kotak Mahindra Bank", "KOTAKBANK", "KOTAKBANK.BSE", "INE237A01028", 40, 1800.0, 1950.0, 72000, 78000, "zerodha", {"exchange": "NSE", "sector": "Banking", "market_cap": "Large"}),
+        ]
+        for name, sym, api_sym, isin, qty, pp, cp, invested, current, broker, details in ret_stocks:
+            make_asset(
+                asset_type=AssetType.STOCK, name=name, symbol=sym, api_symbol=api_sym,
+                isin=isin, quantity=qty, purchase_price=pp, current_price=cp,
+                total_invested=invested, current_value=current,
+                demat_account_id=da_zerodha.id, broker_name=broker,
+                account_holder_name="Rahul Sharma",
+                purchase_date=now - timedelta(days=random.randint(365, 1095)),
+                details=details,
+                portfolio_id=retirement_portfolio_id,
+            )
+
+        # ── R2. Equity Mutual Fund (1) — Groww ─────────────────────────────────
+        ret_mf = make_asset(
+            asset_type=AssetType.EQUITY_MUTUAL_FUND,
+            name="HDFC Flexi Cap Fund", symbol="HDFC_FC",
+            api_symbol="119531", isin="INF179K01CA6",
+            quantity=12000, purchase_price=16.67, current_price=20.83,
+            total_invested=200000, current_value=250000,
+            demat_account_id=da_groww.id, broker_name="groww",
+            account_holder_name="Rahul Sharma",
+            purchase_date=now - timedelta(days=random.randint(730, 1460)),
+            details={"fund_house": "HDFC", "category": "Equity", "plan": "Direct Growth"},
+            portfolio_id=retirement_portfolio_id,
+        )
+
+        # ── R3. Debt Mutual Fund (1) — Groww ──────────────────────────────────
+        make_asset(
+            asset_type=AssetType.DEBT_MUTUAL_FUND,
+            name="SBI Magnum Gilt Fund", symbol="SBI_GILT",
+            api_symbol="119455", isin="INF200K01677",
+            quantity=5000, purchase_price=50.0, current_price=56.0,
+            total_invested=250000, current_value=280000,
+            broker_name="groww", account_holder_name="Rahul Sharma",
+            purchase_date=now - timedelta(days=800),
+            details={"fund_house": "SBI", "category": "Debt", "sub_category": "Gilt", "plan": "Direct Growth"},
+            portfolio_id=retirement_portfolio_id,
+        )
+
+        # ── R4. NPS Tier II ───────────────────────────────────────────────────
+        make_asset(
+            asset_type=AssetType.NPS,
+            name="National Pension System - Tier II", symbol="NPS-T2",
+            quantity=1, purchase_price=150000.0, current_price=182000.0,
+            total_invested=150000, current_value=182000,
+            purchase_date=now - timedelta(days=730),
+            details={"pran_number": "1101234567890", "tier": "Tier II",
+                     "fund_manager": "HDFC Pension Management",
+                     "asset_allocation": {"equity": 50, "corporate_bonds": 30, "govt_bonds": 20},
+                     "yearly_contribution": 100000},
+            portfolio_id=retirement_portfolio_id,
+        )
+
+        # ── R5. Fixed Deposit ─────────────────────────────────────────────────
+        make_asset(
+            asset_type=AssetType.FIXED_DEPOSIT,
+            name="SBI FD 7.1% (Retirement)", symbol="SBI-FD-RET",
+            quantity=1, purchase_price=1000000.0, current_price=1071000.0,
+            total_invested=1000000, current_value=1071000,
+            purchase_date=now - timedelta(days=365),
+            details={"bank_name": "SBI", "interest_rate": 7.1,
+                     "maturity_date": (today + timedelta(days=1095)).isoformat(),
+                     "tenure_months": 48, "interest_frequency": "Quarterly",
+                     "fd_number": "FD-SBI-RET-001"},
+            portfolio_id=retirement_portfolio_id,
+        )
+
+        # ── R6. Sovereign Gold Bond ───────────────────────────────────────────
+        make_asset(
+            asset_type=AssetType.SOVEREIGN_GOLD_BOND,
+            name="SGB 2024-25 Series II", symbol="SGB2024II",
+            quantity=10, purchase_price=6800.0, current_price=8133.0,
+            total_invested=68000, current_value=81330,
+            purchase_date=now - timedelta(days=300),
+            details={"series": "2024-25 Series II", "issue_date": "2024-09-15",
+                     "maturity_date": "2032-09-15", "coupon_rate": 2.5,
+                     "grams_per_unit": 1},
+            portfolio_id=retirement_portfolio_id,
+        )
+
+        # ── R7. RBI Bond ─────────────────────────────────────────────────────
+        make_asset(
+            asset_type=AssetType.RBI_BOND,
+            name="RBI Floating Rate Bond 2030", symbol="RBI-FRB-2030",
+            quantity=10, purchase_price=10000.0, current_price=10350.0,
+            total_invested=100000, current_value=103500,
+            purchase_date=now - timedelta(days=400),
+            details={"coupon_rate": 8.05, "face_value": 10000,
+                     "maturity_date": "2030-07-01", "interest_frequency": "Semi-Annual"},
+            portfolio_id=retirement_portfolio_id,
+        )
+
+        # ── R8. Insurance (1) ────────────────────────────────────────────────
+        make_asset(
+            asset_type=AssetType.INSURANCE_POLICY,
+            name="ICICI Pru Retirement Plan", symbol="ICICI-RET",
+            quantity=1, purchase_price=300000.0, current_price=380000.0,
+            total_invested=300000, current_value=380000,
+            purchase_date=now - timedelta(days=1825),
+            details={"policy_number": "ICICI-RET-3456789", "policy_type": "Pension",
+                     "sum_assured": 1500000, "premium_amount": 30000,
+                     "premium_frequency": "Annual", "maturity_date": "2045-03-15",
+                     "nominee": "Priya Sharma", "insurer": "ICICI Prudential Life"},
+            portfolio_id=retirement_portfolio_id,
+        )
+
+        retirement_asset_count = len(all_assets) - retirement_assets_start
+        print(f"  {retirement_asset_count} retirement portfolio assets created")
+
         db.add_all(all_assets)
         db.flush()
-        print(f"  {len(all_assets)} assets created")
+        print(f"  {len(all_assets)} total assets created")
+
+        # ══════════════════════════════════════════════════════════════════════════
+        # 5.5 MUTUAL FUND HOLDINGS (stock compositions)
+        # ══════════════════════════════════════════════════════════════════════════
+        print("Creating mutual fund holdings...")
+        mf_holdings = []
+
+        def find_asset(name):
+            return next((a for a in all_assets if a.name == name), None)
+
+        ppfas = find_asset("Parag Parikh Flexi Cap Fund")
+        mirae = find_asset("Mirae Asset Large Cap Fund")
+        sbi_sc = find_asset("SBI Small Cap Fund")
+        hdfc_cb = find_asset("HDFC Corporate Bond Fund")
+        icici_baf = find_asset("ICICI Prudential Balanced Advantage Fund")
+
+        def add_mf_holdings(mf_asset, holdings_data):
+            if not mf_asset:
+                return
+            for stock_name, symbol, isin, pct, sector, industry, mcap, price in holdings_data:
+                hv = round(mf_asset.current_value * pct / 100, 2)
+                qty = round(hv / price, 2) if price > 0 else 0
+                mf_holdings.append(MutualFundHolding(
+                    asset_id=mf_asset.id, user_id=user_id,
+                    stock_name=stock_name, stock_symbol=symbol, isin=isin,
+                    holding_percentage=pct, holding_value=hv, quantity_held=qty,
+                    sector=sector, industry=industry, market_cap=mcap,
+                    stock_current_price=price, data_source="seed",
+                ))
+
+        # Parag Parikh Flexi Cap Fund — top holdings
+        add_mf_holdings(ppfas, [
+            ("HDFC Bank Ltd", "HDFCBANK", "INE040A01034", 9.5, "Banking", "Private Bank", "Large", 1786.0),
+            ("Bajaj Holdings & Investment", "BAJAJHLDNG", "INE118A01012", 5.8, "Finance", "Holding Company", "Large", 8500.0),
+            ("ITC Ltd", "ITC", "INE154A01025", 5.2, "FMCG", "Tobacco", "Large", 520.0),
+            ("Alphabet Inc (Google)", "GOOGL", "US02079K3059", 4.8, "Technology", "Internet", "Mega", 178.0),
+            ("Microsoft Corp", "MSFT", "US5949181045", 4.2, "Technology", "Software", "Mega", 425.0),
+            ("Amazon.com Inc", "AMZN", "US0231351067", 3.5, "Technology", "E-Commerce", "Mega", 195.0),
+            ("Meta Platforms Inc", "META", "US30303M1027", 3.1, "Technology", "Social Media", "Mega", 520.0),
+            ("Power Grid Corp", "POWERGRID", "INE752E01010", 2.8, "Utilities", "Power", "Large", 320.0),
+            ("Coal India Ltd", "COALINDIA", "INE522F01014", 2.5, "Mining", "Coal", "Large", 450.0),
+            ("Maruti Suzuki India", "MARUTI", "INE585B01010", 2.3, "Automobile", "Cars", "Large", 12500.0),
+        ])
+
+        # Mirae Asset Large Cap Fund — top holdings
+        add_mf_holdings(mirae, [
+            ("HDFC Bank Ltd", "HDFCBANK", "INE040A01034", 10.2, "Banking", "Private Bank", "Large", 1786.0),
+            ("ICICI Bank Ltd", "ICICIBANK", "INE090A01021", 8.5, "Banking", "Private Bank", "Large", 1250.0),
+            ("Reliance Industries", "RELIANCE", "INE002A01018", 8.0, "Oil & Gas", "Conglomerate", "Large", 2900.0),
+            ("Infosys Ltd", "INFY", "INE009A01021", 6.5, "IT", "Software", "Large", 1400.0),
+            ("TCS Ltd", "TCS", "INE467B01029", 5.8, "IT", "Software", "Large", 3680.0),
+            ("Larsen & Toubro", "LT", "INE018A01030", 5.0, "Infrastructure", "Engineering", "Large", 3500.0),
+            ("Axis Bank Ltd", "AXISBANK", "INE238A01034", 4.2, "Banking", "Private Bank", "Large", 1180.0),
+            ("SBI", "SBIN", "INE062A01020", 3.8, "Banking", "Public Bank", "Large", 820.0),
+        ])
+
+        # SBI Small Cap Fund — top holdings
+        add_mf_holdings(sbi_sc, [
+            ("Blue Star Ltd", "BLUESTARCO", "INE472A01039", 3.2, "Consumer Durables", "AC", "Small", 1650.0),
+            ("Finolex Cables", "FINCABLES", "INE235A01022", 2.8, "Manufacturing", "Cables", "Small", 1150.0),
+            ("Chalet Hotels", "CHALET", "INE427F01028", 2.5, "Hospitality", "Hotels", "Small", 850.0),
+            ("IIFL Finance", "IIFL", "INE530B01024", 2.3, "Finance", "NBFC", "Small", 520.0),
+            ("Praj Industries", "PRAJIND", "INE074A01025", 2.1, "Engineering", "Capital Goods", "Small", 680.0),
+            ("Elgi Equipments", "ELGIEQUIP", "INE285A01027", 1.9, "Manufacturing", "Compressors", "Small", 580.0),
+        ])
+
+        # HDFC Corporate Bond Fund — top holdings (bonds)
+        add_mf_holdings(hdfc_cb, [
+            ("GOI 7.18% 2037", "GOI-2037", "IN0020220143", 12.0, "Government", "G-Sec", "Sovereign", 101.5),
+            ("HDFC Bank NCD 7.95%", "HDFC-NCD", "INE040A08310", 8.5, "Banking", "NCD", "Large", 1025.0),
+            ("REC Ltd NCD 7.54%", "REC-NCD", "INE020B08DR8", 6.2, "Power", "NCD", "Large", 1015.0),
+            ("PFC Ltd NCD 7.65%", "PFC-NCD", "INE134E08LA0", 5.5, "Power", "NCD", "Large", 1020.0),
+            ("NABARD Bond 7.40%", "NABARD", "INE261F08CW0", 4.8, "Development", "Bond", "Sovereign", 1010.0),
+        ])
+
+        # ICICI Prudential Balanced Advantage Fund — mixed holdings
+        add_mf_holdings(icici_baf, [
+            ("ICICI Bank Ltd", "ICICIBANK", "INE090A01021", 7.5, "Banking", "Private Bank", "Large", 1250.0),
+            ("HDFC Bank Ltd", "HDFCBANK", "INE040A01034", 6.8, "Banking", "Private Bank", "Large", 1786.0),
+            ("Reliance Industries", "RELIANCE", "INE002A01018", 5.5, "Oil & Gas", "Conglomerate", "Large", 2900.0),
+            ("Infosys Ltd", "INFY", "INE009A01021", 4.2, "IT", "Software", "Large", 1400.0),
+            ("GOI 7.26% 2033", "GOI-2033", "IN0020220028", 8.0, "Government", "G-Sec", "Sovereign", 102.0),
+            ("NTPC Ltd", "NTPC", "INE733E01010", 3.5, "Power", "Utilities", "Large", 380.0),
+            ("SBI", "SBIN", "INE062A01020", 3.0, "Banking", "Public Bank", "Large", 820.0),
+        ])
+
+        # HDFC Flexi Cap Fund (Retirement portfolio) — top holdings
+        hdfc_fc = find_asset("HDFC Flexi Cap Fund")
+        add_mf_holdings(hdfc_fc, [
+            ("ICICI Bank Ltd", "ICICIBANK", "INE090A01021", 8.8, "Banking", "Private Bank", "Large", 1250.0),
+            ("HDFC Bank Ltd", "HDFCBANK", "INE040A01034", 7.5, "Banking", "Private Bank", "Large", 1786.0),
+            ("Bharti Airtel Ltd", "BHARTIARTL", "INE397D01024", 5.5, "Telecom", "Telecom Services", "Large", 1620.0),
+            ("Larsen & Toubro", "LT", "INE018A01030", 4.8, "Infrastructure", "Engineering", "Large", 3500.0),
+            ("SBI", "SBIN", "INE062A01020", 4.2, "Banking", "Public Bank", "Large", 820.0),
+            ("Axis Bank Ltd", "AXISBANK", "INE238A01034", 3.9, "Banking", "Private Bank", "Large", 1180.0),
+            ("Sun Pharma", "SUNPHARMA", "INE044A01036", 3.5, "Pharma", "Pharmaceuticals", "Large", 1750.0),
+            ("Titan Company", "TITAN", "INE280A01028", 3.0, "Consumer", "Jewellery", "Large", 3250.0),
+        ])
+
+        db.add_all(mf_holdings)
+        db.flush()
+        print(f"  {len(mf_holdings)} mutual fund holdings created")
 
         # ══════════════════════════════════════════════════════════════════════════
         # 6. TRANSACTIONS
@@ -563,7 +916,8 @@ def seed_demo_user():
         for asset in all_assets:
             if asset.asset_type in (
                 AssetType.STOCK, AssetType.US_STOCK, AssetType.EQUITY_MUTUAL_FUND,
-                AssetType.DEBT_MUTUAL_FUND, AssetType.CRYPTO, AssetType.REIT,
+                AssetType.DEBT_MUTUAL_FUND, AssetType.HYBRID_MUTUAL_FUND,
+                AssetType.CRYPTO, AssetType.REIT,
                 AssetType.INVIT, AssetType.COMMODITY, AssetType.SOVEREIGN_GOLD_BOND,
             ):
                 # BUY transaction
@@ -590,6 +944,18 @@ def seed_demo_user():
                         total_amount=round(asset.total_invested * 0.015, 2),  # ~1.5% dividend
                         description=f"Dividend received for {asset.name}",
                     ))
+
+            elif asset.asset_type in (AssetType.ESOP, AssetType.RSU):
+                # BONUS transaction for vesting
+                transactions.append(Transaction(
+                    asset_id=asset.id,
+                    transaction_type=TransactionType.BONUS,
+                    transaction_date=asset.purchase_date or (now - timedelta(days=365)),
+                    quantity=asset.quantity,
+                    price_per_unit=asset.current_price,
+                    total_amount=asset.current_value,
+                    description=f"Vested {asset.quantity} units of {asset.name}",
+                ))
 
             elif asset.asset_type in (AssetType.FIXED_DEPOSIT, AssetType.RECURRING_DEPOSIT):
                 # DEPOSIT transaction
@@ -668,8 +1034,9 @@ def seed_demo_user():
 
                 db.add(AssetSnapshot(
                     portfolio_snapshot_id=portfolio_snap.id,
-                    asset_id=asset.id,
                     snapshot_date=snap_date,
+                    snapshot_source="asset",
+                    asset_id=asset.id,
                     asset_type=asset.asset_type.value,
                     asset_name=asset.name,
                     asset_symbol=asset.symbol,
@@ -682,14 +1049,15 @@ def seed_demo_user():
                     profit_loss_percentage=a_pl_pct,
                 ))
 
-            # Add bank balance snapshots
+            # Add bank account snapshots
             for ba, label in [(ba_icici, "ICICI Savings"), (ba_hdfc, "HDFC Savings"), (ba_axis, "Axis Current")]:
                 bal = round(ba.current_balance * (0.97 + 0.03 * progress + random.uniform(-0.01, 0.01)), 2)
                 db.add(AssetSnapshot(
                     portfolio_snapshot_id=portfolio_snap.id,
-                    asset_id=None,
                     snapshot_date=snap_date,
-                    asset_type="bank_balance",
+                    snapshot_source="bank_account",
+                    bank_account_id=ba.id,
+                    asset_type=None,
                     asset_name=label,
                     asset_symbol=None,
                     quantity=1,
@@ -700,6 +1068,48 @@ def seed_demo_user():
                     profit_loss=0,
                     profit_loss_percentage=0,
                 ))
+
+            # Add demat cash snapshots
+            for da, label in [(da_zerodha, "Zerodha - Cash"), (da_groww, "Groww - Cash")]:
+                if da.cash_balance and da.cash_balance > 0:
+                    bal = round(da.cash_balance * (0.97 + 0.03 * progress + random.uniform(-0.01, 0.01)), 2)
+                    db.add(AssetSnapshot(
+                        portfolio_snapshot_id=portfolio_snap.id,
+                        snapshot_date=snap_date,
+                        snapshot_source="demat_cash",
+                        demat_account_id=da.id,
+                        asset_type=None,
+                        asset_name=label,
+                        asset_symbol=None,
+                        quantity=1,
+                        purchase_price=bal,
+                        current_price=bal,
+                        total_invested=bal,
+                        current_value=bal,
+                        profit_loss=0,
+                        profit_loss_percentage=0,
+                    ))
+
+            # Add crypto cash snapshots
+            for ca, label in [(ca_binance, "Binance - Cash (USD)"), (ca_wazirx, "WazirX - Cash (USD)")]:
+                if ca.cash_balance_usd and ca.cash_balance_usd > 0:
+                    bal = round(ca.cash_balance_usd * (0.97 + 0.03 * progress + random.uniform(-0.01, 0.01)), 2)
+                    db.add(AssetSnapshot(
+                        portfolio_snapshot_id=portfolio_snap.id,
+                        snapshot_date=snap_date,
+                        snapshot_source="crypto_cash",
+                        crypto_account_id=ca.id,
+                        asset_type=None,
+                        asset_name=label,
+                        asset_symbol=None,
+                        quantity=1,
+                        purchase_price=bal,
+                        current_price=bal,
+                        total_invested=bal,
+                        current_value=bal,
+                        profit_loss=0,
+                        profit_loss_percentage=0,
+                    ))
 
             snapshot_count += 1
 
@@ -844,14 +1254,16 @@ def seed_demo_user():
         print("\n" + "=" * 60)
         print("Demo user seeded successfully!")
         print("=" * 60)
-        print(f"  Email:    demouser@portact.com")
-        print(f"  Password: portact1")
-        print(f"  Name:     Rahul Sharma")
-        print(f"  Assets:   {len(all_assets)}")
-        print(f"  Transactions: {len(transactions)}")
-        print(f"  Snapshots:    30 days")
-        print(f"  Expenses:     {len(expenses_data)}")
-        print(f"  Alerts:       {len(alerts_data)}")
+        print(f"  Email:         demouser@portact.com")
+        print(f"  Password:      portact1")
+        print(f"  Name:          Rahul Sharma")
+        print(f"  Portfolios:    Default (id={portfolio_id}), Retirement (id={retirement_portfolio_id})")
+        print(f"  Assets:        {len(all_assets)} (Default: {retirement_assets_start}, Retirement: {retirement_asset_count})")
+        print(f"  Transactions:  {len(transactions)}")
+        print(f"  MF Holdings:   {len(mf_holdings)}")
+        print(f"  Snapshots:     30 days")
+        print(f"  Expenses:      {len(expenses_data)}")
+        print(f"  Alerts:        {len(alerts_data)}")
         print("=" * 60)
 
     except Exception as e:

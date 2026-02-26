@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 from app.models.bank_account import BankType
@@ -7,6 +7,11 @@ from app.models.bank_account import BankType
 class BankAccountBase(BaseModel):
     """Base bank account schema"""
     bank_name: str
+
+    @field_validator("bank_name")
+    @classmethod
+    def normalize_bank_name(cls, v: str) -> str:
+        return v.strip().lower().replace(" ", "_")
     account_type: BankType
     account_number: str = Field(..., min_length=1, max_length=50)
     account_holder_name: Optional[str] = Field(None, max_length=200)
@@ -30,6 +35,11 @@ class BankAccountCreate(BankAccountBase):
 class BankAccountUpdate(BaseModel):
     """Schema for updating a bank account"""
     bank_name: Optional[str] = None
+
+    @field_validator("bank_name")
+    @classmethod
+    def normalize_bank_name(cls, v: str | None) -> str | None:
+        return v.strip().lower().replace(" ", "_") if v is not None else v
     account_type: Optional[BankType] = None
     account_holder_name: Optional[str] = Field(None, max_length=200)
     ifsc_code: Optional[str] = Field(None, max_length=20)

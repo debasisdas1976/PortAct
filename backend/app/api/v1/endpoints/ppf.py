@@ -178,16 +178,15 @@ async def get_ppf_account(
     
     ppf_transactions = []
     for trans in transactions:
-        # Map transaction types from Transaction model to PPF types
-        trans_type_value = trans.transaction_type.value if hasattr(trans.transaction_type, 'value') else str(trans.transaction_type)
-        if trans_type_value in ['buy', 'deposit']:
+        # Map generic TransactionType enum to PPF-specific display types
+        if trans.transaction_type in (TransactionType.BUY, TransactionType.DEPOSIT):
             ppf_type = 'deposit'
-        elif trans_type_value in ['dividend', 'interest']:
+        elif trans.transaction_type in (TransactionType.DIVIDEND, TransactionType.INTEREST):
             ppf_type = 'interest'
-        elif trans_type_value in ['sell', 'withdrawal']:
+        elif trans.transaction_type in (TransactionType.SELL, TransactionType.WITHDRAWAL):
             ppf_type = 'withdrawal'
         else:
-            ppf_type = 'deposit'  # Default to deposit
+            ppf_type = 'deposit'
         
         ppf_trans = PPFTransaction(
             id=trans.id,

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Literal, Optional
 from datetime import datetime
 
@@ -6,8 +6,18 @@ BROKER_TYPES = Literal["discount", "full_service", "international", "aggregator"
 SUPPORTED_MARKETS = Literal["domestic", "international", "both"]
 
 
+def _normalize_name(v: str) -> str:
+    """Normalize master-table name: lowercase, strip, spaces to underscores."""
+    return v.strip().lower().replace(" ", "_")
+
+
 class BrokerBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=50)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, v: str) -> str:
+        return _normalize_name(v)
     display_label: str = Field(..., min_length=1, max_length=500)
     broker_type: BROKER_TYPES = Field(default="discount")
     supported_markets: SUPPORTED_MARKETS = Field(default="domestic")
@@ -24,6 +34,11 @@ class BrokerCreate(BrokerBase):
 
 class BrokerUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=50)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, v: str | None) -> str | None:
+        return _normalize_name(v) if v is not None else v
     display_label: Optional[str] = Field(None, min_length=1, max_length=500)
     broker_type: Optional[BROKER_TYPES] = None
     supported_markets: Optional[SUPPORTED_MARKETS] = None

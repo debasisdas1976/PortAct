@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 
@@ -6,6 +6,11 @@ from datetime import datetime
 class CryptoAccountBase(BaseModel):
     """Base crypto account schema"""
     exchange_name: str = Field(..., min_length=1, max_length=50)
+
+    @field_validator("exchange_name")
+    @classmethod
+    def normalize_exchange_name(cls, v: str) -> str:
+        return v.strip().lower().replace(" ", "_")
     account_id: str = Field(..., min_length=1, max_length=200)
     account_holder_name: Optional[str] = Field(None, max_length=200)
     wallet_address: Optional[str] = Field(None, max_length=200)
@@ -26,6 +31,11 @@ class CryptoAccountCreate(CryptoAccountBase):
 class CryptoAccountUpdate(BaseModel):
     """Schema for updating a crypto account"""
     exchange_name: Optional[str] = Field(None, min_length=1, max_length=50)
+
+    @field_validator("exchange_name")
+    @classmethod
+    def normalize_exchange_name(cls, v: str | None) -> str | None:
+        return v.strip().lower().replace(" ", "_") if v is not None else v
     account_holder_name: Optional[str] = Field(None, max_length=200)
     wallet_address: Optional[str] = Field(None, max_length=200)
     cash_balance_usd: Optional[float] = None

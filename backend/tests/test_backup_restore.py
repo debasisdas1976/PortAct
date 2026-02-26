@@ -238,7 +238,7 @@ class TestExport:
         resp = auth_client.get("/api/v1/portfolio/export")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["export_version"] == "4.0"
+        assert data["export_version"] == "5.0"
         assert data["exported_by"] == "test@example.com"
         assert data["assets"] == []
         assert data["bank_accounts"] == []

@@ -33,8 +33,8 @@ from app.models.mutual_fund_holding import MutualFundHolding
 
 router = APIRouter()
 
-EXPORT_VERSION = "4.0"
-SUPPORTED_VERSIONS = {"1.0", "2.0", "3.0", "4.0"}
+EXPORT_VERSION = "5.0"
+SUPPORTED_VERSIONS = {"1.0", "2.0", "3.0", "4.0", "5.0"}
 
 
 # ─── helpers ────────────────────────────────────────────────────────────────
@@ -686,11 +686,33 @@ async def restore_portfolio(
                     a_snap_date = snap_date
 
                 new_asset_id = asset_map.get(a_snap.get("asset_id"))
+
+                # v5.0+: snapshot_source and account FK columns
+                # v1.0-4.0 backward compat: infer from old asset_type string
+                snapshot_source = a_snap.get("snapshot_source")
+                asset_type_val = a_snap.get("asset_type")
+                if not snapshot_source:
+                    if asset_type_val in ("bank_account", "bank_balance"):
+                        snapshot_source = "bank_account"
+                        asset_type_val = None
+                    elif asset_type_val == "demat_cash":
+                        snapshot_source = "demat_cash"
+                        asset_type_val = None
+                    elif asset_type_val == "crypto_cash":
+                        snapshot_source = "crypto_cash"
+                        asset_type_val = None
+                    else:
+                        snapshot_source = "asset"
+
                 obj = AssetSnapshot(
                     portfolio_snapshot_id=ps.id,
-                    asset_id=new_asset_id,
                     snapshot_date=a_snap_date,
-                    asset_type=a_snap.get("asset_type"),
+                    snapshot_source=snapshot_source,
+                    asset_id=new_asset_id,
+                    bank_account_id=ba_map.get(a_snap.get("bank_account_id")),
+                    demat_account_id=da_map.get(a_snap.get("demat_account_id")),
+                    crypto_account_id=ca_map.get(a_snap.get("crypto_account_id")),
+                    asset_type=asset_type_val,
                     asset_name=a_snap.get("asset_name"),
                     asset_symbol=a_snap.get("asset_symbol"),
                     quantity=a_snap.get("quantity", 0),

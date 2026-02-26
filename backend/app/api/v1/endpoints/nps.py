@@ -138,16 +138,13 @@ async def get_nps_account(
     
     nps_transactions = []
     for trans in transactions:
-        # Map transaction types
-        trans_type_value = trans.transaction_type.value if hasattr(trans.transaction_type, 'value') else str(trans.transaction_type)
-        if trans_type_value in ['buy', 'deposit']:
+        # Map generic TransactionType enum to NPS-specific display types
+        if trans.transaction_type in (TransactionType.BUY, TransactionType.DEPOSIT):
             nps_type = 'contribution'
-        elif trans_type_value in ['dividend', 'interest']:
+        elif trans.transaction_type in (TransactionType.DIVIDEND, TransactionType.INTEREST):
             nps_type = 'returns'
-        elif trans_type_value in ['sell', 'withdrawal']:
+        elif trans.transaction_type in (TransactionType.SELL, TransactionType.WITHDRAWAL):
             nps_type = 'withdrawal'
-        elif trans_type_value == 'switch':
-            nps_type = 'switch'
         else:
             nps_type = 'contribution'
         
