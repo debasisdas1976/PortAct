@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PortAct — Post-Migration Data Fix (v1.1.0)
+PortAct — Post-Migration Data Fix (v1.2.0)
 
 Fixes known data issues that migrations cannot retroactively correct:
 

@@ -1,8 +1,8 @@
-# PortAct — Migration Guide (v1.0.x → v1.1.0)
+# PortAct — Migration Guide (v1.0.x → v1.2.0)
 
-This guide helps existing users upgrade their PortAct installation to v1.1.0.
+This guide helps existing users upgrade their PortAct installation to v1.2.0.
 
-## What Changed in v1.1.0
+## What Changed in v1.2.0
 
 - **Database schema**: Asset types are now stored as VARCHAR with a foreign key to the `asset_types` master table (previously a PostgreSQL native enum)
 - **Snapshot system**: EOD snapshots now properly link to source accounts via `snapshot_source`, `bank_account_id`, `demat_account_id`, and `crypto_account_id` columns
@@ -137,7 +137,7 @@ cd backend
 pip install -r requirements.txt
 
 # 5. Take a database backup
-pg_dump -h localhost -U portact_user portact_db | gzip > ../backup_before_v1.1.0_$(date +%Y%m%d_%H%M%S).sql.gz
+pg_dump -h localhost -U portact_user portact_db | gzip > ../backup_before_v1.2.0_$(date +%Y%m%d_%H%M%S).sql.gz
 
 # 6. Run database migrations
 alembic upgrade head
@@ -232,7 +232,7 @@ This error means you're running an older version of `main.py` that still referen
 
 ### Export from old version won't restore
 
-PortAct v1.1.0 supports restoring exports from v1.0 through v5.0. If your export file has `export_version: "1.0"` through `"4.0"`, it will restore correctly. The restore logic automatically handles missing fields and old enum formats.
+PortAct v1.2.0 supports restoring exports from v1.0 through v5.0. If your export file has `export_version: "1.0"` through `"4.0"`, it will restore correctly. The restore logic automatically handles missing fields and old enum formats.
 
 ---
 
@@ -243,7 +243,7 @@ If something goes wrong and you need to revert:
 1. Stop the application
 2. Restore the database from your backup:
    ```bash
-   gunzip -c backup_before_v1.1.0_TIMESTAMP.sql.gz | psql -h localhost -U portact_user portact_db
+   gunzip -c backup_before_v1.2.0_TIMESTAMP.sql.gz | psql -h localhost -U portact_user portact_db
    ```
 3. Check out the previous version:
    ```bash
