@@ -657,8 +657,12 @@ const Assets: React.FC = () => {
                         size="small"
                         {...(assetTypes.find(t => t.value === group.asset_type.toLowerCase())?.allowedConversions?.length ? {
                           onClick: (e: React.MouseEvent<HTMLElement>) => handleAssetTypeClick(e, group),
-                          sx: { cursor: 'pointer' },
                         } : {})}
+                        sx={{
+                          minWidth: 150,
+                          justifyContent: 'center',
+                          ...(assetTypes.find(t => t.value === group.asset_type.toLowerCase())?.allowedConversions?.length ? { cursor: 'pointer' } : {}),
+                        }}
                       />
                     </TableCell>
                     <TableCell align="right">{group.totalQuantity.toFixed(2)}</TableCell>
