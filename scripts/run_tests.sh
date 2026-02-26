@@ -43,7 +43,7 @@ echo ""
 # ── Backend ──────────────────────────────────────────────────
 
 if [ "$RUN_BACKEND" = true ]; then
-    echo -e "${BOLD}[1/4] Backend Lint (flake8 — syntax errors only)${NC}"
+    echo -e "${BOLD}[1/5] Backend Lint (flake8 — syntax errors only)${NC}"
     cd "$PROJECT_ROOT/backend"
 
     # Activate venv if it exists
@@ -59,7 +59,7 @@ if [ "$RUN_BACKEND" = true ]; then
     fi
 
     echo ""
-    echo -e "${BOLD}[2/4] Backend Tests (pytest + coverage)${NC}"
+    echo -e "${BOLD}[2/5] Backend Tests (pytest + coverage)${NC}"
     # DATABASE_URL must be a PG-compatible URL so database.py engine creation
     # doesn't fail (pool_size/max_overflow are PG-only). The actual test DB
     # is controlled by TEST_DATABASE_URL (defaults to SQLite in conftest.py).
@@ -91,12 +91,22 @@ echo ""
 # ── Frontend ─────────────────────────────────────────────────
 
 if [ "$RUN_FRONTEND" = true ]; then
-    echo -e "${BOLD}[3/4] Frontend Lint${NC}"
+    echo -e "${BOLD}[3/5] Frontend Type Check (tsc --noEmit)${NC}"
     cd "$PROJECT_ROOT/frontend"
+
+    if npx tsc --noEmit 2>&1; then
+        echo -e "  ${GREEN}PASS${NC} — No type errors"
+    else
+        echo -e "  ${RED}FAIL${NC} — TypeScript errors detected"
+        FRONTEND_EXIT=1
+    fi
+
+    echo ""
+    echo -e "${BOLD}[4/5] Frontend Lint${NC}"
     echo -e "  ${YELLOW}SKIP${NC} — CRA handles lint during build"
 
     echo ""
-    echo -e "${BOLD}[4/4] Frontend Tests (jest + coverage)${NC}"
+    echo -e "${BOLD}[5/5] Frontend Tests (jest + coverage)${NC}"
     if CI=true npx react-scripts test --coverage --watchAll=false --verbose 2>&1; then
         FRONTEND_PASS=1
         echo -e "  ${GREEN}PASS${NC}"

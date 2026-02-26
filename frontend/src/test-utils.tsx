@@ -31,7 +31,7 @@ export function renderWithProviders(
         portfolio: portfolioReducer,
         assets: assetsReducer,
         alerts: alertsReducer,
-      },
+      } as any,
       preloadedState,
     }),
     ...renderOptions

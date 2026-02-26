@@ -35,7 +35,7 @@ jest.mock('../services/api', () => ({
   assetTypesAPI: {
     getCategories: jest.fn().mockResolvedValue([]),
   },
-  getErrorMessage: jest.fn((err: any) => 'error'),
+  getErrorMessage: jest.fn((_err: any) => 'error'),
 }));
 
 describe('Dashboard', () => {
