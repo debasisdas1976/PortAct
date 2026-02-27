@@ -35,6 +35,7 @@ from app.core.security import create_access_token, get_password_hash  # noqa: E4
 from app.models.user import User  # noqa: E402
 from app.models.portfolio import Portfolio  # noqa: E402
 from app.models.asset import Asset, AssetType  # noqa: E402
+from app.models.asset_type_master import AssetTypeMaster  # noqa: E402
 
 # ── Test DB engine (always SQLite in-memory for local, PG in CI) ─────────
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite:///")
@@ -59,10 +60,31 @@ async def _noop_lifespan(app):
 
 @pytest.fixture(scope="session", autouse=True)
 def create_tables():
-    """Create all tables once for the entire test session."""
-    # Import all models so Base.metadata knows about them
+    """Create all tables once and seed asset_types master data.
+
+    The asset_types table must be populated before any test creates an
+    Asset row, because assets.asset_type has a FK to asset_types.name.
+    SQLite ignores FK constraints by default (so local tests pass), but
+    PostgreSQL enforces them (causing CI failures without this seed).
+    """
     import app.models  # noqa: F401
     Base.metadata.create_all(bind=engine)
+
+    # Seed asset_types master table (session-scoped, committed once)
+    session = TestingSessionLocal()
+    try:
+        if session.query(AssetTypeMaster).count() == 0:
+            for i, at in enumerate(AssetType, start=1):
+                session.add(AssetTypeMaster(
+                    name=at.value,
+                    display_label=at.value.replace("_", " ").title(),
+                    category="General",
+                    sort_order=i,
+                ))
+            session.commit()
+    finally:
+        session.close()
+
     yield
     Base.metadata.drop_all(bind=engine)
 
