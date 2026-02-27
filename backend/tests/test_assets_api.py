@@ -1,6 +1,6 @@
 """API tests for asset endpoints (/api/v1/assets/*).
 
-Covers full CRUD lifecycle for all 30 supported asset types.
+Covers full CRUD lifecycle for all 32 supported asset types.
 """
 import pytest
 from app.models.asset import AssetType
@@ -9,7 +9,7 @@ from tests.conftest import make_asset
 
 
 # ---------------------------------------------------------------------------
-# All 30 asset types, grouped by behaviour
+# All 32 asset types, grouped by behaviour
 # ---------------------------------------------------------------------------
 
 # Types that can be created with just asset_type + name (no special FK needed)
@@ -29,7 +29,9 @@ SIMPLE_TYPES = [
     AssetType.SAVINGS_ACCOUNT,
     AssetType.RECURRING_DEPOSIT,
     AssetType.FIXED_DEPOSIT,
-    AssetType.REAL_ESTATE,
+    AssetType.LAND,
+    AssetType.FARM_LAND,
+    AssetType.HOUSE,
     AssetType.PPF,
     AssetType.PF,
     AssetType.NPS,
@@ -95,7 +97,7 @@ class TestAssetList:
 
 @pytest.mark.api
 class TestAssetCreateAllTypes:
-    """Create each of the 29 simple asset types via the API."""
+    """Create each of the 31 simple asset types via the API."""
 
     @pytest.mark.parametrize("asset_type", SIMPLE_TYPES, ids=lambda t: t.value)
     def test_create_asset(self, auth_client, asset_type):
@@ -541,20 +543,26 @@ class TestAssetTypeSpecific:
         assert resp.status_code == 201
         assert resp.json()["asset_type"] == "rsu"
 
-    def test_real_estate_with_details(self, auth_client):
-        resp = auth_client.post("/api/v1/assets/", json={
-            "asset_type": "real_estate",
-            "name": "Mumbai Flat",
-            "quantity": 1,
-            "purchase_price": 5000000.0,
-            "current_price": 6000000.0,
-            "total_invested": 5000000.0,
-            "details": {"property_type": "Apartment", "area_sqft": 1200},
-        })
-        assert resp.status_code == 201
-        data = resp.json()
-        assert data["details"]["property_type"] == "Apartment"
-        assert data["current_value"] == 6000000.0
+    def test_real_estate_types_with_details(self, auth_client):
+        """All three real estate types (land, farm_land, house) should create successfully."""
+        for re_type, prop_name in [
+            ("land", "Plot in Pune"),
+            ("farm_land", "Farm in Kerala"),
+            ("house", "Mumbai Flat"),
+        ]:
+            resp = auth_client.post("/api/v1/assets/", json={
+                "asset_type": re_type,
+                "name": prop_name,
+                "quantity": 1,
+                "purchase_price": 5000000.0,
+                "current_price": 6000000.0,
+                "total_invested": 5000000.0,
+                "details": {"property_type": re_type, "area_sqft": 1200},
+            })
+            assert resp.status_code == 201, f"Failed for {re_type}: {resp.text}"
+            data = resp.json()
+            assert data["asset_type"] == re_type
+            assert data["current_value"] == 6000000.0
 
     def test_fixed_deposit_with_details(self, auth_client):
         resp = auth_client.post("/api/v1/assets/", json={

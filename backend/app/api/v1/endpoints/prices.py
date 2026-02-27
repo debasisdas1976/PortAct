@@ -8,7 +8,7 @@ from app.api.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.services.scheduler import run_price_update_now
 from app.services.crypto_price_service import search_crypto, get_crypto_price, get_coin_id_by_symbol
-from app.services.currency_converter import get_usd_to_inr_rate
+from app.services.currency_converter import get_usd_to_inr_rate, CurrencyConverter
 
 router = APIRouter()
 
@@ -143,5 +143,19 @@ async def get_exchange_rate(
     """
     rate = get_usd_to_inr_rate()
     return {"usd_to_inr": rate}
+
+
+CASH_CURRENCIES = ["USD", "EUR", "GBP", "AED", "SGD", "JPY", "AUD", "CAD", "CHF"]
+
+@router.get("/exchange-rates")
+async def get_exchange_rates(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get exchange rates to INR for all supported cash currencies
+    """
+    rates = CurrencyConverter.get_all_rates_to_inr(CASH_CURRENCIES)
+    rates["INR"] = 1.0
+    return {"base": "INR", "rates": rates}
 
 # Made with Bob

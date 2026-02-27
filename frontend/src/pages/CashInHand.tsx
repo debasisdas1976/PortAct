@@ -68,6 +68,7 @@ const CashInHand: React.FC = () => {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [dialogError, setDialogError] = useState('');
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
 
   const fetchData = useCallback(async () => {
     try {
@@ -85,11 +86,21 @@ const CashInHand: React.FC = () => {
 
   const totalValue = assets.reduce((s, a) => s + (a.current_value || 0), 0);
 
+  const fetchExchangeRates = useCallback(async () => {
+    try {
+      const res = await api.get('/prices/exchange-rates');
+      setExchangeRates(res.data.rates || {});
+    } catch {
+      // Rates unavailable — user can still enter manually
+    }
+  }, []);
+
   const handleAdd = () => {
     setEditingId(null);
     setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
     setDialogError('');
     setDialogOpen(true);
+    fetchExchangeRates();
   };
 
   const handleEdit = (asset: AssetItem) => {
@@ -106,12 +117,21 @@ const CashInHand: React.FC = () => {
     });
     setDialogError('');
     setDialogOpen(true);
+    fetchExchangeRates();
+  };
+
+  const computeInrValue = (currency: string, amount: string, rates: Record<string, number>): string => {
+    if (currency === 'INR') return amount;
+    const rate = rates[currency];
+    const parsed = parseFloat(amount);
+    if (!rate || !parsed) return '';
+    return (parsed * rate).toFixed(2);
   };
 
   const handleFormChange = (field: string, value: string) => {
     const updated = { ...form, [field]: value };
-    if (updated.currency === 'INR' && (field === 'currency' || field === 'original_amount')) {
-      updated.inr_value = updated.original_amount;
+    if (field === 'currency' || field === 'original_amount') {
+      updated.inr_value = computeInrValue(updated.currency, updated.original_amount, exchangeRates);
     }
     setForm(updated);
   };
@@ -265,7 +285,14 @@ const CashInHand: React.FC = () => {
                 onChange={(e) => handleFormChange('inr_value', e.target.value)}
                 inputProps={{ min: 0, step: '0.01' }}
                 disabled={form.currency === 'INR'}
-                helperText={form.currency === 'INR' ? 'Auto-filled for INR' : 'Enter INR equivalent value'}
+                InputProps={{ readOnly: form.currency !== 'INR' && !!exchangeRates[form.currency] }}
+                helperText={
+                  form.currency === 'INR'
+                    ? 'Auto-filled for INR'
+                    : exchangeRates[form.currency]
+                      ? `Rate: 1 ${form.currency} = ₹${exchangeRates[form.currency].toFixed(2)}`
+                      : 'Enter INR equivalent value'
+                }
               />
             </Grid>
             <Grid item xs={12} sm={6}>

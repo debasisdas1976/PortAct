@@ -1,7 +1,7 @@
 """Real Estate CRUD endpoints.
 
-Supports three property sub-types (land, farm_land, house) all stored under
-AssetType.REAL_ESTATE with a `property_type` discriminator in the details JSON.
+Supports three property types (land, farm_land, house), each stored as a
+distinct AssetType (LAND, FARM_LAND, HOUSE).
 """
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -27,6 +27,15 @@ from app.schemas.real_estate import (
 
 router = APIRouter()
 
+# Map property_type string → AssetType enum
+_PROPERTY_TYPE_MAP = {
+    "land": AssetType.LAND,
+    "farm_land": AssetType.FARM_LAND,
+    "house": AssetType.HOUSE,
+}
+
+_ALL_RE_TYPES = list(_PROPERTY_TYPE_MAP.values())
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,7 +52,7 @@ def _asset_to_response(asset: Asset) -> RealEstateResponse:
         user_id=asset.user_id,
         asset_id=asset.id,
         nickname=asset.name,
-        property_type=d.get("property_type", "land").lower(),
+        property_type=d.get("property_type", asset.asset_type.value).lower(),
         location=d.get("location", ""),
         city=d.get("city"),
         state=d.get("state"),
@@ -70,20 +79,21 @@ def _asset_to_response(asset: Asset) -> RealEstateResponse:
 
 
 def _get_properties(db: Session, user_id: int, property_type: Optional[str] = None) -> list[Asset]:
-    """Return REAL_ESTATE assets, optionally filtered by property_type (Python-side)."""
-    assets = (
+    """Return real estate assets, optionally filtered by property_type."""
+    if property_type:
+        at = _PROPERTY_TYPE_MAP.get(property_type.lower())
+        if not at:
+            return []
+        type_filter = Asset.asset_type == at
+    else:
+        type_filter = Asset.asset_type.in_(_ALL_RE_TYPES)
+
+    return (
         db.query(Asset)
-        .filter(
-            Asset.user_id == user_id,
-            Asset.asset_type == AssetType.REAL_ESTATE,
-        )
+        .filter(Asset.user_id == user_id, type_filter)
         .order_by(Asset.created_at.desc())
         .all()
     )
-    if property_type:
-        pt_lower = property_type.lower()
-        assets = [a for a in assets if (a.details or {}).get("property_type", "").lower() == pt_lower]
-    return assets
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +143,7 @@ async def get_property(
     asset = db.query(Asset).filter(
         Asset.id == property_id,
         Asset.user_id == current_user.id,
-        Asset.asset_type == AssetType.REAL_ESTATE,
+        Asset.asset_type.in_(_ALL_RE_TYPES),
     ).first()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
@@ -153,9 +163,11 @@ async def create_property(
     # Resolve portfolio for the new property
     resolved_portfolio_id = get_default_portfolio_id(current_user.id, db)
 
+    asset_type = _PROPERTY_TYPE_MAP.get(data.property_type.lower(), AssetType.LAND)
+
     asset = Asset(
         user_id=current_user.id,
-        asset_type=AssetType.REAL_ESTATE,
+        asset_type=asset_type,
         portfolio_id=resolved_portfolio_id,
         name=data.nickname,
         symbol=data.property_type.upper(),
@@ -202,7 +214,7 @@ async def update_property(
     asset = db.query(Asset).filter(
         Asset.id == property_id,
         Asset.user_id == current_user.id,
-        Asset.asset_type == AssetType.REAL_ESTATE,
+        Asset.asset_type.in_(_ALL_RE_TYPES),
     ).first()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
@@ -262,7 +274,7 @@ async def delete_property(
     asset = db.query(Asset).filter(
         Asset.id == property_id,
         Asset.user_id == current_user.id,
-        Asset.asset_type == AssetType.REAL_ESTATE,
+        Asset.asset_type.in_(_ALL_RE_TYPES),
     ).first()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")

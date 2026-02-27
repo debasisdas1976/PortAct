@@ -21,6 +21,7 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Refresh as RefreshIcon,
   TrendingUp,
   TrendingDown,
   KeyboardArrowDown,
@@ -86,6 +87,7 @@ const CryptoAssets: React.FC = () => {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<CryptoAssetForEdit | null>(null);
+  const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const toggleGroup = (key: string) => {
@@ -169,6 +171,23 @@ const CryptoAssets: React.FC = () => {
       fetchData();
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to delete crypto asset'));
+    }
+  };
+
+  const handlePriceUpdate = async (assetId: number, assetSymbol: string) => {
+    try {
+      setUpdatingAssetId(assetId);
+      const response = await api.post(`/assets/${assetId}/update-price`, {});
+      await fetchData();
+      if (response.data?.price_update_failed) {
+        notify.error(`Failed to update price for ${assetSymbol}: ${response.data.price_update_error || 'Price source unavailable'}`);
+      } else {
+        notify.success(`Price updated for ${assetSymbol}`);
+      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, `Failed to update price for ${assetSymbol}`));
+    } finally {
+      setUpdatingAssetId(null);
     }
   };
 
@@ -328,6 +347,9 @@ const CryptoAssets: React.FC = () => {
                           />
                         </TableCell>
                         <TableCell align="center">
+                          <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(asset.id, asset.symbol || asset.name)} disabled={updatingAssetId === asset.id}>
+                            {updatingAssetId === asset.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+                          </IconButton>
                           <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(asset)}>
                             <EditIcon fontSize="small" />
                           </IconButton>

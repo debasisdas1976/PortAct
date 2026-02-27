@@ -65,19 +65,12 @@ const ASSET_TYPE_ROUTES: Record<string, string> = {
   scss: '/scss',
   mis: '/mis',
   cash: '/cash-in-hand',
-};
-
-const REAL_ESTATE_ROUTES: Record<string, string> = {
   land: '/land',
   farm_land: '/farm-land',
   house: '/house',
 };
 
-const getAssetRoute = (assetType: string, details?: Record<string, any>): string | undefined => {
-  if (assetType === 'real_estate') {
-    const propType = (details?.property_type || '').toLowerCase();
-    return REAL_ESTATE_ROUTES[propType];
-  }
+const getAssetRoute = (assetType: string): string | undefined => {
   return ASSET_TYPE_ROUTES[assetType];
 };
 
@@ -312,7 +305,9 @@ const Assets: React.FC = () => {
       // Crypto — Pink
       crypto: '#AD1457',
       // Real Estate — Blue Grey
-      real_estate: '#546E7A',
+      land: '#546E7A',
+      farm_land: '#546E7A',
+      house: '#546E7A',
       // Other
       insurance_policy: '#78909C',
       cash: '#78909C',
@@ -760,7 +755,7 @@ const Assets: React.FC = () => {
               const needsIsin = assetType === 'stock' || assetType === 'equity_mutual_fund' || assetType === 'hybrid_mutual_fund' || assetType === 'debt_mutual_fund';
               const missingIsin = needsIsin && !group.instances[0]?.isin;
               const assetCategory = assetTypes.find(t => t.value.toLowerCase() === assetType)?.category || '';
-              const hideRefreshPrice = ['Other', 'Fixed Income', 'Govt. Schemes'].includes(assetCategory) && assetType !== 'debt_mutual_fund';
+              const hideRefreshPrice = assetType === 'cash' || (['Other', 'Fixed Income', 'Govt. Schemes'].includes(assetCategory) && assetType !== 'debt_mutual_fund');
 
               return (
                 <React.Fragment key={group.groupKey}>
@@ -780,11 +775,11 @@ const Assets: React.FC = () => {
                     <TableCell>
                       <Box
                         sx={{
-                          cursor: getAssetRoute(assetType, group.instances[0]?.details) ? 'pointer' : 'default',
-                          '&:hover': getAssetRoute(assetType, group.instances[0]?.details) ? { '& .asset-symbol': { color: 'primary.main', textDecoration: 'underline' } } : {},
+                          cursor: getAssetRoute(assetType) ? 'pointer' : 'default',
+                          '&:hover': getAssetRoute(assetType) ? { '& .asset-symbol': { color: 'primary.main', textDecoration: 'underline' } } : {},
                         }}
                         onClick={() => {
-                          const route = getAssetRoute(assetType, group.instances[0]?.details);
+                          const route = getAssetRoute(assetType);
                           if (route) navigate(route);
                         }}
                       >

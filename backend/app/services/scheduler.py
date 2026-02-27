@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.services.price_updater import update_all_prices
 from app.services.eod_snapshot_service import EODSnapshotService
 from app.services.monthly_contribution_service import MonthlyContributionService
+from app.services.forex_refresh_service import refresh_foreign_currency_values
 
 scheduler = BackgroundScheduler()
 
@@ -32,6 +33,12 @@ def _get_setting(db: Optional[Session], key: str, default):
     except Exception as exc:
         logger.warning(f"Could not read app_settings.{key}: {exc}")
     return default
+
+
+def _eod_with_forex_refresh():
+    """Run forex refresh immediately before EOD snapshot for fresh INR values."""
+    refresh_foreign_currency_values()
+    EODSnapshotService.capture_all_users_snapshots()
 
 
 def start_scheduler(db: Optional[Session] = None):
@@ -56,12 +63,12 @@ def start_scheduler(db: Optional[Session] = None):
         replace_existing=True,
     )
 
-    # EOD snapshot job
+    # EOD snapshot job (runs forex refresh first to ensure fresh INR values)
     scheduler.add_job(
-        func=EODSnapshotService.capture_all_users_snapshots,
+        func=_eod_with_forex_refresh,
         trigger=CronTrigger(hour=eod_hour, minute=eod_minute),
         id="eod_snapshot_job",
-        name="End of Day Portfolio Snapshot",
+        name="End of Day Portfolio Snapshot (with Forex Refresh)",
         replace_existing=True,
     )
 
@@ -74,12 +81,22 @@ def start_scheduler(db: Optional[Session] = None):
         replace_existing=True,
     )
 
+    # Daily forex refresh for all non-INR assets (9 AM UTC = 2:30 PM IST)
+    scheduler.add_job(
+        func=refresh_foreign_currency_values,
+        trigger=CronTrigger(hour=9, minute=0),
+        id="forex_refresh_job",
+        name="Daily Foreign Currency Value Refresh",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info(
         f"Background scheduler started. "
         f"Price updates every {price_interval} min. "
         f"EOD snapshots at {eod_hour:02d}:{eod_minute:02d} UTC. "
-        f"Monthly contributions on day {mc_day} at {mc_hour:02d}:{mc_minute:02d} UTC."
+        f"Monthly contributions on day {mc_day} at {mc_hour:02d}:{mc_minute:02d} UTC. "
+        f"Forex refresh daily at 09:00 UTC + before EOD."
     )
 
     # Catch up on any missed snapshots from previous downtime

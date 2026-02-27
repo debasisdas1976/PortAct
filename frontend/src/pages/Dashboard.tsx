@@ -24,8 +24,9 @@ import {
 import {
   TrendingUp,
   TrendingDown,
-  AccountBalance,
-  ShowChart,
+  AccountBalanceWallet,
+  CurrencyRupee,
+  PieChart,
   Visibility,
   VisibilityOff,
   ArrowBack,
@@ -34,7 +35,6 @@ import {
 import { AppDispatch, RootState } from '../store';
 import { fetchPortfolioSummary, fetchPortfolios, setSelectedPortfolioId } from '../store/slices/portfolioSlice';
 import { fetchAssets } from '../store/slices/assetsSlice';
-import PortfolioChart from '../components/charts/PortfolioChart';
 import PerformanceChart from '../components/charts/PerformanceChart';
 import AssetAllocationChart from '../components/charts/AssetAllocationChart';
 import api, { assetTypesAPI } from '../services/api';
@@ -66,6 +66,7 @@ interface CryptoAccount {
   exchange_name: string;
   account_name?: string;
   cash_balance_usd: number;
+  cash_balance_inr: number;
   is_active: boolean;
 }
 
@@ -279,7 +280,7 @@ const Dashboard: React.FC = () => {
   // Calculate cash totals
   const totalBankBalance = bankAccounts.reduce((sum, a) => sum + a.current_balance, 0);
   const totalDematCash = dematAccounts.reduce((sum, a) => sum + a.cash_balance, 0);
-  const totalCryptoCash = cryptoAccounts.reduce((sum, a) => sum + (a.cash_balance_usd || 0), 0);
+  const totalCryptoCash = cryptoAccounts.reduce((sum, a) => sum + (a.cash_balance_inr || 0), 0);
 
   const handlePortfolioCardClick = (portfolioId: number) => {
     dispatch(setSelectedPortfolioId(portfolioId));
@@ -304,20 +305,15 @@ const Dashboard: React.FC = () => {
     assetsByCategory[category].count += 1;
     assetsByCategory[category].invested += asset.total_invested || 0;
 
-    // For real_estate, split drill-down by property_type (land, farm_land, house)
-    const subType = type === 'real_estate'
-      ? (asset.details?.property_type || 'land').toLowerCase()
-      : type;
-
     if (!assetsByTypeInCategory[category]) {
       assetsByTypeInCategory[category] = {};
     }
-    if (!assetsByTypeInCategory[category][subType]) {
-      assetsByTypeInCategory[category][subType] = { value: 0, count: 0, invested: 0 };
+    if (!assetsByTypeInCategory[category][type]) {
+      assetsByTypeInCategory[category][type] = { value: 0, count: 0, invested: 0 };
     }
-    assetsByTypeInCategory[category][subType].value += asset.current_value || 0;
-    assetsByTypeInCategory[category][subType].count += 1;
-    assetsByTypeInCategory[category][subType].invested += asset.total_invested || 0;
+    assetsByTypeInCategory[category][type].value += asset.current_value || 0;
+    assetsByTypeInCategory[category][type].count += 1;
+    assetsByTypeInCategory[category][type].invested += asset.total_invested || 0;
   });
 
   // Merge bank account balances into Fixed Income category
@@ -406,6 +402,54 @@ const Dashboard: React.FC = () => {
         </Tooltip>
       </Box>
 
+      {/* Summary Cards */}
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Total Value"
+            value={formatCurrency((summary?.portfolio_summary?.total_current_value || 0) + totalBankBalance + totalDematCash + totalCryptoCash)}
+            change={summary?.portfolio_summary?.total_profit_loss_percentage}
+            icon={<AccountBalanceWallet sx={{ color: 'white' }} />}
+            color="primary.main"
+            hideNumbers={hideNumbers}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Total Investment"
+            value={formatCurrency((summary?.portfolio_summary?.total_invested || 0) + totalBankBalance + totalDematCash + totalCryptoCash)}
+            icon={<CurrencyRupee sx={{ color: 'white' }} />}
+            color="secondary.main"
+            hideNumbers={hideNumbers}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Total Gain/Loss"
+            value={formatCurrency(summary?.portfolio_summary?.total_profit_loss || 0)}
+            change={summary?.portfolio_summary?.total_profit_loss_percentage}
+            icon={
+              (summary?.portfolio_summary?.total_profit_loss || 0) >= 0 ? (
+                <TrendingUp sx={{ color: 'white' }} />
+              ) : (
+                <TrendingDown sx={{ color: 'white' }} />
+              )
+            }
+            color={(summary?.portfolio_summary?.total_profit_loss || 0) >= 0 ? 'success.main' : 'error.main'}
+            hideNumbers={hideNumbers}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Total Assets"
+            value={hideNumbers ? '•••' : ((summary?.portfolio_summary?.total_assets || 0) + bankAccounts.length + cryptoAccounts.length).toString()}
+            icon={<PieChart sx={{ color: 'white' }} />}
+            color="info.main"
+            hideNumbers={false}
+          />
+        </Grid>
+      </Grid>
+
       {/* Portfolio Overview Section */}
       {portfolios.length > 1 && (
         <Paper sx={{ p: 2.5, mb: 3 }}>
@@ -486,54 +530,6 @@ const Dashboard: React.FC = () => {
           </Grid>
         </Paper>
       )}
-
-      {/* Summary Cards */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Total Value"
-            value={formatCurrency((summary?.portfolio_summary?.total_current_value || 0) + totalBankBalance + totalDematCash + totalCryptoCash)}
-            change={summary?.portfolio_summary?.total_profit_loss_percentage}
-            icon={<AccountBalance sx={{ color: 'white' }} />}
-            color="primary.main"
-            hideNumbers={hideNumbers}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Total Investment"
-            value={formatCurrency((summary?.portfolio_summary?.total_invested || 0) + totalBankBalance + totalDematCash + totalCryptoCash)}
-            icon={<ShowChart sx={{ color: 'white' }} />}
-            color="secondary.main"
-            hideNumbers={hideNumbers}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Total Gain/Loss"
-            value={formatCurrency(summary?.portfolio_summary?.total_profit_loss || 0)}
-            change={summary?.portfolio_summary?.total_profit_loss_percentage}
-            icon={
-              (summary?.portfolio_summary?.total_profit_loss || 0) >= 0 ? (
-                <TrendingUp sx={{ color: 'white' }} />
-              ) : (
-                <TrendingDown sx={{ color: 'white' }} />
-              )
-            }
-            color={(summary?.portfolio_summary?.total_profit_loss || 0) >= 0 ? 'success.main' : 'error.main'}
-            hideNumbers={hideNumbers}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Total Assets"
-            value={hideNumbers ? '•••' : ((summary?.portfolio_summary?.total_assets || 0) + bankAccounts.length + cryptoAccounts.length).toString()}
-            icon={<AccountBalance sx={{ color: 'white' }} />}
-            color="info.main"
-            hideNumbers={false}
-          />
-        </Grid>
-      </Grid>
 
       {/* Charts */}
       <Grid container spacing={3}>
@@ -678,14 +674,6 @@ const Dashboard: React.FC = () => {
           </Paper>
         </Grid>
 
-        <Grid item xs={12}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Portfolio Value Over Time
-            </Typography>
-            <PortfolioChart />
-          </Paper>
-        </Grid>
       </Grid>
 
     </Box>

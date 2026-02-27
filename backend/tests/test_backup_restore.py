@@ -78,6 +78,7 @@ def _seed_full_portfolio(db, user, portfolio_id):
         exchange_name="binance",
         account_id="BIN001",
         cash_balance_usd=500.0,
+        cash_balance_inr=42500.0,
         is_active=True,
     )
     db.add(crypto_acct)
@@ -103,6 +104,13 @@ def _seed_full_portfolio(db, user, portfolio_id):
                               total_invested=1500000.0,
                               current_value=1750000.0,
                               crypto_account_id=crypto_acct.id)
+    land_asset = make_asset(db, user, portfolio_id,
+                            name="Pune Plot", asset_type=AssetType.LAND,
+                            quantity=1, purchase_price=2000000.0,
+                            current_price=2500000.0, total_invested=2000000.0,
+                            current_value=2500000.0,
+                            details={"property_type": "land", "location": "Pune",
+                                     "area": 1000, "area_unit": "sqft"})
 
     # ── Transactions ──
     txn = Transaction(
@@ -208,6 +216,7 @@ def _seed_full_portfolio(db, user, portfolio_id):
         "stock": stock,
         "ppf": ppf,
         "crypto_asset": crypto_asset,
+        "land_asset": land_asset,
         "mf_asset": mf_asset,
         "txn": txn,
         "mf_holding": mf_holding,
@@ -269,7 +278,7 @@ class TestExport:
         assert len(data["bank_accounts"]) == 1
         assert len(data["demat_accounts"]) == 1
         assert len(data["crypto_accounts"]) == 1
-        assert len(data["assets"]) == 4  # stock, ppf, crypto, mf
+        assert len(data["assets"]) == 5  # stock, ppf, crypto, land, mf
         assert len(data["transactions"]) == 1
         assert len(data["mutual_fund_holdings"]) == 1
         assert len(data["expenses"]) == 1
@@ -382,7 +391,8 @@ class TestRestoreFullData:
             ],
             "crypto_accounts": [
                 {"id": 400, "exchange_name": "coinbase", "account_id": "CB001",
-                 "portfolio_id": 100, "cash_balance_usd": 200.0, "is_active": True},
+                 "portfolio_id": 100, "cash_balance_usd": 200.0,
+                 "cash_balance_inr": 17000.0, "is_active": True},
             ],
             "assets": [
                 {"id": 500, "asset_type": "stock", "name": "TCS",
@@ -400,6 +410,13 @@ class TestRestoreFullData:
                  "current_price": 170000.0, "total_invested": 300000.0,
                  "current_value": 340000.0, "portfolio_id": 100,
                  "crypto_account_id": 400, "is_active": True},
+                {"id": 503, "asset_type": "land", "name": "Farm Plot",
+                 "quantity": 1, "purchase_price": 2000000.0,
+                 "current_price": 2500000.0, "total_invested": 2000000.0,
+                 "current_value": 2500000.0, "portfolio_id": 101,
+                 "is_active": True,
+                 "details": {"property_type": "land", "location": "Kerala",
+                             "area": 5000, "area_unit": "sqft"}},
             ],
             "transactions": [
                 {"id": 600, "asset_id": 500, "transaction_type": "buy",
@@ -471,7 +488,7 @@ class TestRestoreFullData:
         assert stats["bank_accounts"]["imported"] == 1
         assert stats["demat_accounts"]["imported"] == 1
         assert stats["crypto_accounts"]["imported"] == 1
-        assert stats["assets"]["imported"] == 3
+        assert stats["assets"]["imported"] == 4
         assert stats["transactions"]["imported"] == 1
         assert stats["mutual_fund_holdings"]["imported"] == 1
         assert stats["expense_categories"]["imported"] == 1

@@ -4,7 +4,7 @@ import {
   TableCell, TableContainer, TableHead, TableRow, Typography, Chip, Alert, Button,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton,
 } from '@mui/material';
-import { Add, Edit, Delete, TrendingUp, TrendingDown } from '@mui/icons-material';
+import { Add, Edit, Delete, Refresh, TrendingUp, TrendingDown } from '@mui/icons-material';
 import { assetsAPI } from '../services/api';
 import api from '../services/api';
 import { useSelector } from 'react-redux';
@@ -46,6 +46,7 @@ const SovereignGoldBond: React.FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -80,6 +81,23 @@ const SovereignGoldBond: React.FC = () => {
     if (f.account_id) parts.push(`(${f.account_id})`);
     if (f.account_holder_name) parts.push(`— ${f.account_holder_name}`);
     return parts.length ? parts.join(' ') : 'Unlinked Holdings';
+  };
+
+  const handlePriceUpdate = async (assetId: number, assetName: string) => {
+    try {
+      setUpdatingAssetId(assetId);
+      const response = await api.post(`/assets/${assetId}/update-price`, {});
+      await fetchData();
+      if (response.data?.price_update_failed) {
+        notify.error(`Failed to update price for ${assetName}: ${response.data.price_update_error || 'Price source unavailable'}`);
+      } else {
+        notify.success(`Price updated for ${assetName}`);
+      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, `Failed to update price for ${assetName}`));
+    } finally {
+      setUpdatingAssetId(null);
+    }
   };
 
   const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') }); setDialogOpen(true); };
@@ -158,6 +176,7 @@ const SovereignGoldBond: React.FC = () => {
                       <TableCell align="right" sx={{ color: asset.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>{formatCurrency(asset.profit_loss)}</TableCell>
                       <TableCell align="right"><Chip label={`${asset.profit_loss_percentage >= 0 ? '+' : ''}${asset.profit_loss_percentage?.toFixed(2)}%`} color={asset.profit_loss_percentage >= 0 ? 'success' : 'error'} size="small" icon={asset.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />} /></TableCell>
                       <TableCell align="center">
+                        <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(asset.id, asset.symbol || asset.name)} disabled={updatingAssetId === asset.id}>{updatingAssetId === asset.id ? <CircularProgress size={16} /> : <Refresh fontSize="small" />}</IconButton>
                         <IconButton size="small" color="primary" onClick={() => handleEdit(asset)} title="Edit"><Edit fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => handleDelete(asset.id, asset.name)} title="Delete"><Delete fontSize="small" /></IconButton>
                       </TableCell>

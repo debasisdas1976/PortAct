@@ -166,21 +166,73 @@ def get_multiple_crypto_prices(coin_ids: List[str], vs_currency: str = "usd") ->
         return {}
 
 
+# Well-known symbol -> CoinGecko coin_id mappings.
+# CoinGecko's coin list is alphabetical, so obscure coins with the same
+# symbol (e.g. "batcat" for BTC) sort before the canonical ones.
+_WELL_KNOWN_COINS = {
+    "btc": "bitcoin",
+    "eth": "ethereum",
+    "sol": "solana",
+    "xrp": "ripple",
+    "ada": "cardano",
+    "doge": "dogecoin",
+    "dot": "polkadot",
+    "matic": "matic-network",
+    "avax": "avalanche-2",
+    "link": "chainlink",
+    "uni": "uniswap",
+    "atom": "cosmos",
+    "ltc": "litecoin",
+    "bch": "bitcoin-cash",
+    "xlm": "stellar",
+    "algo": "algorand",
+    "near": "near",
+    "apt": "aptos",
+    "sui": "sui",
+    "bnb": "binancecoin",
+    "shib": "shiba-inu",
+    "trx": "tron",
+    "ton": "the-open-network",
+    "icp": "internet-computer",
+    "fil": "filecoin",
+    "arb": "arbitrum",
+    "op": "optimism",
+    "hbar": "hedera-hashgraph",
+    "vet": "vechain",
+    "ftm": "fantom",
+    "sand": "the-sandbox",
+    "mana": "decentraland",
+    "aave": "aave",
+    "grt": "the-graph",
+    "pol": "pol-ex-matic",
+    "pepe": "pepe",
+    "inj": "injective-protocol",
+    "render": "render-token",
+}
+
+
 def get_coin_id_by_symbol(symbol: str) -> Optional[str]:
     """
-    Get CoinGecko coin ID from symbol
+    Get CoinGecko coin ID from symbol.
+    Prioritizes well-known coins to avoid returning obscure altcoins
+    that happen to share the same ticker symbol.
+
     Args:
         symbol: Cryptocurrency symbol (e.g., 'BTC', 'ETH')
     Returns: CoinGecko coin ID or None if not found
     """
-    coin_list = get_coin_list()
     symbol_lower = symbol.lower()
-    
-    # Try exact match first
+
+    # Check well-known mapping first
+    if symbol_lower in _WELL_KNOWN_COINS:
+        return _WELL_KNOWN_COINS[symbol_lower]
+
+    # Fall back to CoinGecko coin list search
+    coin_list = get_coin_list()
     for coin in coin_list:
         if coin['symbol'].lower() == symbol_lower:
             return coin['id']
-    
+
     return None
 
 

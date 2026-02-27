@@ -231,7 +231,9 @@ class AINewsService:
                         AssetType.FIXED_DEPOSIT,
                         AssetType.RECURRING_DEPOSIT,
                         AssetType.INSURANCE_POLICY,
-                        AssetType.REAL_ESTATE,
+                        AssetType.LAND,
+                        AssetType.FARM_LAND,
+                        AssetType.HOUSE,
                     ]),
                 )
                 .order_by(Asset.current_value.desc())
@@ -717,7 +719,7 @@ class AINewsService:
 3. IRDAI regulatory changes affecting policyholders
 4. Tax benefits under Section 80C and 10(10D)
 5. Surrender value considerations and policy review recommendations"""
-        elif asset_type == AssetType.REAL_ESTATE:
+        elif asset_type in (AssetType.LAND, AssetType.FARM_LAND, AssetType.HOUSE):
             focus = """Focus areas:
 1. Real estate market trends in India — residential and commercial
 2. RERA regulations and buyer protection updates

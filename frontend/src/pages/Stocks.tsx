@@ -27,6 +27,7 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Refresh as RefreshIcon,
   TrendingUp,
   TrendingDown,
   KeyboardArrowDown,
@@ -93,6 +94,7 @@ const Stocks: React.FC = () => {
     demat_account_id: '' as number | '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const toggleGroup = (key: string) => {
@@ -194,6 +196,23 @@ const Stocks: React.FC = () => {
       fetchData();
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to delete stock'));
+    }
+  };
+
+  const handlePriceUpdate = async (assetId: number, assetSymbol: string) => {
+    try {
+      setUpdatingAssetId(assetId);
+      const response = await api.post(`/assets/${assetId}/update-price`, {});
+      await fetchData();
+      if (response.data?.price_update_failed) {
+        notify.error(`Failed to update price for ${assetSymbol}: ${response.data.price_update_error || 'Price source unavailable'}`);
+      } else {
+        notify.success(`Price updated for ${assetSymbol}`);
+      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, `Failed to update price for ${assetSymbol}`));
+    } finally {
+      setUpdatingAssetId(null);
     }
   };
 
@@ -350,6 +369,9 @@ const Stocks: React.FC = () => {
                           />
                         </TableCell>
                         <TableCell align="center">
+                          <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(stock.id, stock.symbol || stock.name)} disabled={updatingAssetId === stock.id}>
+                            {updatingAssetId === stock.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+                          </IconButton>
                           <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(stock)}>
                             <EditIcon fontSize="small" />
                           </IconButton>

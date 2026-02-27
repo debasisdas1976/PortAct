@@ -146,7 +146,14 @@ class EODSnapshotService:
 
         # Add demat account cash balances to the snapshot
         for demat_account in demat_accounts:
-            if not demat_account.cash_balance or demat_account.cash_balance <= 0:
+            # For USD demat accounts, use cash_balance (kept in sync by forex refresh)
+            # with fallback to on-the-fly conversion
+            cash_inr = demat_account.cash_balance or 0.0
+            if demat_account.currency == 'USD' and demat_account.cash_balance_usd and cash_inr <= 0:
+                from app.services.currency_converter import get_usd_to_inr_rate
+                cash_inr = demat_account.cash_balance_usd * get_usd_to_inr_rate()
+
+            if not cash_inr or cash_inr <= 0:
                 continue
 
             asset_snapshot = AssetSnapshot(
@@ -158,23 +165,29 @@ class EODSnapshotService:
                 asset_name=f"{demat_account.broker_name} - Cash",
                 asset_symbol=demat_account.account_id[-4:] if demat_account.account_id else 'N/A',
                 quantity=1.0,
-                purchase_price=demat_account.cash_balance,
-                current_price=demat_account.cash_balance,
-                total_invested=demat_account.cash_balance,
-                current_value=demat_account.cash_balance,
+                purchase_price=cash_inr,
+                current_price=cash_inr,
+                total_invested=cash_inr,
+                current_value=cash_inr,
                 profit_loss=0.0,
                 profit_loss_percentage=0.0
             )
             db.add(asset_snapshot)
 
             # Demat cash: invested = current value (no profit/loss)
-            total_invested += demat_account.cash_balance
-            total_current_value += demat_account.cash_balance
+            total_invested += cash_inr
+            total_current_value += cash_inr
 
-        # Add crypto account cash balances to the snapshot
+        # Add crypto account cash balances to the snapshot (converted to INR)
         for crypto_account in crypto_accounts:
             if not crypto_account.cash_balance_usd or crypto_account.cash_balance_usd <= 0:
                 continue
+
+            # Use pre-computed INR value from forex refresh; fallback to on-the-fly conversion
+            inr_value = crypto_account.cash_balance_inr or 0.0
+            if inr_value <= 0:
+                from app.services.currency_converter import get_usd_to_inr_rate
+                inr_value = crypto_account.cash_balance_usd * get_usd_to_inr_rate()
 
             asset_snapshot = AssetSnapshot(
                 portfolio_snapshot_id=portfolio_snapshot.id,
@@ -185,18 +198,18 @@ class EODSnapshotService:
                 asset_name=f"{crypto_account.exchange_name} - Cash (USD)",
                 asset_symbol=crypto_account.account_id[-4:] if crypto_account.account_id else 'N/A',
                 quantity=1.0,
-                purchase_price=crypto_account.cash_balance_usd,
-                current_price=crypto_account.cash_balance_usd,
-                total_invested=crypto_account.cash_balance_usd,
-                current_value=crypto_account.cash_balance_usd,
+                purchase_price=inr_value,
+                current_price=inr_value,
+                total_invested=inr_value,
+                current_value=inr_value,
                 profit_loss=0.0,
                 profit_loss_percentage=0.0
             )
             db.add(asset_snapshot)
 
             # Crypto cash: invested = current value (no profit/loss)
-            total_invested += crypto_account.cash_balance_usd
-            total_current_value += crypto_account.cash_balance_usd
+            total_invested += inr_value
+            total_current_value += inr_value
 
         # Update portfolio snapshot with totals
         total_profit_loss = total_current_value - total_invested

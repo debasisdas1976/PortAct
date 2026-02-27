@@ -22,6 +22,7 @@ class CryptoAccount(Base):
 
     # Balance information (in USD)
     cash_balance_usd = Column(Float, default=0.0)  # Available cash/stablecoin balance in USD
+    cash_balance_inr = Column(Float, default=0.0)  # INR equivalent (computed by forex refresh)
     total_value_usd = Column(Float, default=0.0)  # Total portfolio value in USD
 
     # Account status

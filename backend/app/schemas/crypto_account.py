@@ -15,6 +15,7 @@ class CryptoAccountBase(BaseModel):
     account_holder_name: Optional[str] = Field(None, max_length=200)
     wallet_address: Optional[str] = Field(None, max_length=200)
     cash_balance_usd: float = Field(default=0.0)
+    cash_balance_inr: float = Field(default=0.0)
     total_value_usd: float = Field(default=0.0)
     is_active: bool = Field(default=True)
     is_primary: bool = Field(default=False)

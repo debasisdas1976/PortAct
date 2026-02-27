@@ -811,10 +811,24 @@
       "allowed_conversions": null
     },
     {
-      "name": "real_estate",
-      "display_label": "Real Estate",
+      "name": "land",
+      "display_label": "Land",
       "category": "Real Estate",
       "sort_order": 50,
+      "allowed_conversions": null
+    },
+    {
+      "name": "farm_land",
+      "display_label": "Farm Land",
+      "category": "Real Estate",
+      "sort_order": 51,
+      "allowed_conversions": null
+    },
+    {
+      "name": "house",
+      "display_label": "House",
+      "category": "Real Estate",
+      "sort_order": 52,
       "allowed_conversions": null
     },
     {

@@ -4,11 +4,12 @@ Price updater service for fetching current prices from various free APIs
 import requests
 import re
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from app.models.asset import Asset, AssetType
 from app.core.database import SessionLocal
 from datetime import datetime, timezone
 import logging
-from app.services.currency_converter import get_usd_to_inr_rate, convert_usd_to_inr
+from app.services.currency_converter import get_usd_to_inr_rate, convert_usd_to_inr, get_rate_to_inr
 from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +21,44 @@ def _is_isin(identifier: str) -> bool:
     return bool(identifier and len(identifier) == 12 and identifier[:2].isalpha() and identifier[2:].isalnum())
 
 
+def _normalize_nse_symbol(symbol: str) -> str:
+    """Normalize a ticker symbol to Yahoo Finance NSE format (.NS suffix).
+    Converts .BSE → .NS, adds .NS if no suffix, leaves ISINs and .BO as-is."""
+    if _is_isin(symbol):
+        return symbol
+    if symbol.upper().endswith('.BSE'):
+        return symbol[:-4] + '.NS'
+    if '.' not in symbol:
+        return f"{symbol}.NS"
+    return symbol
+
+
+def get_stock_price_yahoo_chart(symbol: str) -> float:
+    """
+    Get stock price via Yahoo Finance chart API directly (no yfinance dependency).
+    More reliable than yfinance library when it has version-specific bugs.
+    Only works with ticker symbols, not ISINs.
+    """
+    if _is_isin(symbol):
+        return None
+    yf_symbol = _normalize_nse_symbol(symbol)
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            price = data.get('chart', {}).get('result', [{}])[0].get('meta', {}).get('regularMarketPrice')
+            if price and float(price) > 0:
+                logger.info(f"Yahoo chart price for {yf_symbol}: ₹{float(price):.2f}")
+                return float(price)
+    except Exception as e:
+        logger.warning(f"Yahoo chart API failed for {yf_symbol}: {e}")
+    return None
+
+
 def get_stock_price_yfinance(symbol: str) -> float:
     """
     Get stock price using yfinance library.
@@ -29,11 +68,7 @@ def get_stock_price_yfinance(symbol: str) -> float:
     try:
         import yfinance as yf
 
-        # ISINs are resolved natively by yfinance; only append .NS for ticker symbols
-        if _is_isin(symbol):
-            yf_symbol = symbol
-        else:
-            yf_symbol = symbol if ('.' in symbol) else f"{symbol}.NS"
+        yf_symbol = _normalize_nse_symbol(symbol)
         ticker = yf.Ticker(yf_symbol)
         info = ticker.fast_info
         price = getattr(info, 'last_price', None)
@@ -48,18 +83,24 @@ def get_stock_price_yfinance(symbol: str) -> float:
 def get_stock_price_nse(symbol: str) -> float:
     """
     Get stock price from NSE India.
-    Primary: yfinance (handles session cookies).
-    Fallback: direct NSE API.
+    Primary: yfinance library.
+    Fallback 1: Yahoo Finance chart API (direct HTTP, no yfinance dependency).
+    Fallback 2: direct NSE API.
     """
-    # Primary — yfinance (reliable, handles NSE sessions)
+    # Primary — yfinance (reliable when working)
     price = get_stock_price_yfinance(symbol)
     if price:
         return price
 
-    # Fallback — direct NSE API (often blocked without cookies)
+    # Fallback 1 — Yahoo Finance chart API (direct HTTP call)
+    price = get_stock_price_yahoo_chart(symbol)
+    if price:
+        return price
+
+    # Fallback 2 — direct NSE API (often blocked without cookies)
+    nse_symbol = symbol.rsplit('.', 1)[0] if '.' in symbol else symbol
     try:
         session = requests.Session()
-        # Visit homepage first to get cookies
         session.get(
             "https://www.nseindia.com",
             headers={
@@ -68,7 +109,7 @@ def get_stock_price_nse(symbol: str) -> float:
             },
             timeout=settings.API_TIMEOUT,
         )
-        url = f"{settings.NSE_API_BASE}/quote-equity?symbol={symbol}"
+        url = f"{settings.NSE_API_BASE}/quote-equity?symbol={nse_symbol}"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
@@ -82,7 +123,7 @@ def get_stock_price_nse(symbol: str) -> float:
             if price:
                 return float(price)
     except Exception as e:
-        logger.error(f"NSE fallback failed for {symbol}: {e}")
+        logger.error(f"NSE fallback failed for {nse_symbol}: {e}")
 
     return None
 
@@ -218,31 +259,32 @@ def get_us_stock_price(symbol: str) -> float:
     return None
 
 
-def get_crypto_price(symbol: str, coin_id: str = None) -> float:
+def get_crypto_price(symbol: str, coin_id: str = None) -> tuple:
     """
-    Get cryptocurrency price in USD from CoinGecko API
+    Get cryptocurrency price in USD from CoinGecko API.
+    Returns (price_usd, resolved_coin_id) so the caller can persist the coin_id.
     """
     try:
         from app.services.crypto_price_service import get_crypto_price as get_price_from_coingecko, get_coin_id_by_symbol
-        
+
         # If we have coin_id, use it directly
         if coin_id:
             price_data = get_price_from_coingecko(coin_id)
             if price_data:
-                return price_data['price']
-        
+                return price_data['price'], coin_id
+
         # Otherwise, try to get coin_id from symbol
         if symbol:
-            coin_id = get_coin_id_by_symbol(symbol)
-            if coin_id:
-                price_data = get_price_from_coingecko(coin_id)
+            resolved_id = get_coin_id_by_symbol(symbol)
+            if resolved_id:
+                price_data = get_price_from_coingecko(resolved_id)
                 if price_data:
-                    return price_data['price']
-                    
+                    return price_data['price'], resolved_id
+
     except Exception as e:
         logger.error(f"Error fetching crypto price for {symbol}: {str(e)}")
-    
-    return None
+
+    return None, None
 
 
 def update_asset_price(asset: Asset, db: Session) -> bool:
@@ -291,15 +333,22 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
         elif asset.asset_type in [AssetType.EQUITY_MUTUAL_FUND, AssetType.DEBT_MUTUAL_FUND, AssetType.HYBRID_MUTUAL_FUND]:
             # Prioritize ISIN if available, then api_symbol, then symbol
             search_identifier = asset.isin if asset.isin else lookup_symbol
-            
+
             # Get mutual fund NAV and ISIN
             result = get_mutual_fund_price(search_identifier)
+
+            # If ISIN lookup failed, fall back to name-based search (handles stale ISINs)
+            if (not result or not result[0]) and asset.isin and asset.name:
+                logger.info(f"ISIN {asset.isin} not found in AMFI, trying name: {asset.name}")
+                result = get_mutual_fund_price(asset.name)
+
             if result and result[0]:
                 new_price, fetched_isin = result
-                # Update ISIN if we don't have it yet
-                if not asset.isin and fetched_isin:
+                # Update ISIN if we don't have one or if the stored one is stale
+                if fetched_isin and fetched_isin != asset.isin:
+                    old_isin = asset.isin
                     asset.isin = fetched_isin
-                    logger.info(f"Populated ISIN for {asset.symbol}: {fetched_isin}")
+                    logger.info(f"Updated ISIN for {asset.name}: {old_isin} → {fetched_isin}")
             else:
                 error_message = f"Failed to fetch NAV for {search_identifier}"
         
@@ -321,36 +370,47 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                     error_message = f"Failed to fetch gold price for {asset.name}"
         
         elif asset.asset_type == AssetType.CASH:
-            # For cash assets (USD cash balances), update the INR value based on current exchange rate
-            if asset.details and 'balance_usd' in asset.details:
-                usd_balance = asset.details['balance_usd']
-                usd_to_inr = get_usd_to_inr_rate()
-                new_price = usd_to_inr  # Price per unit (1 USD)
-                
-                # Update details
-                asset.details['usd_to_inr_rate'] = usd_to_inr
-                asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
-                
-                logger.info(f"Updated cash balance: ${usd_balance} at rate {usd_to_inr}")
+            # For cash holdings, update INR value based on current exchange rate
+            currency = (asset.details or {}).get('currency', asset.symbol or 'INR')
+            original_amount = (asset.details or {}).get('original_amount')
+
+            if currency == 'INR' or not original_amount:
+                # INR cash or missing amount — nothing to update
+                pass
+            else:
+                rate = get_rate_to_inr(currency)
+                if rate and rate > 0:
+                    inr_value = float(original_amount) * rate
+                    new_price = inr_value  # quantity is 1, so current_value = new_price
+                    if asset.details is None:
+                        asset.details = {}
+                    asset.details['exchange_rate'] = rate
+                    asset.details['last_rate_update'] = datetime.now(timezone.utc).isoformat()
+                    flag_modified(asset, 'details')
+                    logger.info(f"Updated cash {currency} {original_amount} → ₹{inr_value:.2f} (rate {rate:.4f})")
+                else:
+                    error_message = f"Failed to fetch exchange rate for {currency}"
         
         elif asset.asset_type == AssetType.CRYPTO:
-            # Get crypto price in USD and convert to INR
-            coin_id = None
-            if asset.details and 'coin_id' in asset.details:
-                coin_id = asset.details['coin_id']
+            # Get crypto price in USD and convert to INR.
+            # Resolve coin_id: details > api_symbol (often stores CoinGecko ID) > symbol lookup
+            coin_id = (asset.details or {}).get('coin_id') or asset.api_symbol or None
 
-            crypto_price_usd = get_crypto_price(lookup_symbol, coin_id)
+            crypto_price_usd, resolved_coin_id = get_crypto_price(asset.symbol, coin_id)
             if crypto_price_usd:
                 # Convert USD to INR
                 usd_to_inr = get_usd_to_inr_rate()
                 new_price = crypto_price_usd * usd_to_inr
 
-                # Update the details JSON with USD price and exchange rate
+                # Update the details JSON with USD price, exchange rate, and resolved coin_id
                 if asset.details is None:
                     asset.details = {}
                 asset.details['price_usd'] = crypto_price_usd
                 asset.details['usd_to_inr_rate'] = usd_to_inr
                 asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
+                if resolved_coin_id and not asset.details.get('coin_id'):
+                    asset.details['coin_id'] = resolved_coin_id
+                flag_modified(asset, 'details')
 
                 logger.info(f"Updated crypto {asset.symbol}: ${crypto_price_usd} (₹{new_price:.2f} at rate {usd_to_inr})")
             else:
@@ -440,7 +500,7 @@ PRICE_UPDATABLE_TYPES = [
     AssetType.DEBT_MUTUAL_FUND,
     AssetType.COMMODITY,
     AssetType.CRYPTO,
-    AssetType.CASH,
+    # CASH excluded — updated daily by update_cash_exchange_rates()
     AssetType.REIT,
     AssetType.INVIT,
     AssetType.SOVEREIGN_GOLD_BOND,

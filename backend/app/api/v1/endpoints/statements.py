@@ -517,7 +517,8 @@ async def upload_statement(
         AssetType.PPF, AssetType.NPS, AssetType.PF, AssetType.SSY,
         AssetType.INSURANCE_POLICY, AssetType.SAVINGS_ACCOUNT,
         AssetType.FIXED_DEPOSIT, AssetType.RECURRING_DEPOSIT,
-        AssetType.REAL_ESTATE, AssetType.GRATUITY, AssetType.CASH,
+        AssetType.LAND, AssetType.FARM_LAND, AssetType.HOUSE,
+        AssetType.GRATUITY, AssetType.CASH,
     ]
     orphan_count = db.query(Asset).filter(
         Asset.statement_id == new_statement.id,
