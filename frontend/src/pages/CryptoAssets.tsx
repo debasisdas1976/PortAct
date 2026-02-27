@@ -27,6 +27,7 @@ import {
   KeyboardArrowDown,
   KeyboardArrowRight,
 } from '@mui/icons-material';
+import { useSearchParams } from 'react-router-dom';
 import api, { cryptoExchangesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
@@ -83,6 +84,8 @@ const CryptoAssets: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
+  const [searchParams] = useSearchParams();
+  const focusAccountId = searchParams.get('account');
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -205,6 +208,14 @@ const CryptoAssets: React.FC = () => {
     if (!groups[key]) groups[key] = [];
     groups[key].push(asset);
   }
+
+  // When navigated from Crypto Accounts with ?account=<id>, collapse all groups except that one
+  const groupKeys = Object.keys(groups);
+  useEffect(() => {
+    if (focusAccountId && groupKeys.length > 0) {
+      setCollapsedGroups(new Set(groupKeys.filter(k => k !== focusAccountId)));
+    }
+  }, [focusAccountId, assets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const groupLabel = (groupAssets: CryptoAsset[]) => {
     const first = groupAssets[0];

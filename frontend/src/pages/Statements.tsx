@@ -27,7 +27,7 @@ import {
 import {
   Upload,
   CloudUpload,
-  AddCircleOutline,
+
   Visibility,
   VisibilityOff,
   KeyboardArrowDown,
@@ -477,15 +477,8 @@ const Statements: React.FC = () => {
       <SupportedInstitutionsSection />
 
       {/* Page header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ mb: 3 }}>
         <Typography variant="h4">Accounts & Statements</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddCircleOutline />}
-          onClick={openFullUpload}
-        >
-          Add New Account
-        </Button>
       </Box>
 
       {/* Loading state */}

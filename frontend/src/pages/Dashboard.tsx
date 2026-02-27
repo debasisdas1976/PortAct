@@ -20,6 +20,10 @@ import {
   Tooltip,
   Chip,
   Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Link,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -31,6 +35,8 @@ import {
   VisibilityOff,
   ArrowBack,
   SelectAll,
+  RocketLaunch as GettingStartedIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchPortfolioSummary, fetchPortfolios, setSelectedPortfolioId } from '../store/slices/portfolioSlice';
@@ -154,6 +160,7 @@ const ASSET_TYPE_ROUTES: Record<string, string> = {
   scss: '/scss',
   mis: '/mis',
   gratuity: '/gratuity',
+  pension: '/pension',
   insurance_policy: '/insurance',
   reit: '/reits',
   invit: '/invits',
@@ -179,6 +186,18 @@ const Dashboard: React.FC = () => {
   const [hideNumbers, setHideNumbers] = useState(false);
   const [assetTypeMap, setAssetTypeMap] = useState<Record<string, { category: string; displayLabel: string }>>({});
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [gettingStartedOpen, setGettingStartedOpen] = useState(false);
+
+  const NavLink = ({ to, children }: { to: string; children: React.ReactNode }) => (
+    <Link
+      component="button"
+      variant="body2"
+      sx={{ verticalAlign: 'baseline', fontWeight: 600 }}
+      onClick={() => { setGettingStartedOpen(false); navigate(to); }}
+    >
+      {children}
+    </Link>
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -401,6 +420,19 @@ const Dashboard: React.FC = () => {
           </IconButton>
         </Tooltip>
       </Box>
+
+      <Alert
+        severity="info"
+        icon={<GettingStartedIcon />}
+        action={
+          <Button color="inherit" size="small" onClick={() => setGettingStartedOpen(true)}>
+            Learn More
+          </Button>
+        }
+        sx={{ mb: 3 }}
+      >
+        New to PortAct? See how to set up your portfolios and start tracking your assets.
+      </Alert>
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -675,6 +707,57 @@ const Dashboard: React.FC = () => {
         </Grid>
 
       </Grid>
+
+      {/* Getting Started Dialog */}
+      <Dialog open={gettingStartedOpen} onClose={() => setGettingStartedOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <GettingStartedIcon color="primary" />
+            How to get started
+          </Box>
+          <IconButton size="small" onClick={() => setGettingStartedOpen(false)}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {([
+            <>Open the <NavLink to="/stocks">Assets</NavLink> menu from the left rail and choose the asset type you'd like to track — Stocks, Mutual Funds, PPF, Real Estate, and more.</>,
+            <>For broker-linked assets like Stocks and Mutual Funds, head to the <NavLink to="/demat-holdings">Demat Holdings</NavLink> section under Assets and upload your account statement. Supported sources include <strong>NSDL/CDSL CAS</strong> (PDF), <strong>MF Central CAS</strong> (PDF), <strong>Zerodha</strong>, <strong>Groww</strong>, <strong>ICICI Direct</strong> (CSV/XLSX), and <strong>INDmoney</strong> &amp; <strong>Vested</strong> for US stocks. The system will automatically create the accounts and holdings for you.</>,
+            <>For other assets such as <NavLink to="/ppf">PPF</NavLink>, <NavLink to="/pension">Pension</NavLink>, or <NavLink to="/house">Real Estate</NavLink>, create them manually by filling in the details on their respective pages.</>,
+            <>All asset values are automatically converted to <strong>INR</strong> using live exchange rates — no manual conversion needed.</>,
+            <>Once your assets are set up, visit the <NavLink to="/assets">Asset Overview</NavLink> page to see everything in one place, with a consolidated view across all portfolios.</>,
+            <>Need to reclassify an asset? On the <NavLink to="/assets">Asset Overview</NavLink> page, click on any asset's type column to change it. For example, correct a Debt Fund that was auto-classified as Equity MF.</>,
+            <>You can organize your holdings into multiple <NavLink to="/portfolios">Portfolios</NavLink>. <strong>Note:</strong> stocks within a Demat account are moved together — the entire <NavLink to="/demat-accounts">Demat account</NavLink> must be assigned to the same portfolio.</>,
+            <>To move an asset between portfolios, simply edit the asset, change the <strong>Portfolio</strong> dropdown to your target portfolio, and save.</>,
+            <>Every asset type has its own management page (accessible from the Assets menu) where you can create, edit, and delete individual holdings.</>,
+            <>Track your portfolio performance and discover trends under the <NavLink to="/alerts">Insights</NavLink> section in the left rail.</>,
+          ] as React.ReactNode[]).map((content, i, arr) => (
+            <Box key={i} sx={{ display: 'flex', gap: 1.5, py: 1.2, borderBottom: i < arr.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+              <Typography
+                variant="body2"
+                component="span"
+                sx={{
+                  minWidth: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  bgcolor: 'primary.main',
+                  color: 'primary.contrastText',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  flexShrink: 0,
+                  mt: 0.1,
+                }}
+              >
+                {i + 1}
+              </Typography>
+              <Typography variant="body2" component="span">{content}</Typography>
+            </Box>
+          ))}
+        </DialogContent>
+      </Dialog>
 
     </Box>
   );

@@ -95,6 +95,9 @@ const FlyoutPanel: React.FC<FlyoutPanelProps> = ({
                 </Collapse>
               </React.Fragment>
             ))}
+
+            {/* Render bottom items (after asset groups) */}
+            {activeSection.bottomItems?.map((item) => renderNavItem(item))}
           </List>
         </Box>
       </>

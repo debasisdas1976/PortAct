@@ -26,7 +26,7 @@ import {
   Button,
 } from '@mui/material';
 import { Edit as EditIcon } from '@mui/icons-material';
-import { assetTypesAPI } from '../services/api';
+import { assetTypesAPI, assetCategoriesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 
@@ -41,33 +41,35 @@ interface AssetType {
   updated_at: string | null;
 }
 
-const CATEGORIES = [
-  'Equity',
-  'Debt Mutual Fund',
-  'Fixed Income',
-  'Govt. Schemes',
-  'Commodities',
-  'Crypto',
-  'Real Estate',
-  'Other',
-];
+interface AssetCategory {
+  id: number;
+  name: string;
+  display_label: string;
+  color: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+const CATEGORY_CHIP_COLORS: Record<string, 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' | 'default'> = {
+  'Equity': 'primary',
+  'Fixed Income': 'info',
+  'Govt. Schemes': 'success',
+  'Commodities': 'warning',
+  'Retirement Plans': 'success',
+  'Crypto': 'secondary',
+  'Real Estate': 'error',
+  'Hybrid': 'info',
+  'Cash': 'success',
+};
 
 const getCategoryColor = (category: string): 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' | 'default' => {
-  switch (category) {
-    case 'Equity': return 'primary';
-    case 'Debt Mutual Fund': return 'info';
-    case 'Fixed Income': return 'info';
-    case 'Govt. Schemes': return 'success';
-    case 'Commodities': return 'warning';
-    case 'Crypto': return 'secondary';
-    case 'Real Estate': return 'error';
-    default: return 'default';
-  }
+  return CATEGORY_CHIP_COLORS[category] || 'default';
 };
 
 const AssetTypesMaster: React.FC = () => {
   const { notify } = useNotification();
   const [assetTypes, setAssetTypes] = useState<AssetType[]>([]);
+  const [categories, setCategories] = useState<AssetCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<AssetType | null>(null);
@@ -80,14 +82,18 @@ const AssetTypesMaster: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchAssetTypes();
+    fetchData();
   }, []);
 
-  const fetchAssetTypes = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const data = await assetTypesAPI.getAll();
-      setAssetTypes(data);
+      const [typesData, categoriesData] = await Promise.all([
+        assetTypesAPI.getAll(),
+        assetCategoriesAPI.getAll(),
+      ]);
+      setAssetTypes(typesData);
+      setCategories(categoriesData);
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to fetch asset types'));
     } finally {
@@ -126,7 +132,7 @@ const AssetTypesMaster: React.FC = () => {
       });
       notify.success('Asset type updated successfully');
       handleCloseDialog();
-      fetchAssetTypes();
+      fetchData();
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to update asset type'));
     } finally {
@@ -140,6 +146,8 @@ const AssetTypesMaster: React.FC = () => {
   assetTypes.forEach((t) => {
     categoryCounts[t.category] = (categoryCounts[t.category] || 0) + 1;
   });
+
+  const categoryNames = categories.map((c) => c.name);
 
   if (loading) {
     return (
@@ -172,7 +180,7 @@ const AssetTypesMaster: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        {CATEGORIES.filter((c) => categoryCounts[c]).map((cat) => (
+        {categoryNames.filter((c) => categoryCounts[c]).map((cat) => (
           <Grid item xs={6} sm={4} md={2} key={cat}>
             <Card>
               <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -272,7 +280,7 @@ const AssetTypesMaster: React.FC = () => {
               required
               helperText="Group this asset type under a category"
             >
-              {CATEGORIES.map((cat) => (
+              {categoryNames.map((cat) => (
                 <MenuItem key={cat} value={cat}>{cat}</MenuItem>
               ))}
             </TextField>

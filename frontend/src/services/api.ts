@@ -376,6 +376,19 @@ export const brokersAPI = {
   },
 };
 
+// Asset Categories API
+export const assetCategoriesAPI = {
+  getAll: async (params?: { is_active?: boolean }) => {
+    const response = await api.get('/asset-categories/', { params });
+    return response.data;
+  },
+
+  update: async (id: number, data: Record<string, any>) => {
+    const response = await api.put(`/asset-categories/${id}`, data);
+    return response.data;
+  },
+};
+
 // Asset Types API
 export const assetTypesAPI = {
   getAll: async (params?: { is_active?: boolean; category?: string }) => {

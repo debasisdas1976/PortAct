@@ -38,6 +38,7 @@ SIMPLE_TYPES = [
     AssetType.SSY,
     AssetType.INSURANCE_POLICY,
     AssetType.GRATUITY,
+    AssetType.PENSION,
     AssetType.NSC,
     AssetType.KVP,
     AssetType.SCSS,

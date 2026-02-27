@@ -27,6 +27,7 @@ class AssetType(UpperStrEnum):
     SSY = auto()
     INSURANCE_POLICY = auto()
     GRATUITY = auto()
+    PENSION = auto()
     CASH = auto()
     NSC = auto()
     KVP = auto()

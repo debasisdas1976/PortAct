@@ -13,6 +13,7 @@ export function useActiveSection(sections: RailSection[]): string | null {
     if (section.items?.some((item) => item.path === pathname)) return section.key;
     if (section.assetGroups?.some((g) => g.items.some((i) => i.path === pathname)))
       return section.key;
+    if (section.bottomItems?.some((item) => item.path === pathname)) return section.key;
   }
 
   return null;

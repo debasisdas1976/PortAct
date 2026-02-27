@@ -14,6 +14,7 @@ from app.models.expense import Expense, ExpenseType, PaymentMethod
 from app.models.mutual_fund_holding import MutualFundHolding
 from app.models.portfolio import Portfolio
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
+from app.models.asset_category_master import AssetCategoryMaster
 from app.models.asset_type_master import AssetTypeMaster
 from app.models.institution import InstitutionMaster
 
@@ -45,6 +46,7 @@ __all__ = [
     "MutualFundHolding",
     "PortfolioSnapshot",
     "AssetSnapshot",
+    "AssetCategoryMaster",
     "AssetTypeMaster",
     "InstitutionMaster",
 ]

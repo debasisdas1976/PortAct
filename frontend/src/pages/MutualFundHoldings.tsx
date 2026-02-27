@@ -224,7 +224,6 @@ const MutualFundHoldings: React.FC = () => {
         <Box display="flex" gap={1}>
           <Button
             variant="contained"
-            color="success"
             component="label"
             startIcon={uploadingConsolidatedFile ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
             disabled={uploadingConsolidatedFile}

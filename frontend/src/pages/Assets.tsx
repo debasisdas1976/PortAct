@@ -293,12 +293,13 @@ const Assets: React.FC = () => {
       kvp: '#F9A825',
       scss: '#F9A825',
       mis: '#F9A825',
-      // Retirement Savings — Dark Red
+      // Retirement Plans — Dark Red
       ppf: '#C62828',
       pf: '#C62828',
       nps: '#C62828',
       ssy: '#C62828',
       gratuity: '#C62828',
+      pension: '#C62828',
       // Commodities — Gold/Amber
       commodity: '#FF8F00',
       sovereign_gold_bond: '#FF8F00',

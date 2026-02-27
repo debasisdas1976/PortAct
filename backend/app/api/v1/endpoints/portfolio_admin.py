@@ -870,7 +870,7 @@ async def generate_pdf_statement(
         "debt_mutual_fund": "Debt Mutual Funds",
         "commodity": "Commodities", "crypto": "Crypto",
         "ppf": "PPF", "pf": "PF / EPF", "nps": "NPS", "ssy": "SSY",
-        "gratuity": "Gratuity", "insurance_policy": "Insurance",
+        "gratuity": "Gratuity", "pension": "Pension", "insurance_policy": "Insurance",
         "fixed_deposit": "Fixed Deposits",
         "recurring_deposit": "Recurring Deposits",
         "savings_account": "Savings Accounts",

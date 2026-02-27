@@ -33,7 +33,7 @@ const tourSteps: Step[] = [
   {
     target: '[data-tour="sidebar-assets"]',
     content:
-      'Your investments are organized into categories: Demat Holdings, Banking, Retirement, Crypto, Post Office Schemes, Bonds, REITs/InvITs, and Real Estate. Click any category to expand and see sub-pages.',
+      'Your investments are organized into categories: Demat Holdings, Banking, Retirement, Crypto, Govt. Schemes, Bonds, and Real Estate. Click any category to expand and see sub-pages.',
     title: 'Asset Categories',
     placement: 'right',
     disableBeacon: true,

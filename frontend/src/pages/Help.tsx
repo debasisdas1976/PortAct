@@ -262,9 +262,9 @@ const Help: React.FC = () => {
                   <TableCell>Add via respective pages under Banking</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Retirement Savings</TableCell>
-                  <TableCell>PPF, PF/EPF, NPS, SSY, Gratuity, Insurance</TableCell>
-                  <TableCell>Upload statements (PPF, NPS, PF, SSY) or add manually</TableCell>
+                  <TableCell>Retirement Plans</TableCell>
+                  <TableCell>PPF, PF/EPF, NPS, Gratuity, Pension, Insurance, SCSS</TableCell>
+                  <TableCell>Upload statements (PPF, NPS, PF) or add manually</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell>Crypto</TableCell>
@@ -272,8 +272,8 @@ const Help: React.FC = () => {
                   <TableCell>Add via Crypto Accounts page</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Post Office Schemes</TableCell>
-                  <TableCell>NSC, KVP, SCSS, MIS</TableCell>
+                  <TableCell>Govt. Schemes</TableCell>
+                  <TableCell>NSC, KVP, MIS, SSY</TableCell>
                   <TableCell>Add manually via each page</TableCell>
                 </TableRow>
                 <TableRow>
@@ -282,13 +282,8 @@ const Help: React.FC = () => {
                   <TableCell>Add manually via each page</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>REITs / InvITs</TableCell>
-                  <TableCell>REITs, InvITs</TableCell>
-                  <TableCell>Add manually via each page</TableCell>
-                </TableRow>
-                <TableRow>
                   <TableCell>Real Estate</TableCell>
-                  <TableCell>Land, Farm Land, House</TableCell>
+                  <TableCell>Land, Farm Land, House, REITs, InvITs</TableCell>
                   <TableCell>Add manually via each page</TableCell>
                 </TableRow>
               </TableBody>

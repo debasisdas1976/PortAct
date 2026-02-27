@@ -17,15 +17,16 @@ interface AssetAllocationChartProps {
   onBack: () => void;
 }
 
+// Colors match the asset_categories master table (seed_data.json)
 const CATEGORY_COLORS: Record<string, string> = {
   'Equity': '#1976d2',
-  'Debt Mutual Fund': '#00838f',
+  'Hybrid': '#5c6bc0',
   'Fixed Income': '#0097a7',
   'Govt. Schemes': '#388e3c',
   'Commodities': '#f57c00',
+  'Retirement Plans': '#00695c',
   'Crypto': '#7b1fa2',
   'Real Estate': '#d32f2f',
-  'Hybrid': '#5c6bc0',
   'Cash': '#26a69a',
   'Other': '#757575',
 };

@@ -101,27 +101,6 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Production mode — skipping create_all (Alembic manages schema).")
 
-    # Validate that every Python AssetType enum member has a corresponding
-    # row in the asset_types master table.  This catches missing seed data
-    # at startup instead of at runtime during statement uploads.
-    _check_db = SessionLocal()
-    try:
-        from app.models.asset import AssetType
-        import sqlalchemy
-        rows = _check_db.execute(
-            sqlalchemy.text("SELECT name FROM asset_types")
-        ).fetchall()
-        db_names = {row[0] for row in rows}
-        missing = [member.value for member in AssetType if member.value not in db_names]
-        if missing:
-            raise RuntimeError(
-                f"asset_types table is missing values: {missing}. "
-                f"Run seed_data.json sync or add them manually."
-            )
-        logger.info("AssetType enum validation passed.")
-    finally:
-        _check_db.close()
-
     # Seed default app settings and pass DB session so schedulers read from DB
     _startup_db = SessionLocal()
     try:
@@ -139,6 +118,7 @@ async def lifespan(app: FastAPI):
         from app.models.institution import InstitutionMaster
         from app.models.bank import BankMaster
         from app.models.broker import BrokerMaster
+        from app.models.asset_category_master import AssetCategoryMaster
         from app.models.asset_type_master import AssetTypeMaster
         from app.models.expense_category import ExpenseCategory
 
@@ -177,7 +157,25 @@ async def lifespan(app: FastAPI):
                         lambda r: (r["name"], r["category"]) if isinstance(r, dict) else (r.name, r.category))
         _upsert_master(BankMaster, seed.get("banks", []), _name_key)
         _upsert_master(BrokerMaster, seed.get("brokers", []), _name_key)
+        # Categories must be seeded before asset_types (FK dependency)
+        _upsert_master(AssetCategoryMaster, seed.get("asset_categories", []), _name_key)
         _upsert_master(AssetTypeMaster, seed.get("asset_types", []), _name_key)
+
+        # Validate that every Python AssetType enum member has a corresponding
+        # row in the asset_types master table (now that seed sync has run).
+        from app.models.asset import AssetType
+        import sqlalchemy
+        rows = _startup_db.execute(
+            sqlalchemy.text("SELECT name FROM asset_types")
+        ).fetchall()
+        db_names = {row[0] for row in rows}
+        missing = [member.value for member in AssetType if member.value not in db_names]
+        if missing:
+            raise RuntimeError(
+                f"asset_types table is missing values: {missing}. "
+                f"Run seed_data.json sync or add them manually."
+            )
+        logger.info("AssetType enum validation passed.")
 
         # Expense categories: system-level only
         existing_sys_cats = {

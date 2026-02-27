@@ -27,6 +27,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { AppDispatch, RootState } from '../store';
 import { fetchPortfolios } from '../store/slices/portfolioSlice';
@@ -66,6 +67,7 @@ interface CryptoExchange {
 
 const CryptoAccounts: React.FC = () => {
   const { notify } = useNotification();
+  const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
   const selectedPortfolioId = useSelectedPortfolio();
   const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
@@ -268,7 +270,18 @@ const CryptoAccounts: React.FC = () => {
             {accounts.map((account) => (
               <TableRow key={account.id}>
                 <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      cursor: 'pointer',
+                      color: 'primary.main',
+                      '&:hover': { textDecoration: 'underline' },
+                    }}
+                    onClick={() => navigate(`/crypto-assets?account=${account.id}`)}
+                    title="View crypto assets"
+                  >
                     <CompanyIcon
                       website={getExchange(account.exchange_name)?.website}
                       name={getExchangeLabel(account.exchange_name)}

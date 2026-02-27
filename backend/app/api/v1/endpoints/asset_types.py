@@ -5,6 +5,7 @@ from sqlalchemy import distinct
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
+from app.models.asset_category_master import AssetCategoryMaster
 from app.models.asset_type_master import AssetTypeMaster
 from app.schemas.asset_type_master import AssetTypeMasterResponse, AssetTypeMasterUpdate
 
@@ -59,6 +60,18 @@ async def update_asset_type(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset type not found")
 
     update_data = data.model_dump(exclude_unset=True)
+
+    # Validate category exists in asset_categories master table
+    if "category" in update_data:
+        cat = db.query(AssetCategoryMaster).filter(
+            AssetCategoryMaster.name == update_data["category"]
+        ).first()
+        if not cat:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid category '{update_data['category']}'. Must be one of the values in the asset_categories master table.",
+            )
+
     for field, value in update_data.items():
         setattr(item, field, value)
 

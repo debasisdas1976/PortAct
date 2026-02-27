@@ -30,6 +30,7 @@ _BANK_COLS = ["name", "display_label", "bank_type", "website", "has_parser", "su
 _BROKER_COLS = ["name", "display_label", "broker_type", "supported_markets", "website", "has_parser", "supported_formats", "sort_order"]
 _EXCHANGE_COLS = ["name", "display_label", "exchange_type", "website", "sort_order"]
 _INSTITUTION_COLS = ["name", "display_label", "category", "website", "sort_order"]
+_ASSET_CATEGORY_COLS = ["name", "display_label", "color", "sort_order"]
 _ASSET_TYPE_COLS = ["name", "display_label", "category", "sort_order", "allowed_conversions"]
 _EXPENSE_CAT_COLS = ["name", "description", "icon", "color", "is_income", "keywords"]
 
@@ -67,6 +68,7 @@ def export_seed_data(session_factory):
     from app.models.broker import BrokerMaster
     from app.models.crypto_exchange import CryptoExchangeMaster
     from app.models.institution import InstitutionMaster
+    from app.models.asset_category_master import AssetCategoryMaster
     from app.models.asset_type_master import AssetTypeMaster
     from app.models.expense_category import ExpenseCategory
 
@@ -77,6 +79,7 @@ def export_seed_data(session_factory):
             "brokers": _rows_to_dicts(db.query(BrokerMaster).all(), _BROKER_COLS),
             "crypto_exchanges": _rows_to_dicts(db.query(CryptoExchangeMaster).all(), _EXCHANGE_COLS),
             "institutions": _rows_to_dicts(db.query(InstitutionMaster).all(), _INSTITUTION_COLS),
+            "asset_categories": _rows_to_dicts(db.query(AssetCategoryMaster).all(), _ASSET_CATEGORY_COLS),
             "asset_types": _rows_to_dicts(db.query(AssetTypeMaster).all(), _ASSET_TYPE_COLS),
             "expense_categories": _rows_to_dicts(
                 db.query(ExpenseCategory).filter(ExpenseCategory.is_system == True).all(),
@@ -111,6 +114,7 @@ def _get_master_table_names() -> set:
         from app.models.broker import BrokerMaster
         from app.models.crypto_exchange import CryptoExchangeMaster
         from app.models.institution import InstitutionMaster
+        from app.models.asset_category_master import AssetCategoryMaster
         from app.models.asset_type_master import AssetTypeMaster
         from app.models.expense_category import ExpenseCategory
         _MASTER_TABLE_NAMES = {
@@ -118,6 +122,7 @@ def _get_master_table_names() -> set:
             BrokerMaster.__tablename__,
             CryptoExchangeMaster.__tablename__,
             InstitutionMaster.__tablename__,
+            AssetCategoryMaster.__tablename__,
             AssetTypeMaster.__tablename__,
             ExpenseCategory.__tablename__,
         }

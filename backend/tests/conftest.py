@@ -35,6 +35,7 @@ from app.core.security import create_access_token, get_password_hash  # noqa: E4
 from app.models.user import User  # noqa: E402
 from app.models.portfolio import Portfolio  # noqa: E402
 from app.models.asset import Asset, AssetType  # noqa: E402
+from app.models.asset_category_master import AssetCategoryMaster  # noqa: E402
 from app.models.asset_type_master import AssetTypeMaster  # noqa: E402
 
 # ── Test DB engine (always SQLite in-memory for local, PG in CI) ─────────
@@ -70,9 +71,13 @@ def create_tables():
     import app.models  # noqa: F401
     Base.metadata.create_all(bind=engine)
 
-    # Seed asset_types master table (session-scoped, committed once)
+    # Seed asset_categories and asset_types master tables (session-scoped, committed once).
+    # Categories must be seeded first because asset_types.category has FK to asset_categories.name.
     session = TestingSessionLocal()
     try:
+        if session.query(AssetCategoryMaster).count() == 0:
+            session.add(AssetCategoryMaster(name="General", display_label="General", sort_order=0))
+            session.commit()
         if session.query(AssetTypeMaster).count() == 0:
             for i, at in enumerate(AssetType, start=1):
                 session.add(AssetTypeMaster(

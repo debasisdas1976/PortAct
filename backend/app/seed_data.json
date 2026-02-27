@@ -555,6 +555,68 @@
       "sort_order": 12
     }
   ],
+  "asset_categories": [
+    {
+      "name": "Equity",
+      "display_label": "Equity",
+      "color": "#1976d2",
+      "sort_order": 1
+    },
+    {
+      "name": "Hybrid",
+      "display_label": "Hybrid",
+      "color": "#5c6bc0",
+      "sort_order": 2
+    },
+    {
+      "name": "Fixed Income",
+      "display_label": "Fixed Income",
+      "color": "#0097a7",
+      "sort_order": 3
+    },
+    {
+      "name": "Govt. Schemes",
+      "display_label": "Govt. Schemes",
+      "color": "#388e3c",
+      "sort_order": 4
+    },
+    {
+      "name": "Commodities",
+      "display_label": "Commodities",
+      "color": "#f57c00",
+      "sort_order": 5
+    },
+    {
+      "name": "Retirement Plans",
+      "display_label": "Retirement Plans",
+      "color": "#00695c",
+      "sort_order": 6
+    },
+    {
+      "name": "Crypto",
+      "display_label": "Crypto",
+      "color": "#7b1fa2",
+      "sort_order": 7
+    },
+    {
+      "name": "Real Estate",
+      "display_label": "Real Estate",
+      "color": "#d32f2f",
+      "sort_order": 8
+    },
+    {
+      "name": "Cash",
+      "display_label": "Cash",
+      "color": "#26a69a",
+      "sort_order": 9
+    },
+    {
+      "name": "Other",
+      "display_label": "Other",
+      "color": "#757575",
+      "sort_order": 10
+    }
+  ],
   "asset_types": [
     {
       "name": "stock",
@@ -606,7 +668,7 @@
     {
       "name": "reit",
       "display_label": "REIT",
-      "category": "Equity",
+      "category": "Real Estate",
       "sort_order": 5,
       "allowed_conversions": [
         "stock",
@@ -616,7 +678,7 @@
     {
       "name": "invit",
       "display_label": "InvIT",
-      "category": "Equity",
+      "category": "Real Estate",
       "sort_order": 6,
       "allowed_conversions": [
         "stock",
@@ -714,21 +776,21 @@
     {
       "name": "ppf",
       "display_label": "PPF",
-      "category": "Govt. Schemes",
+      "category": "Retirement Plans",
       "sort_order": 20,
       "allowed_conversions": null
     },
     {
       "name": "pf",
       "display_label": "PF",
-      "category": "Govt. Schemes",
+      "category": "Retirement Plans",
       "sort_order": 21,
       "allowed_conversions": null
     },
     {
       "name": "nps",
       "display_label": "NPS",
-      "category": "Govt. Schemes",
+      "category": "Retirement Plans",
       "sort_order": 22,
       "allowed_conversions": null
     },
@@ -760,7 +822,7 @@
     {
       "name": "scss",
       "display_label": "SCSS",
-      "category": "Govt. Schemes",
+      "category": "Retirement Plans",
       "sort_order": 26,
       "allowed_conversions": [
         "mis"
@@ -780,6 +842,13 @@
       "display_label": "Gratuity",
       "category": "Govt. Schemes",
       "sort_order": 28,
+      "allowed_conversions": null
+    },
+    {
+      "name": "pension",
+      "display_label": "Pension",
+      "category": "Retirement Plans",
+      "sort_order": 29,
       "allowed_conversions": null
     },
     {

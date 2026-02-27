@@ -36,6 +36,7 @@ const NPS = React.lazy(() => import('./pages/NPS'));
 const MutualFundHoldings = React.lazy(() => import('./pages/MutualFundHoldings'));
 const Gratuity = React.lazy(() => import('./pages/Gratuity'));
 const Insurance = React.lazy(() => import('./pages/Insurance'));
+const Pension = React.lazy(() => import('./pages/Pension'));
 const Stocks = React.lazy(() => import('./pages/Stocks'));
 const USStocks = React.lazy(() => import('./pages/USStocks'));
 const EquityMF = React.lazy(() => import('./pages/EquityMF'));
@@ -144,6 +145,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="ssy" element={<SSY />} />
             <Route path="nps" element={<NPS />} />
             <Route path="gratuity" element={<Gratuity />} />
+            <Route path="pension" element={<Pension />} />
             <Route path="insurance" element={<Insurance />} />
             <Route path="stocks" element={<Stocks />} />
             <Route path="us-stocks" element={<USStocks />} />

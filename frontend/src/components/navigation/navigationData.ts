@@ -11,7 +11,6 @@ import {
   CurrencyBitcoin as CryptoIcon,
   PieChart as PieChartIcon,
   ChildCare as SSYIcon,
-  AccountBalanceWallet as NPSIcon,
   Shield as InsuranceIcon,
   TrendingUp as StocksIcon,
   Language as USStocksIcon,
@@ -24,9 +23,10 @@ import {
   Settings as SettingsIcon,
   LocalPostOffice as LocalPostOfficeIcon,
   Gavel as GavelIcon,
-  Business as BusinessIcon,
   Diamond as DiamondIcon,
   Home as HomeIcon,
+  Landscape as LandIcon,
+  Agriculture as FarmLandIcon,
   WorkOutline as ESOPIcon,
   CardGiftcard as RSUIcon,
   HelpOutline as HelpIcon,
@@ -37,6 +37,25 @@ import {
   BarChart as BarChartIcon,
   Paid as PaidIcon,
   Wallet as WalletIcon,
+  AccountTree as AccountTreeIcon,
+  DonutSmall as DonutSmallIcon,
+  Elderly as ElderlyIcon,
+  AccountBalanceWallet as PPFIcon,
+  VolunteerActivism as NPSIcon,
+  Handshake as HandshakeIcon,
+  ElderlyWoman as PensionIcon,
+  VerifiedUser as SCSSIcon,
+  AssuredWorkload as GovtSchemeIcon,
+  RequestQuote as KVPIcon,
+  EventRepeat as MISIcon,
+  BusinessCenter as CorpBondIcon,
+  Policy as PolicyIcon,
+  LocalOffer as TaxBondIcon,
+  Cottage as CottageIcon,
+  Apartment as ApartmentIcon,
+  Factory as FactoryIcon,
+  CurrencyExchange as CurrencyExchangeIcon,
+  Token as TokenIcon,
 } from '@mui/icons-material';
 
 // ── Constants ──
@@ -66,6 +85,7 @@ export interface RailSection {
   path?: string;
   items?: NavItem[];
   assetGroups?: AssetGroup[];
+  bottomItems?: NavItem[];
   dataTour?: string;
   bottomAligned?: boolean;
 }
@@ -78,11 +98,11 @@ export const assetGroups: AssetGroup[] = [
     title: 'Demat Holding',
     icon: React.createElement(ShowChartIcon),
     items: [
-      { text: 'Demat Accounts', icon: React.createElement(ShowChartIcon), path: '/demat-accounts' },
+      { text: 'Demat Accounts', icon: React.createElement(AccountTreeIcon), path: '/demat-accounts' },
       { text: 'Stocks', icon: React.createElement(StocksIcon), path: '/stocks' },
       { text: 'US Stocks', icon: React.createElement(USStocksIcon), path: '/us-stocks' },
       { text: 'Equity MF', icon: React.createElement(PieChartIcon), path: '/equity-mf' },
-      { text: 'Hybrid MF', icon: React.createElement(PieChartIcon), path: '/hybrid-mf' },
+      { text: 'Hybrid MF', icon: React.createElement(DonutSmallIcon), path: '/hybrid-mf' },
       { text: 'Debt Funds', icon: React.createElement(DebtFundIcon), path: '/debt-funds' },
       { text: 'Commodities', icon: React.createElement(CommodityIcon), path: '/commodities' },
       { text: 'Sovereign Gold Bonds', icon: React.createElement(DiamondIcon), path: '/sovereign-gold-bonds' },
@@ -95,7 +115,7 @@ export const assetGroups: AssetGroup[] = [
     title: 'Banking',
     icon: React.createElement(AccountBalanceIcon),
     items: [
-      { text: 'Savings', icon: React.createElement(AccountBalanceIcon), path: '/savings' },
+      { text: 'Savings', icon: React.createElement(SavingsIcon), path: '/savings' },
       { text: 'Credit Cards', icon: React.createElement(CreditCardIcon), path: '/credit-cards' },
       { text: 'Fixed Deposit', icon: React.createElement(FDIcon), path: '/fixed-deposit' },
       { text: 'Recurring Deposit', icon: React.createElement(RDIcon), path: '/recurring-deposit' },
@@ -103,35 +123,27 @@ export const assetGroups: AssetGroup[] = [
   },
   {
     key: 'retirement',
-    title: 'Retirement Savings',
-    icon: React.createElement(SavingsIcon),
+    title: 'Retirement Plans',
+    icon: React.createElement(ElderlyIcon),
     items: [
-      { text: 'PPF', icon: React.createElement(SavingsIcon), path: '/ppf' },
-      { text: 'PF / EPF', icon: React.createElement(WorkIcon), path: '/pf' },
+      { text: 'Public Provident Fund', icon: React.createElement(PPFIcon), path: '/ppf' },
+      { text: 'Provident Fund (PF)', icon: React.createElement(WorkIcon), path: '/pf' },
       { text: 'NPS', icon: React.createElement(NPSIcon), path: '/nps' },
-      { text: 'SSY', icon: React.createElement(SSYIcon), path: '/ssy' },
-      { text: 'Gratuity', icon: React.createElement(WorkIcon), path: '/gratuity' },
+      { text: 'Gratuity', icon: React.createElement(HandshakeIcon), path: '/gratuity' },
+      { text: 'Pension', icon: React.createElement(PensionIcon), path: '/pension' },
       { text: 'Insurance', icon: React.createElement(InsuranceIcon), path: '/insurance' },
-    ],
-  },
-  {
-    key: 'crypto',
-    title: 'Crypto Investment',
-    icon: React.createElement(CryptoIcon),
-    items: [
-      { text: 'Crypto Accounts', icon: React.createElement(CryptoIcon), path: '/crypto-accounts' },
-      { text: 'Crypto Assets', icon: React.createElement(CryptoIcon), path: '/crypto-assets' },
+      { text: 'SCSS', icon: React.createElement(SCSSIcon), path: '/scss' },
     ],
   },
   {
     key: 'post_office',
-    title: 'Post Office Schemes',
-    icon: React.createElement(LocalPostOfficeIcon),
+    title: 'Govt. Schemes',
+    icon: React.createElement(GovtSchemeIcon),
     items: [
       { text: 'NSC', icon: React.createElement(LocalPostOfficeIcon), path: '/nsc' },
-      { text: 'KVP', icon: React.createElement(LocalPostOfficeIcon), path: '/kvp' },
-      { text: 'SCSS', icon: React.createElement(LocalPostOfficeIcon), path: '/scss' },
-      { text: 'MIS', icon: React.createElement(LocalPostOfficeIcon), path: '/mis' },
+      { text: 'KVP', icon: React.createElement(KVPIcon), path: '/kvp' },
+      { text: 'MIS', icon: React.createElement(MISIcon), path: '/mis' },
+      { text: 'SSY', icon: React.createElement(SSYIcon), path: '/ssy' },
     ],
   },
   {
@@ -139,18 +151,9 @@ export const assetGroups: AssetGroup[] = [
     title: 'Bonds',
     icon: React.createElement(GavelIcon),
     items: [
-      { text: 'Corporate Bond', icon: React.createElement(GavelIcon), path: '/corporate-bond' },
-      { text: 'RBI Bond', icon: React.createElement(GavelIcon), path: '/rbi-bond' },
-      { text: 'Tax Saving Bond', icon: React.createElement(GavelIcon), path: '/tax-saving-bond' },
-    ],
-  },
-  {
-    key: 'reits',
-    title: 'REITs / InvITs',
-    icon: React.createElement(BusinessIcon),
-    items: [
-      { text: 'REITs', icon: React.createElement(BusinessIcon), path: '/reits' },
-      { text: 'InvITs', icon: React.createElement(BusinessIcon), path: '/invits' },
+      { text: 'Corporate Bond', icon: React.createElement(CorpBondIcon), path: '/corporate-bond' },
+      { text: 'RBI Bond', icon: React.createElement(PolicyIcon), path: '/rbi-bond' },
+      { text: 'Tax Saving Bond', icon: React.createElement(TaxBondIcon), path: '/tax-saving-bond' },
     ],
   },
   {
@@ -158,9 +161,20 @@ export const assetGroups: AssetGroup[] = [
     title: 'Real Estate',
     icon: React.createElement(HomeIcon),
     items: [
-      { text: 'Land', icon: React.createElement(HomeIcon), path: '/land' },
-      { text: 'Farm Land', icon: React.createElement(HomeIcon), path: '/farm-land' },
-      { text: 'House', icon: React.createElement(HomeIcon), path: '/house' },
+      { text: 'Land', icon: React.createElement(LandIcon), path: '/land' },
+      { text: 'Farm Land', icon: React.createElement(FarmLandIcon), path: '/farm-land' },
+      { text: 'House', icon: React.createElement(CottageIcon), path: '/house' },
+      { text: 'REITs', icon: React.createElement(ApartmentIcon), path: '/reits' },
+      { text: 'InvITs', icon: React.createElement(FactoryIcon), path: '/invits' },
+    ],
+  },
+  {
+    key: 'crypto',
+    title: 'Crypto Investment',
+    icon: React.createElement(CryptoIcon),
+    items: [
+      { text: 'Crypto Accounts', icon: React.createElement(CurrencyExchangeIcon), path: '/crypto-accounts' },
+      { text: 'Crypto Assets', icon: React.createElement(TokenIcon), path: '/crypto-assets' },
     ],
   },
 ];
@@ -230,10 +244,10 @@ export const railSections: RailSection[] = [
     key: 'assets',
     label: 'Assets',
     icon: React.createElement(WalletIcon),
-    items: [
+    assetGroups: assetGroups,
+    bottomItems: [
       { text: 'Cash In Hand', icon: React.createElement(WalletIcon), path: '/cash-in-hand' },
     ],
-    assetGroups: assetGroups,
     dataTour: 'sidebar-assets',
   },
   {
@@ -274,6 +288,7 @@ export const allNavItems: NavItem[] = [
   ...insightsItems,
   assetOverviewItem,
   ...assetGroups.flatMap((g) => g.items),
+  { text: 'Cash In Hand', icon: React.createElement(WalletIcon), path: '/cash-in-hand' },
   ...expenseItems,
   ...adminItems,
   ...masterDataItems,

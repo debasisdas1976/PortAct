@@ -58,13 +58,13 @@ const Layout: React.FC = () => {
     }
   }
 
-  // Auto-expand the asset group that owns the current path
+  // Accordion: auto-expand only the asset group that owns the current path
   useEffect(() => {
     const active = groupKeyForPath(location.pathname);
-    if (active && !openGroups[active]) {
-      setOpenGroups((prev) => ({ ...prev, [active]: true }));
+    if (active) {
+      setOpenGroups({ [active]: true });
     }
-  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   // ESC key closes flyout
   useEffect(() => {
@@ -97,7 +97,7 @@ const Layout: React.FC = () => {
   );
 
   const toggleGroup = useCallback((key: string) => {
-    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+    setOpenGroups((prev) => (prev[key] ? {} : { [key]: true }));
   }, []);
 
   const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {

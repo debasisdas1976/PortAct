@@ -119,6 +119,9 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
                 </Collapse>
               </React.Fragment>
             ))}
+
+            {/* Bottom items (after asset groups) */}
+            {section.bottomItems?.map((item) => renderNavItem(item))}
           </List>
           <Divider />
         </React.Fragment>
