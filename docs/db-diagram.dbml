@@ -1,0 +1,487 @@
+// PortAct Database Schema — DBML
+// Paste into https://dbdiagram.io to visualize
+// 20 tables | 30 asset types | Full portfolio tracking
+
+// ═══════════════════════════════════════════
+// MASTER / REFERENCE TABLES
+// ═══════════════════════════════════════════
+
+Table asset_types [headercolor: #4a90d9] {
+  id int [pk, increment]
+  name varchar(50) [unique, not null, note: '30 types: stock, us_stock, crypto...']
+  display_label varchar(100) [not null]
+  category varchar(50) [not null]
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  allowed_conversions json
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table banks [headercolor: #4a90d9] {
+  id int [pk, increment]
+  name varchar(50) [unique, not null]
+  display_label varchar(100) [not null]
+  bank_type varchar(20) [default: 'commercial']
+  website varchar(200)
+  has_parser boolean [default: false]
+  supported_formats varchar(500)
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table brokers [headercolor: #4a90d9] {
+  id int [pk, increment]
+  name varchar(50) [unique, not null]
+  display_label varchar(100) [not null]
+  broker_type varchar(20) [default: 'discount']
+  supported_markets varchar(20) [default: 'domestic']
+  website varchar(200)
+  has_parser boolean [default: false]
+  supported_formats varchar(500)
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table crypto_exchanges [headercolor: #4a90d9] {
+  id int [pk, increment]
+  name varchar(50) [unique, not null]
+  display_label varchar(100) [not null]
+  exchange_type varchar(20) [default: 'exchange']
+  website varchar(200)
+  has_parser boolean [default: false]
+  supported_formats varchar(100)
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table institutions [headercolor: #4a90d9] {
+  id int [pk, increment]
+  name varchar(50) [not null]
+  display_label varchar(100) [not null]
+  category varchar(30) [not null]
+  website varchar(200)
+  has_parser boolean [default: false]
+  supported_formats varchar(100)
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table app_settings [headercolor: #4a90d9] {
+  id int [pk, increment]
+  key varchar(100) [unique, not null]
+  value text
+  value_type varchar(20) [default: 'string', note: 'string | int | float | bool | secret']
+  category varchar(50) [note: 'scheduler | ai | general']
+  label varchar(200)
+  description text
+  updated_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// CORE USER
+// ═══════════════════════════════════════════
+
+Table users [headercolor: #e74c3c] {
+  id int [pk, increment]
+  email varchar [unique, not null]
+  username varchar [unique, not null]
+  hashed_password varchar [not null]
+  full_name varchar
+  is_active boolean [default: true]
+  is_superuser boolean [default: false]
+  phone varchar(20)
+  date_of_birth date
+  gender varchar(20)
+  address text
+  city varchar(100)
+  state varchar(100)
+  pincode varchar(10)
+  is_employed boolean [default: true]
+  basic_salary float
+  da_percentage float [default: 0]
+  employer_name varchar(200)
+  date_of_joining date
+  pf_employee_pct float [default: 12]
+  pf_employer_pct float [default: 12]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// ACCOUNT TABLES
+// ═══════════════════════════════════════════
+
+Table portfolios [headercolor: #27ae60] {
+  id int [pk, increment]
+  user_id int [not null, ref: > users.id]
+  name varchar(200) [not null]
+  description text
+  is_default boolean [default: false]
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table bank_accounts [headercolor: #27ae60] {
+  id int [pk, increment]
+  user_id int [not null, ref: > users.id]
+  portfolio_id int [ref: > portfolios.id]
+  bank_name varchar(50) [not null, note: 'References banks master']
+  account_type bank_type_enum [not null, note: 'savings | current | credit_card | fd | rd']
+  account_number varchar [not null]
+  account_holder_name varchar
+  ifsc_code varchar
+  branch_name varchar
+  current_balance float [default: 0.0]
+  available_balance float [default: 0.0]
+  credit_limit float [default: 0.0]
+  is_active boolean [default: true]
+  is_primary boolean [default: false]
+  nickname varchar
+  notes text
+  last_statement_date timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table demat_accounts [headercolor: #27ae60] {
+  id int [pk, increment]
+  user_id int [not null, ref: > users.id]
+  portfolio_id int [ref: > portfolios.id]
+  broker_name varchar(50) [not null, note: 'References brokers master']
+  account_market account_market_enum [not null, default: 'domestic', note: 'domestic | international']
+  account_id varchar [not null]
+  account_holder_name varchar
+  demat_account_number varchar
+  cash_balance float [default: 0.0]
+  cash_balance_usd float
+  currency varchar [default: 'INR']
+  is_active boolean [default: true]
+  is_primary boolean [default: false]
+  nickname varchar
+  notes text
+  last_statement_date timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table crypto_accounts [headercolor: #27ae60] {
+  id int [pk, increment]
+  user_id int [not null, ref: > users.id]
+  portfolio_id int [ref: > portfolios.id]
+  exchange_name varchar(50) [not null, note: 'References crypto_exchanges master']
+  account_id varchar [not null]
+  account_holder_name varchar
+  wallet_address varchar
+  cash_balance_usd float [default: 0.0]
+  total_value_usd float [default: 0.0]
+  is_active boolean [default: true]
+  is_primary boolean [default: false]
+  nickname varchar
+  notes text
+  last_sync_date timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// STATEMENT UPLOAD
+// ═══════════════════════════════════════════
+
+Table statements [headercolor: #8e44ad] {
+  id int [pk, increment]
+  user_id int [not null, ref: > users.id]
+  filename varchar [not null]
+  file_path varchar [not null]
+  file_size int
+  file_type varchar
+  statement_type statement_type_enum [not null, note: 'bank | broker | mf | demat | crypto | ...']
+  statement_date timestamptz
+  institution_name varchar
+  account_number varchar
+  password varchar [note: 'encrypted']
+  status statement_status_enum [default: 'uploaded', note: 'uploaded | processing | processed | failed']
+  processing_started_at timestamptz
+  processing_completed_at timestamptz
+  error_message text
+  assets_found int [default: 0]
+  transactions_found int [default: 0]
+  uploaded_at timestamptz [default: `now()`]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// ASSETS & TRANSACTIONS
+// ═══════════════════════════════════════════
+
+Table assets [headercolor: #f39c12] {
+  id int [pk, increment]
+  user_id int [not null, ref: > users.id]
+  asset_type varchar(50) [not null, ref: > asset_types.name, note: 'VARCHAR FK (not PG enum)']
+  statement_id int [ref: > statements.id]
+  demat_account_id int [ref: > demat_accounts.id]
+  crypto_account_id int [ref: > crypto_accounts.id]
+  portfolio_id int [ref: > portfolios.id]
+  name varchar [not null]
+  symbol varchar
+  api_symbol varchar
+  isin varchar
+  account_id varchar
+  broker_name varchar
+  account_holder_name varchar
+  quantity float [default: 0.0]
+  purchase_price float [default: 0.0]
+  current_price float [default: 0.0]
+  total_invested float [default: 0.0]
+  current_value float [default: 0.0]
+  profit_loss float [default: 0.0]
+  profit_loss_percentage float [default: 0.0]
+  details json [default: '{}']
+  is_active boolean [default: true]
+  notes text
+  price_update_failed boolean [default: false]
+  last_price_update timestamptz
+  price_update_error text
+  purchase_date timestamptz
+  last_updated timestamptz [default: `now()`]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    symbol
+    api_symbol
+    isin
+    account_id
+    asset_type
+  }
+}
+
+Table transactions [headercolor: #f39c12] {
+  id int [pk, increment]
+  asset_id int [not null, ref: > assets.id]
+  statement_id int [ref: > statements.id]
+  transaction_type txn_type_enum [not null, note: 'buy | sell | deposit | withdrawal | dividend | interest | bonus | split | transfer_in | transfer_out | fee | tax']
+  transaction_date timestamptz [not null]
+  quantity float [default: 0.0]
+  price_per_unit float [default: 0.0]
+  total_amount float [not null]
+  fees float [default: 0.0]
+  taxes float [default: 0.0]
+  description text
+  reference_number varchar
+  notes text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    asset_id
+    transaction_type
+    transaction_date
+  }
+
+  note: 'CASCADE delete when parent asset is deleted'
+}
+
+Table mutual_fund_holdings [headercolor: #f39c12] {
+  id int [pk, increment]
+  asset_id int [not null, ref: > assets.id]
+  user_id int [not null, ref: > users.id]
+  stock_name varchar [not null]
+  stock_symbol varchar
+  isin varchar
+  holding_percentage float [not null]
+  holding_value float [default: 0.0]
+  quantity_held float [default: 0.0]
+  sector varchar
+  industry varchar
+  market_cap varchar
+  stock_current_price float [default: 0.0]
+  data_source varchar
+  last_updated timestamptz [default: `now()`]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    asset_id
+    user_id
+    stock_symbol
+    isin
+  }
+
+  note: 'CASCADE delete when parent asset is deleted'
+}
+
+// ═══════════════════════════════════════════
+// EXPENSE TRACKING
+// ═══════════════════════════════════════════
+
+Table expense_categories [headercolor: #e67e22] {
+  id int [pk, increment]
+  user_id int [ref: > users.id, note: 'null for system categories']
+  parent_id int [ref: > expense_categories.id, note: 'self-referential hierarchy']
+  name varchar [not null]
+  description text
+  icon varchar
+  color varchar
+  is_system boolean [default: false]
+  is_income boolean [default: false]
+  is_active boolean [default: true]
+  keywords text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table expenses [headercolor: #e67e22] {
+  id int [pk, increment]
+  user_id int [not null, ref: > users.id]
+  bank_account_id int [not null, ref: > bank_accounts.id]
+  category_id int [ref: > expense_categories.id, note: 'SET NULL on category delete']
+  statement_id int [ref: > statements.id]
+  portfolio_id int [ref: > portfolios.id]
+  transaction_date timestamptz [not null]
+  transaction_type expense_type_enum [not null, note: 'debit | credit | transfer']
+  amount float [not null]
+  balance_after float
+  description text [not null]
+  merchant_name varchar
+  reference_number varchar
+  payment_method payment_method_enum [note: 'cash | debit_card | credit_card | upi | net_banking | cheque | wallet | other']
+  is_categorized boolean [default: false]
+  is_recurring boolean [default: false]
+  is_split boolean [default: false]
+  location varchar
+  notes text
+  tags varchar
+  is_reconciled boolean [default: false]
+  reconciled_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    transaction_date
+    transaction_type
+  }
+}
+
+// ═══════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════
+
+Table alerts [headercolor: #c0392b] {
+  id int [pk, increment]
+  user_id int [not null, ref: > users.id]
+  asset_id int [ref: > assets.id, note: 'SET NULL on asset delete']
+  alert_type alert_type_enum [not null, note: 'price_change | news | dividend | earnings | regulatory | maturity | rebalance | volatility']
+  severity alert_severity_enum [default: 'info', note: 'info | warning | critical']
+  title varchar [not null]
+  message text [not null]
+  suggested_action text
+  action_url varchar
+  is_read boolean [default: false]
+  is_dismissed boolean [default: false]
+  is_actionable boolean [default: true]
+  alert_date timestamptz [default: `now()`]
+  read_at timestamptz
+  dismissed_at timestamptz
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    alert_type
+  }
+}
+
+// ═══════════════════════════════════════════
+// EOD SNAPSHOTS
+// ═══════════════════════════════════════════
+
+Table portfolio_snapshots [headercolor: #2c3e50] {
+  id int [pk, increment]
+  user_id int [not null, ref: > users.id]
+  snapshot_date date [not null]
+  total_invested float [default: 0.0]
+  total_current_value float [default: 0.0]
+  total_profit_loss float [default: 0.0]
+  total_profit_loss_percentage float [default: 0.0]
+  total_assets_count int [default: 0]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (user_id, snapshot_date) [name: 'idx_user_snapshot_date']
+  }
+}
+
+Table asset_snapshots [headercolor: #2c3e50] {
+  id int [pk, increment]
+  portfolio_snapshot_id int [not null, ref: > portfolio_snapshots.id]
+  snapshot_date date [not null]
+  snapshot_source varchar(20) [not null, default: 'asset', note: 'Discriminator: asset | bank_account | demat_cash | crypto_cash']
+  asset_id int [ref: > assets.id, note: 'SET NULL on delete']
+  bank_account_id int [ref: > bank_accounts.id, note: 'SET NULL on delete']
+  demat_account_id int [ref: > demat_accounts.id, note: 'SET NULL on delete']
+  crypto_account_id int [ref: > crypto_accounts.id, note: 'SET NULL on delete']
+  asset_type varchar
+  asset_name varchar [not null]
+  asset_symbol varchar
+  quantity float [default: 0.0]
+  purchase_price float [default: 0.0]
+  current_price float [default: 0.0]
+  total_invested float [default: 0.0]
+  current_value float [default: 0.0]
+  profit_loss float [default: 0.0]
+  profit_loss_percentage float [default: 0.0]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (asset_id, snapshot_date) [name: 'idx_asset_snapshot_date']
+    (portfolio_snapshot_id, snapshot_date) [name: 'idx_portfolio_snapshot']
+    snapshot_source [name: 'idx_asset_snap_source']
+  }
+}
+
+// ═══════════════════════════════════════════
+// TABLE GROUPS
+// ═══════════════════════════════════════════
+
+TableGroup MasterTables [color: #4a90d9] {
+  asset_types
+  banks
+  brokers
+  crypto_exchanges
+  institutions
+  app_settings
+}
+
+TableGroup Core [color: #e74c3c] {
+  users
+}
+
+TableGroup Accounts [color: #27ae60] {
+  portfolios
+  bank_accounts
+  demat_accounts
+  crypto_accounts
+}
+
+TableGroup Assets [color: #f39c12] {
+  assets
+  transactions
+  mutual_fund_holdings
+}
+
+TableGroup Expenses [color: #e67e22] {
+  expense_categories
+  expenses
+}
+
+TableGroup Snapshots [color: #2c3e50] {
+  portfolio_snapshots
+  asset_snapshots
+}

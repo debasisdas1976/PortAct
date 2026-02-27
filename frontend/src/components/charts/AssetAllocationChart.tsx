@@ -1,9 +1,10 @@
 import React from 'react';
-import { Box, Typography, IconButton, Chip } from '@mui/material';
+import { Box, Typography, IconButton, Chip, useMediaQuery, useTheme } from '@mui/material';
 import { ArrowBack } from '@mui/icons-material';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 interface ChartDataItem {
+  key: string;
   name: string;
   value: number;
 }
@@ -12,6 +13,7 @@ interface AssetAllocationChartProps {
   data: ChartDataItem[];
   selectedCategory: string | null;
   onSliceClick: (name: string) => void;
+  onTypeClick?: (typeKey: string) => void;
   onBack: () => void;
 }
 
@@ -23,9 +25,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Commodities': '#f57c00',
   'Crypto': '#7b1fa2',
   'Real Estate': '#d32f2f',
+  'Hybrid': '#5c6bc0',
+  'Cash': '#26a69a',
   'Other': '#757575',
-  'Bank Accounts': '#0288d1',
-  'Demat Cash': '#5d4037',
 };
 
 const TYPE_COLORS = [
@@ -38,8 +40,14 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   data,
   selectedCategory,
   onSliceClick,
+  onTypeClick,
   onBack,
 }) => {
+  const theme = useTheme();
+  const isLarge = useMediaQuery(theme.breakpoints.up('lg'));
+  const isMedium = useMediaQuery(theme.breakpoints.up('md'));
+  const legendFontSize = isLarge ? '16px' : isMedium ? '14px' : '12px';
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -64,7 +72,7 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   };
 
   return (
-    <Box>
+    <Box sx={{ height: 440 }}>
       {selectedCategory && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
           <IconButton size="small" onClick={onBack} title="Back to categories">
@@ -73,21 +81,23 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
           <Chip label={selectedCategory} size="small" color="primary" variant="outlined" />
         </Box>
       )}
-      <ResponsiveContainer width="100%" height={selectedCategory ? 270 : 300}>
-        <PieChart margin={{ left: 20, right: 20 }}>
+      <ResponsiveContainer width="100%" height={400}>
+        <PieChart margin={{ left: 40, right: 20 }}>
           <Pie
             data={data}
-            cx="35%"
+            cx="40%"
             cy="50%"
             labelLine={false}
             label={false}
-            outerRadius={80}
+            outerRadius={140}
             fill="#8884d8"
             dataKey="value"
-            style={{ cursor: selectedCategory ? 'default' : 'pointer' }}
+            style={{ cursor: 'pointer' }}
             onClick={(_, index) => {
               if (!selectedCategory) {
                 onSliceClick(data[index].name);
+              } else if (onTypeClick) {
+                onTypeClick(data[index].key);
               }
             }}
           >
@@ -112,17 +122,19 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
             align="right"
             wrapperStyle={{
               paddingLeft: '20px',
-              fontSize: '12px',
-              cursor: selectedCategory ? 'default' : 'pointer',
+              fontSize: legendFontSize,
+              cursor: 'pointer',
             }}
             formatter={(value: string, entry: any) => {
               const total = data.reduce((sum, d) => sum + d.value, 0);
               const pct = total > 0 ? ((entry.payload.value / total) * 100).toFixed(1) : '0.0';
               return `${value} (${pct}%)`;
             }}
-            onClick={(data: any) => {
-              if (!selectedCategory && data?.value) {
-                onSliceClick(data.value as string);
+            onClick={(entry: any) => {
+              if (!selectedCategory && entry?.value) {
+                onSliceClick(entry.value as string);
+              } else if (selectedCategory && onTypeClick && entry?.payload?.key) {
+                onTypeClick(entry.payload.key);
               }
             }}
           />

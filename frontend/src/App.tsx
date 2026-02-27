@@ -60,6 +60,7 @@ const SovereignGoldBond = React.lazy(() => import('./pages/SovereignGoldBond'));
 const RealEstate = React.lazy(() => import('./pages/RealEstate'));
 const ESOPs = React.lazy(() => import('./pages/ESOPs'));
 const RSUs = React.lazy(() => import('./pages/RSUs'));
+const CashInHand = React.lazy(() => import('./pages/CashInHand'));
 const BanksMaster = React.lazy(() => import('./pages/BanksMaster'));
 const BrokersMaster = React.lazy(() => import('./pages/BrokersMaster'));
 const Settings = React.lazy(() => import('./pages/Settings'));
@@ -174,6 +175,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="land" element={<RealEstate propertyType="land" title="Land" />} />
             <Route path="farm-land" element={<RealEstate propertyType="farm_land" title="Farm Land" />} />
             <Route path="house" element={<RealEstate propertyType="house" title="House" />} />
+            <Route path="cash-in-hand" element={<CashInHand />} />
             <Route path="super-admin" element={<SuperAdmin />} />
             <Route path="settings" element={<Settings />} />
             <Route path="help" element={<Help />} />

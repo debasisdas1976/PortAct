@@ -3,7 +3,9 @@
     "allow": [
       "Bash(gh run view:*)",
       "Bash(xargs:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(grep -r \"snapshot\" /Users/debasis/Debasis/personal/Projects/PortAct/backend/app/api/v1/endpoints/*.py --files-with-matches)",
+      "Bash(PGPASSWORD=portact_password psql -h localhost -U portact_user -d portact_db -c \":*)"
     ]
   }
 }

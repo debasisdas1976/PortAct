@@ -1,0 +1,434 @@
+erDiagram
+
+    %% ═══════════════════════════════════════════
+    %% MASTER / REFERENCE TABLES
+    %% ═══════════════════════════════════════════
+
+    asset_types {
+        int id PK
+        varchar_50 name UK "e.g. stock, us_stock, crypto..."
+        varchar_100 display_label
+        varchar_50 category
+        boolean is_active
+        int sort_order
+        json allowed_conversions
+    }
+
+    banks {
+        int id PK
+        varchar_50 name UK
+        varchar_100 display_label
+        varchar_20 bank_type "commercial | cooperative | ..."
+        varchar_200 website
+        boolean has_parser
+        boolean is_active
+        int sort_order
+    }
+
+    brokers {
+        int id PK
+        varchar_50 name UK
+        varchar_100 display_label
+        varchar_20 broker_type "discount | full_service"
+        varchar_20 supported_markets "domestic | international"
+        varchar_200 website
+        boolean has_parser
+        boolean is_active
+        int sort_order
+    }
+
+    crypto_exchanges {
+        int id PK
+        varchar_50 name UK
+        varchar_100 display_label
+        varchar_20 exchange_type "exchange | wallet"
+        varchar_200 website
+        boolean has_parser
+        boolean is_active
+        int sort_order
+    }
+
+    institutions {
+        int id PK
+        varchar_50 name
+        varchar_100 display_label
+        varchar_30 category
+        varchar_200 website
+        boolean has_parser
+        boolean is_active
+        int sort_order
+    }
+
+    app_settings {
+        int id PK
+        varchar_100 key UK
+        text value
+        varchar_20 value_type "string | int | float | bool | secret"
+        varchar_50 category "scheduler | ai | general"
+        varchar_200 label
+        text description
+    }
+
+    %% ═══════════════════════════════════════════
+    %% CORE USER TABLE
+    %% ═══════════════════════════════════════════
+
+    users {
+        int id PK
+        string email UK
+        string username UK
+        string hashed_password
+        string full_name
+        boolean is_active
+        boolean is_superuser
+        string phone
+        date date_of_birth
+        string gender
+        text address
+        string city
+        string state
+        string pincode
+        boolean is_employed
+        float basic_salary
+        float da_percentage
+        string employer_name
+        date date_of_joining
+        float pf_employee_pct
+        float pf_employer_pct
+        datetime created_at
+        datetime updated_at
+    }
+
+    %% ═══════════════════════════════════════════
+    %% ACCOUNT TABLES
+    %% ═══════════════════════════════════════════
+
+    portfolios {
+        int id PK
+        int user_id FK
+        varchar_200 name
+        text description
+        boolean is_default
+        boolean is_active
+        datetime created_at
+        datetime updated_at
+    }
+
+    bank_accounts {
+        int id PK
+        int user_id FK
+        int portfolio_id FK "nullable"
+        varchar_50 bank_name "ref to banks master"
+        enum account_type "savings | current | credit_card | fd | rd"
+        string account_number
+        string account_holder_name
+        string ifsc_code
+        string branch_name
+        float current_balance
+        float available_balance
+        float credit_limit
+        boolean is_active
+        boolean is_primary
+        string nickname
+        text notes
+        datetime created_at
+        datetime updated_at
+    }
+
+    demat_accounts {
+        int id PK
+        int user_id FK
+        int portfolio_id FK "nullable"
+        varchar_50 broker_name "ref to brokers master"
+        enum account_market "domestic | international"
+        string account_id
+        string account_holder_name
+        string demat_account_number
+        float cash_balance
+        float cash_balance_usd
+        string currency
+        boolean is_active
+        boolean is_primary
+        string nickname
+        text notes
+        datetime created_at
+        datetime updated_at
+    }
+
+    crypto_accounts {
+        int id PK
+        int user_id FK
+        int portfolio_id FK "nullable"
+        varchar_50 exchange_name "ref to crypto_exchanges master"
+        string account_id
+        string account_holder_name
+        string wallet_address
+        float cash_balance_usd
+        float total_value_usd
+        boolean is_active
+        boolean is_primary
+        string nickname
+        text notes
+        datetime created_at
+        datetime updated_at
+    }
+
+    %% ═══════════════════════════════════════════
+    %% ASSET & TRANSACTION TABLES
+    %% ═══════════════════════════════════════════
+
+    assets {
+        int id PK
+        int user_id FK
+        varchar_50 asset_type FK "FK to asset_types.name"
+        int statement_id FK "nullable"
+        int demat_account_id FK "nullable"
+        int crypto_account_id FK "nullable"
+        int portfolio_id FK "nullable"
+        string name
+        string symbol
+        string api_symbol
+        string isin
+        string account_id
+        string broker_name
+        string account_holder_name
+        float quantity
+        float purchase_price
+        float current_price
+        float total_invested
+        float current_value
+        float profit_loss
+        float profit_loss_percentage
+        json details
+        boolean is_active
+        text notes
+        boolean price_update_failed
+        datetime last_price_update
+        text price_update_error
+        datetime purchase_date
+        datetime last_updated
+        datetime created_at
+    }
+
+    transactions {
+        int id PK
+        int asset_id FK "CASCADE on delete"
+        int statement_id FK "nullable"
+        enum transaction_type "buy | sell | deposit | withdrawal | ..."
+        datetime transaction_date
+        float quantity
+        float price_per_unit
+        float total_amount
+        float fees
+        float taxes
+        text description
+        string reference_number
+        text notes
+        datetime created_at
+        datetime updated_at
+    }
+
+    mutual_fund_holdings {
+        int id PK
+        int asset_id FK "CASCADE on delete"
+        int user_id FK
+        string stock_name
+        string stock_symbol
+        string isin
+        float holding_percentage
+        float holding_value
+        float quantity_held
+        string sector
+        string industry
+        string market_cap
+        float stock_current_price
+        string data_source
+        datetime last_updated
+        datetime created_at
+    }
+
+    %% ═══════════════════════════════════════════
+    %% STATEMENT UPLOAD
+    %% ═══════════════════════════════════════════
+
+    statements {
+        int id PK
+        int user_id FK
+        string filename
+        string file_path
+        int file_size
+        string file_type
+        enum statement_type "bank | broker | mf | demat | crypto | ..."
+        datetime statement_date
+        string institution_name
+        string account_number
+        string password "encrypted"
+        enum status "uploaded | processing | processed | failed"
+        datetime processing_started_at
+        datetime processing_completed_at
+        text error_message
+        int assets_found
+        int transactions_found
+        datetime uploaded_at
+        datetime created_at
+        datetime updated_at
+    }
+
+    %% ═══════════════════════════════════════════
+    %% EXPENSE TRACKING
+    %% ═══════════════════════════════════════════
+
+    expense_categories {
+        int id PK
+        int user_id FK "nullable - null for system categories"
+        int parent_id FK "self-referential, nullable"
+        string name
+        text description
+        string icon
+        string color
+        boolean is_system
+        boolean is_income
+        boolean is_active
+        text keywords
+        datetime created_at
+        datetime updated_at
+    }
+
+    expenses {
+        int id PK
+        int user_id FK
+        int bank_account_id FK
+        int category_id FK "nullable, SET NULL on delete"
+        int statement_id FK "nullable"
+        int portfolio_id FK "nullable"
+        datetime transaction_date
+        enum transaction_type "debit | credit | transfer"
+        float amount
+        float balance_after
+        text description
+        string merchant_name
+        string reference_number
+        enum payment_method "cash | debit_card | credit_card | upi | ..."
+        boolean is_categorized
+        boolean is_recurring
+        boolean is_split
+        string location
+        text notes
+        string tags
+        boolean is_reconciled
+        datetime reconciled_at
+        datetime created_at
+        datetime updated_at
+    }
+
+    %% ═══════════════════════════════════════════
+    %% ALERTS
+    %% ═══════════════════════════════════════════
+
+    alerts {
+        int id PK
+        int user_id FK
+        int asset_id FK "nullable, SET NULL on delete"
+        enum alert_type "price_change | news | dividend | earnings | ..."
+        enum severity "info | warning | critical"
+        string title
+        text message
+        text suggested_action
+        string action_url
+        boolean is_read
+        boolean is_dismissed
+        boolean is_actionable
+        datetime alert_date
+        datetime read_at
+        datetime dismissed_at
+        datetime created_at
+    }
+
+    %% ═══════════════════════════════════════════
+    %% SNAPSHOTS (EOD)
+    %% ═══════════════════════════════════════════
+
+    portfolio_snapshots {
+        int id PK
+        int user_id FK
+        date snapshot_date
+        float total_invested
+        float total_current_value
+        float total_profit_loss
+        float total_profit_loss_percentage
+        int total_assets_count
+        datetime created_at
+    }
+
+    asset_snapshots {
+        int id PK
+        int portfolio_snapshot_id FK
+        date snapshot_date
+        varchar_20 snapshot_source "asset | bank_account | demat_cash | crypto_cash"
+        int asset_id FK "nullable, SET NULL on delete"
+        int bank_account_id FK "nullable, SET NULL on delete"
+        int demat_account_id FK "nullable, SET NULL on delete"
+        int crypto_account_id FK "nullable, SET NULL on delete"
+        string asset_type
+        string asset_name
+        string asset_symbol
+        float quantity
+        float purchase_price
+        float current_price
+        float total_invested
+        float current_value
+        float profit_loss
+        float profit_loss_percentage
+        datetime created_at
+    }
+
+    %% ═══════════════════════════════════════════
+    %% RELATIONSHIPS
+    %% ═══════════════════════════════════════════
+
+    %% User owns everything
+    users ||--o{ portfolios : "owns"
+    users ||--o{ bank_accounts : "owns"
+    users ||--o{ demat_accounts : "owns"
+    users ||--o{ crypto_accounts : "owns"
+    users ||--o{ assets : "owns"
+    users ||--o{ statements : "uploads"
+    users ||--o{ expense_categories : "creates"
+    users ||--o{ expenses : "records"
+    users ||--o{ alerts : "receives"
+    users ||--o{ portfolio_snapshots : "has"
+    users ||--o{ mutual_fund_holdings : "owns"
+
+    %% Portfolio grouping
+    portfolios ||--o{ assets : "contains"
+    portfolios ||--o{ bank_accounts : "groups"
+    portfolios ||--o{ demat_accounts : "groups"
+    portfolios ||--o{ crypto_accounts : "groups"
+    portfolios ||--o{ expenses : "groups"
+
+    %% Asset relationships
+    asset_types ||--o{ assets : "classifies"
+    demat_accounts ||--o{ assets : "holds"
+    crypto_accounts ||--o{ assets : "holds"
+    assets ||--o{ transactions : "has"
+    assets ||--o{ mutual_fund_holdings : "has"
+
+    %% Statement processing
+    statements ||--o{ assets : "creates"
+    statements ||--o{ transactions : "creates"
+    statements ||--o{ expenses : "creates"
+
+    %% Expense tracking
+    bank_accounts ||--o{ expenses : "source"
+    expense_categories ||--o{ expenses : "categorizes"
+    expense_categories ||--o{ expense_categories : "parent-child"
+
+    %% Alerts
+    assets ||--o{ alerts : "triggers"
+
+    %% Snapshots
+    portfolio_snapshots ||--o{ asset_snapshots : "contains"
+    assets ||--o{ asset_snapshots : "snapshotted"
+    bank_accounts ||--o{ asset_snapshots : "snapshotted"
+    demat_accounts ||--o{ asset_snapshots : "snapshotted"
+    crypto_accounts ||--o{ asset_snapshots : "snapshotted"

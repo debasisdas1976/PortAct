@@ -230,6 +230,9 @@ export const railSections: RailSection[] = [
     key: 'assets',
     label: 'Assets',
     icon: React.createElement(WalletIcon),
+    items: [
+      { text: 'Cash In Hand', icon: React.createElement(WalletIcon), path: '/cash-in-hand' },
+    ],
     assetGroups: assetGroups,
     dataTour: 'sidebar-assets',
   },

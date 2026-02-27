@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -125,8 +126,45 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color, 
   );
 };
 
+// Asset type key → navigation route
+const ASSET_TYPE_ROUTES: Record<string, string> = {
+  stock: '/stocks',
+  us_stock: '/us-stocks',
+  equity_mutual_fund: '/equity-mf',
+  hybrid_mutual_fund: '/hybrid-mf',
+  debt_mutual_fund: '/debt-funds',
+  commodity: '/commodities',
+  sovereign_gold_bond: '/sovereign-gold-bonds',
+  esop: '/esops',
+  rsu: '/rsus',
+  crypto: '/crypto-assets',
+  fixed_deposit: '/fixed-deposit',
+  recurring_deposit: '/recurring-deposit',
+  savings_account: '/savings',
+  corporate_bond: '/corporate-bond',
+  rbi_bond: '/rbi-bond',
+  tax_saving_bond: '/tax-saving-bond',
+  ppf: '/ppf',
+  pf: '/pf',
+  nps: '/nps',
+  ssy: '/ssy',
+  nsc: '/nsc',
+  kvp: '/kvp',
+  scss: '/scss',
+  mis: '/mis',
+  gratuity: '/gratuity',
+  insurance_policy: '/insurance',
+  reit: '/reits',
+  invit: '/invits',
+  land: '/land',
+  farm_land: '/farm-land',
+  house: '/house',
+  cash: '/cash-in-hand',
+};
+
 const Dashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
   const { summary, loading, error, portfolios } = useSelector((state: RootState) => state.portfolio);
   const { notify } = useNotification();
   const { assets } = useSelector((state: RootState) => state.assets);
@@ -266,42 +304,47 @@ const Dashboard: React.FC = () => {
     assetsByCategory[category].count += 1;
     assetsByCategory[category].invested += asset.total_invested || 0;
 
+    // For real_estate, split drill-down by property_type (land, farm_land, house)
+    const subType = type === 'real_estate'
+      ? (asset.details?.property_type || 'land').toLowerCase()
+      : type;
+
     if (!assetsByTypeInCategory[category]) {
       assetsByTypeInCategory[category] = {};
     }
-    if (!assetsByTypeInCategory[category][type]) {
-      assetsByTypeInCategory[category][type] = { value: 0, count: 0, invested: 0 };
+    if (!assetsByTypeInCategory[category][subType]) {
+      assetsByTypeInCategory[category][subType] = { value: 0, count: 0, invested: 0 };
     }
-    assetsByTypeInCategory[category][type].value += asset.current_value || 0;
-    assetsByTypeInCategory[category][type].count += 1;
-    assetsByTypeInCategory[category][type].invested += asset.total_invested || 0;
+    assetsByTypeInCategory[category][subType].value += asset.current_value || 0;
+    assetsByTypeInCategory[category][subType].count += 1;
+    assetsByTypeInCategory[category][subType].invested += asset.total_invested || 0;
   });
 
-  // Add bank accounts and demat cash
-  if (bankAccounts.length > 0) {
-    assetsByCategory['Bank Accounts'] = {
-      value: totalBankBalance,
-      count: bankAccounts.length,
-      invested: totalBankBalance,
-    };
+  // Merge bank account balances into Fixed Income category
+  if (totalBankBalance > 0) {
+    if (!assetsByCategory['Fixed Income']) {
+      assetsByCategory['Fixed Income'] = { value: 0, count: 0, invested: 0 };
+    }
+    assetsByCategory['Fixed Income'].value += totalBankBalance;
+    assetsByCategory['Fixed Income'].invested += totalBankBalance;
   }
 
-  const dematWithCash = dematAccounts.filter(a => a.cash_balance > 0);
-  if (dematWithCash.length > 0) {
-    assetsByCategory['Demat Cash'] = {
-      value: totalDematCash,
-      count: dematWithCash.length,
-      invested: totalDematCash,
-    };
+  // Merge demat cash into Equity category
+  if (totalDematCash > 0) {
+    if (!assetsByCategory['Equity']) {
+      assetsByCategory['Equity'] = { value: 0, count: 0, invested: 0 };
+    }
+    assetsByCategory['Equity'].value += totalDematCash;
+    assetsByCategory['Equity'].invested += totalDematCash;
   }
 
-  const cryptoWithCash = cryptoAccounts.filter(a => (a.cash_balance_usd || 0) > 0);
-  if (cryptoWithCash.length > 0) {
-    assetsByCategory['Crypto Cash'] = {
-      value: totalCryptoCash,
-      count: cryptoWithCash.length,
-      invested: totalCryptoCash,
-    };
+  // Merge crypto cash into Crypto category
+  if (totalCryptoCash > 0) {
+    if (!assetsByCategory['Crypto']) {
+      assetsByCategory['Crypto'] = { value: 0, count: 0, invested: 0 };
+    }
+    assetsByCategory['Crypto'].value += totalCryptoCash;
+    assetsByCategory['Crypto'].invested += totalCryptoCash;
   }
 
   // Get display name for an asset type key
@@ -319,6 +362,7 @@ const Dashboard: React.FC = () => {
 
   const chartData = Object.entries(currentViewData)
     .map(([key, data]) => ({
+      key,
       name: isShowingCategories ? key : getDisplayName(key),
       value: data.value,
     }))
@@ -339,8 +383,14 @@ const Dashboard: React.FC = () => {
     .sort((a, b) => b.value - a.value);
 
   const handleCategoryClick = (categoryName: string) => {
-    if (categoryName === 'Bank Accounts' || categoryName === 'Demat Cash' || categoryName === 'Crypto Cash') return;
     setSelectedCategory(categoryName);
+  };
+
+  const handleTypeClick = (typeKey: string) => {
+    const route = ASSET_TYPE_ROUTES[typeKey];
+    if (route) {
+      navigate(route);
+    }
   };
 
   return (
@@ -504,6 +554,7 @@ const Dashboard: React.FC = () => {
               data={chartData}
               selectedCategory={selectedCategory}
               onSliceClick={handleCategoryClick}
+              onTypeClick={handleTypeClick}
               onBack={() => setSelectedCategory(null)}
             />
           </Paper>
@@ -553,13 +604,12 @@ const Dashboard: React.FC = () => {
                         <TableRow
                           key={row.type}
                           hover
-                          sx={isShowingCategories && row.type !== 'Bank Accounts' && row.type !== 'Demat Cash' && row.type !== 'Crypto Cash'
-                            ? { cursor: 'pointer' }
-                            : {}
-                          }
+                          sx={{ cursor: 'pointer' }}
                           onClick={() => {
-                            if (isShowingCategories && row.type !== 'Bank Accounts' && row.type !== 'Demat Cash' && row.type !== 'Crypto Cash') {
+                            if (isShowingCategories) {
                               handleCategoryClick(row.type);
+                            } else {
+                              handleTypeClick(row.type);
                             }
                           }}
                         >

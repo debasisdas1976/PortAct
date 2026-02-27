@@ -64,6 +64,7 @@ const ASSET_TYPE_ROUTES: Record<string, string> = {
   kvp: '/kvp',
   scss: '/scss',
   mis: '/mis',
+  cash: '/cash-in-hand',
 };
 
 const REAL_ESTATE_ROUTES: Record<string, string> = {

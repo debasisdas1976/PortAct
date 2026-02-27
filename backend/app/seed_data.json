@@ -826,8 +826,8 @@
     },
     {
       "name": "cash",
-      "display_label": "Cash",
-      "category": "Other",
+      "display_label": "Cash In Hand",
+      "category": "Cash",
       "sort_order": 61,
       "allowed_conversions": null
     }
