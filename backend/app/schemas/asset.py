@@ -47,6 +47,7 @@ class AssetUpdate(BaseModel):
     details: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+    xirr: Optional[float] = None
     # Account information
     account_id: Optional[str] = None
     broker_name: Optional[str] = None
@@ -66,6 +67,7 @@ class AssetInDB(AssetBase):
     current_value: float
     profit_loss: float
     profit_loss_percentage: float
+    xirr: Optional[float] = None
     is_active: bool
     price_update_failed: bool = False
     last_price_update: Optional[datetime] = None

@@ -31,6 +31,7 @@ export interface CryptoAssetForEdit {
   purchase_price: number;
   total_invested: number;
   current_price: number;
+  xirr?: number | null;
   crypto_account_id?: number;
   details?: { coin_id?: string; currency?: string; price_usd?: number; usd_to_inr_rate?: number };
 }
@@ -73,6 +74,7 @@ const CryptoAssetDialog: React.FC<CryptoAssetDialogProps> = ({
     purchase_price: 0,
     total_invested: 0,
     current_price: 0,
+    xirr: null as number | null,
     currency: 'INR' as 'USD' | 'INR',
     crypto_account_id: '' as number | '',
   });
@@ -93,6 +95,7 @@ const CryptoAssetDialog: React.FC<CryptoAssetDialogProps> = ({
         purchase_price: editingAsset.purchase_price,
         total_invested: editingAsset.total_invested,
         current_price: editingAsset.current_price,
+        xirr: editingAsset.xirr ?? null,
         currency: 'INR',
         crypto_account_id: editingAsset.crypto_account_id || '',
       });
@@ -113,6 +116,7 @@ const CryptoAssetDialog: React.FC<CryptoAssetDialogProps> = ({
         purchase_price: 0,
         total_invested: 0,
         current_price: 0,
+        xirr: null,
         currency: 'INR',
         crypto_account_id: fixedCryptoAccountId || '',
       });
@@ -147,8 +151,10 @@ const CryptoAssetDialog: React.FC<CryptoAssetDialogProps> = ({
     try {
       const response = await api.get(`/prices/crypto/${symbol}`);
       const { price: priceUsd, price_inr: priceInr, usd_to_inr_rate: rate } = response.data;
-      setPriceInfo({ usd: priceUsd, inr: priceInr, rate });
-      return { usd: priceUsd, inr: priceInr };
+      const usd = priceUsd || 0;
+      const inr = priceInr || 0;
+      setPriceInfo({ usd, inr, rate: rate || (usd > 0 ? inr / usd : 0) });
+      return { usd, inr };
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to fetch price'));
       return null;
@@ -216,6 +222,7 @@ const CryptoAssetDialog: React.FC<CryptoAssetDialogProps> = ({
         purchase_price: formData.purchase_price,
         total_invested: formData.total_invested || formData.quantity * formData.purchase_price,
         current_price: formData.current_price,
+        ...(formData.xirr != null ? { xirr: formData.xirr } : {}),
         crypto_account_id: accountId,
         details: {
           coin_id: formData.coin_id || undefined,
@@ -318,7 +325,7 @@ const CryptoAssetDialog: React.FC<CryptoAssetDialogProps> = ({
 
           {priceInfo && (
             <Alert severity="info">
-              Current Price: {formatINR(priceInfo.inr)} ({formatUSD(priceInfo.usd)} at ₹{priceInfo.rate.toFixed(2)}/$)
+              Current Price: {formatINR(priceInfo.inr || 0)} ({formatUSD(priceInfo.usd || 0)}{priceInfo.rate ? ` at ₹${priceInfo.rate.toFixed(2)}/$` : ''})
             </Alert>
           )}
 
@@ -383,6 +390,8 @@ const CryptoAssetDialog: React.FC<CryptoAssetDialogProps> = ({
             fullWidth
             helperText="Auto-updated by price scheduler"
           />
+
+          <TextField label="XIRR (%)" type="number" value={formData.xirr ?? ''} onChange={(e) => setFormData({ ...formData, xirr: e.target.value ? parseFloat(e.target.value) : null })} fullWidth helperText="Auto-calculated from transactions. Enter manually if needed." />
 
           {showAccountDropdown && (
             <TextField

@@ -76,6 +76,7 @@ class Asset(Base):
     # Performance metrics
     profit_loss = Column(Float, default=0.0)  # Absolute profit/loss
     profit_loss_percentage = Column(Float, default=0.0)  # Percentage profit/loss
+    xirr = Column(Float, nullable=True)  # Annualized return % (XIRR)
     
     # Asset-specific details (stored as JSON for flexibility)
     details = Column(JSON, default={})

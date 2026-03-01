@@ -9,6 +9,7 @@ from app.models.asset import Asset, AssetType
 from app.models.transaction import Transaction, TransactionType
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
+from app.services.xirr_service import build_cash_flows_from_transactions, calculate_xirr
 from datetime import datetime, timedelta, date
 
 router = APIRouter()
@@ -91,13 +92,46 @@ async def get_dashboard_overview(
         Transaction.transaction_date >= six_months_ago
     ).group_by('month').order_by('month').all()
     
+    # Calculate portfolio-level XIRR
+    txn_query = db.query(Transaction).join(Asset).filter(
+        Asset.user_id == current_user.id,
+        Asset.is_active == True
+    )
+    if portfolio_id is not None:
+        txn_query = txn_query.filter(Asset.portfolio_id == portfolio_id)
+    all_transactions = txn_query.order_by(Transaction.transaction_date).all()
+
+    portfolio_cash_flows = build_cash_flows_from_transactions(
+        all_transactions, current_value=0  # terminal value added below
+    )
+
+    # For assets without transactions, synthesize a BUY from purchase_date
+    asset_ids_with_txns = {t.asset_id for t in all_transactions}
+    for asset in assets:
+        if (asset.id not in asset_ids_with_txns
+                and asset.purchase_date
+                and asset.total_invested > 0):
+            txn_date = (
+                asset.purchase_date.date()
+                if isinstance(asset.purchase_date, datetime)
+                else asset.purchase_date
+            )
+            portfolio_cash_flows.append((txn_date, -asset.total_invested))
+
+    # Add terminal value: total current portfolio value today
+    if total_current_value > 0:
+        portfolio_cash_flows.append((date.today(), total_current_value))
+
+    portfolio_xirr = calculate_xirr(portfolio_cash_flows) if portfolio_cash_flows else None
+
     return {
         "portfolio_summary": {
             "total_assets": len(assets),
             "total_invested": round(total_invested, 2),
             "total_current_value": round(total_current_value, 2),
             "total_profit_loss": round(total_profit_loss, 2),
-            "total_profit_loss_percentage": round(total_profit_loss_percentage, 2)
+            "total_profit_loss_percentage": round(total_profit_loss_percentage, 2),
+            "portfolio_xirr": portfolio_xirr,
         },
         "assets_by_type": assets_by_type,
         "value_by_type": {k: round(v, 2) for k, v in value_by_type.items()},

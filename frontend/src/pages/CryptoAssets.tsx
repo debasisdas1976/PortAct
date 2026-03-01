@@ -45,6 +45,7 @@ interface CryptoAsset {
   current_value: number;
   profit_loss: number;
   profit_loss_percentage: number;
+  xirr?: number | null;
   asset_type: string;
   crypto_account_id?: number;
   broker_name?: string;
@@ -151,6 +152,7 @@ const CryptoAssets: React.FC = () => {
         purchase_price: asset.purchase_price,
         total_invested: asset.total_invested,
         current_price: asset.current_price,
+        xirr: asset.xirr ?? null,
         crypto_account_id: asset.crypto_account_id,
         details: asset.details,
       });
@@ -290,13 +292,14 @@ const CryptoAssets: React.FC = () => {
               <TableCell align="right"><strong>Current Value (₹)</strong></TableCell>
               <TableCell align="right"><strong>P&L (₹)</strong></TableCell>
               <TableCell align="right"><strong>P&L %</strong></TableCell>
+              <TableCell align="right"><strong>XIRR</strong></TableCell>
               <TableCell align="center"><strong>Actions</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {assets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center">
+                <TableCell colSpan={10} align="center">
                   <Typography color="text.secondary">No crypto holdings found.</Typography>
                 </TableCell>
               </TableRow>
@@ -327,7 +330,7 @@ const CryptoAssets: React.FC = () => {
                         <Typography variant="caption" color="text.secondary">Value</Typography>
                         <Typography variant="body2" fontWeight="medium">{formatCurrency(gValue)}</Typography>
                       </TableCell>
-                      <TableCell align="right" colSpan={2}>
+                      <TableCell align="right" colSpan={3}>
                         <Typography variant="caption" color="text.secondary">P&L</Typography>
                         <Typography variant="body2" fontWeight="medium" color={gPnL >= 0 ? 'success.main' : 'error.main'}>
                           {formatCurrency(gPnL)}
@@ -356,6 +359,18 @@ const CryptoAssets: React.FC = () => {
                             size="small"
                             icon={asset.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
                           />
+                        </TableCell>
+                        <TableCell align="right">
+                          {asset.xirr != null ? (
+                            <Chip
+                              label={`${asset.xirr >= 0 ? '+' : ''}${asset.xirr.toFixed(2)}%`}
+                              color={asset.xirr >= 0 ? 'success' : 'error'}
+                              size="small"
+                              variant="outlined"
+                            />
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">N/A</Typography>
+                          )}
                         </TableCell>
                         <TableCell align="center">
                           <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(asset.id, asset.symbol || asset.name)} disabled={updatingAssetId === asset.id}>

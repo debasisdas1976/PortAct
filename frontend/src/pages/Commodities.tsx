@@ -42,6 +42,7 @@ interface CommodityAsset {
   id: number;
   name: string;
   symbol: string;
+  isin?: string;
   quantity: number;
   purchase_price: number;
   current_price: number;
@@ -49,6 +50,7 @@ interface CommodityAsset {
   current_value: number;
   profit_loss: number;
   profit_loss_percentage: number;
+  xirr?: number | null;
   asset_type: string;
   demat_account_id?: number;
   broker_name?: string;
@@ -87,10 +89,12 @@ const Commodities: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     symbol: '',
+    isin: '',
     quantity: 0,
     purchase_price: 0,
     total_invested: 0,
     current_price: 0,
+    xirr: null as number | null,
     demat_account_id: '' as number | '',
   });
   const [submitting, setSubmitting] = useState(false);
@@ -141,15 +145,17 @@ const Commodities: React.FC = () => {
       setFormData({
         name: asset.name,
         symbol: asset.symbol || '',
+        isin: asset.isin || '',
         quantity: asset.quantity,
         purchase_price: asset.purchase_price,
         total_invested: asset.total_invested,
         current_price: asset.current_price,
+        xirr: asset.xirr ?? null,
         demat_account_id: asset.demat_account_id || '',
       });
     } else {
       setEditingAsset(null);
-      setFormData({ name: '', symbol: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, demat_account_id: '' });
+      setFormData({ name: '', symbol: '', isin: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, xirr: null, demat_account_id: '' });
     }
     setOpenDialog(true);
   };
@@ -165,10 +171,12 @@ const Commodities: React.FC = () => {
         asset_type: 'commodity',
         name: formData.name.trim(),
         symbol: formData.symbol.trim() || undefined,
+        isin: formData.isin.trim() || undefined,
         quantity: formData.quantity,
         purchase_price: formData.purchase_price,
         total_invested: formData.total_invested || formData.quantity * formData.purchase_price,
         current_price: formData.current_price,
+        ...(formData.xirr != null ? { xirr: formData.xirr } : {}),
         demat_account_id: formData.demat_account_id,
       };
       if (editingAsset) {
@@ -303,13 +311,14 @@ const Commodities: React.FC = () => {
               <TableCell align="right"><strong>Current Value</strong></TableCell>
               <TableCell align="right"><strong>P&L</strong></TableCell>
               <TableCell align="right"><strong>P&L %</strong></TableCell>
+              <TableCell align="right"><strong>XIRR</strong></TableCell>
               <TableCell align="center"><strong>Actions</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {commodities.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center">
+                <TableCell colSpan={10} align="center">
                   <Typography color="text.secondary">No commodity holdings found.</Typography>
                 </TableCell>
               </TableRow>
@@ -340,7 +349,7 @@ const Commodities: React.FC = () => {
                         <Typography variant="caption" color="text.secondary">Value</Typography>
                         <Typography variant="body2" fontWeight="medium">{formatCurrency(gValue)}</Typography>
                       </TableCell>
-                      <TableCell align="right" colSpan={2}>
+                      <TableCell align="right" colSpan={3}>
                         <Typography variant="caption" color="text.secondary">P&L</Typography>
                         <Typography variant="body2" fontWeight="medium" color={gPnL >= 0 ? 'success.main' : 'error.main'}>
                           {formatCurrency(gPnL)}
@@ -370,6 +379,18 @@ const Commodities: React.FC = () => {
                             icon={commodity.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
                           />
                         </TableCell>
+                        <TableCell align="right">
+                          {commodity.xirr != null ? (
+                            <Chip
+                              label={`${commodity.xirr >= 0 ? '+' : ''}${commodity.xirr.toFixed(2)}%`}
+                              color={commodity.xirr >= 0 ? 'success' : 'error'}
+                              size="small"
+                              variant="outlined"
+                            />
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">N/A</Typography>
+                          )}
+                        </TableCell>
                         <TableCell align="center">
                           <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(commodity.id, commodity.symbol || commodity.name)} disabled={updatingAssetId === commodity.id}>
                             {updatingAssetId === commodity.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
@@ -398,10 +419,12 @@ const Commodities: React.FC = () => {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
             <TextField label="Commodity Name (e.g. Gold, Silver)" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} fullWidth required />
             <TextField label="Symbol" value={formData.symbol} onChange={(e) => setFormData({ ...formData, symbol: e.target.value })} fullWidth />
+            <TextField label="ISIN" value={formData.isin} onChange={(e) => setFormData({ ...formData, isin: e.target.value })} fullWidth />
             <TextField label="Quantity (grams / units)" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })} fullWidth />
             <TextField label="Average Buy Price" type="number" value={formData.purchase_price} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} fullWidth />
             <TextField label="Total Invested" type="number" value={formData.total_invested} onChange={(e) => setFormData({ ...formData, total_invested: parseFloat(e.target.value) || 0 })} fullWidth helperText="Leave 0 to auto-calculate (Qty x Avg Price)" />
             <TextField label="Current Price" type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Will be auto-updated by price scheduler" />
+            <TextField label="XIRR (%)" type="number" value={formData.xirr ?? ''} onChange={(e) => setFormData({ ...formData, xirr: e.target.value ? parseFloat(e.target.value) : null })} fullWidth helperText="Auto-calculated from transactions. Enter manually if needed." />
             <TextField
               select
               label="Demat Account"

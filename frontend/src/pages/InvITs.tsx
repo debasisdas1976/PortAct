@@ -16,7 +16,7 @@ import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 interface AssetItem {
   id: number; name: string; symbol: string; quantity: number; purchase_price: number;
   current_price: number; total_invested: number; current_value: number;
-  profit_loss: number; profit_loss_percentage: number; asset_type: string;
+  profit_loss: number; profit_loss_percentage: number; xirr?: number | null; asset_type: string;
   demat_account_id?: number; broker_name?: string; account_id?: string;
   account_holder_name?: string; notes?: string;
 }
@@ -24,7 +24,7 @@ interface DematAccount { id: number; broker_name: string; account_id: string; ac
 
 const ASSET_TYPE = 'invit';
 const PAGE_TITLE = 'InvITs';
-const EMPTY_FORM = { name: '', symbol: '', quantity: '', purchase_price: '', current_price: '', broker_name: '', account_id: '', notes: '', portfolio_id: '' as number | '' };
+const EMPTY_FORM = { name: '', symbol: '', isin: '', quantity: '', purchase_price: '', current_price: '', xirr: null as number | null, broker_name: '', account_id: '', notes: '', portfolio_id: '' as number | '' };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
@@ -103,7 +103,7 @@ const InvITs: React.FC = () => {
   const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') }); setDialogOpen(true); };
   const handleEdit = (asset: AssetItem) => {
     setEditingId(asset.id);
-    setForm({ name: asset.name || '', symbol: asset.symbol || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '', portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
+    setForm({ name: asset.name || '', symbol: asset.symbol || '', isin: (asset as any).isin || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), xirr: asset.xirr ?? null, broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '', portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
     setDialogOpen(true);
   };
   const handleSave = async () => {
@@ -112,7 +112,7 @@ const InvITs: React.FC = () => {
     const qty = parseFloat(form.quantity) || 1;
     const buyPrice = parseFloat(form.purchase_price) || 0;
     const curPrice = parseFloat(form.current_price) || buyPrice;
-    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, broker_name: form.broker_name || undefined, account_id: form.account_id || undefined, notes: form.notes || undefined, portfolio_id: form.portfolio_id || undefined };
+    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, isin: form.isin || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, ...(form.xirr != null ? { xirr: form.xirr } : {}), broker_name: form.broker_name || undefined, account_id: form.account_id || undefined, notes: form.notes || undefined, portfolio_id: form.portfolio_id || undefined };
     try {
       setSaving(true);
       if (editingId) { await assetsAPI.update(editingId, payload); } else { await assetsAPI.create(payload); }
@@ -147,11 +147,12 @@ const InvITs: React.FC = () => {
             <TableCell align="right"><strong>Avg Buy</strong></TableCell><TableCell align="right"><strong>Current</strong></TableCell>
             <TableCell align="right"><strong>Invested</strong></TableCell><TableCell align="right"><strong>Value</strong></TableCell>
             <TableCell align="right"><strong>P&L</strong></TableCell><TableCell align="right"><strong>P&L %</strong></TableCell>
+            <TableCell align="right"><strong>XIRR</strong></TableCell>
             <TableCell align="center"><strong>Actions</strong></TableCell>
           </TableRow></TableHead>
           <TableBody>
             {assets.length === 0 ? (
-              <TableRow><TableCell colSpan={9} align="center"><Typography color="text.secondary">No holdings found. Click "Add" to create one.</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} align="center"><Typography color="text.secondary">No holdings found. Click "Add" to create one.</Typography></TableCell></TableRow>
             ) : Object.entries(groups).map(([key, ga]) => {
               const gI = ga.reduce((s, a) => s + (a.total_invested || 0), 0);
               const gV = ga.reduce((s, a) => s + (a.current_value || 0), 0);
@@ -162,7 +163,7 @@ const InvITs: React.FC = () => {
                     <TableCell colSpan={4}><Typography variant="subtitle2" fontWeight="bold">{groupLabel(ga)}</Typography><Typography variant="caption" color="text.secondary">{ga.length} holding{ga.length !== 1 ? 's' : ''}</Typography></TableCell>
                     <TableCell align="right"><Typography variant="caption" color="text.secondary">Invested</Typography><Typography variant="body2" fontWeight="medium">{formatCurrency(gI)}</Typography></TableCell>
                     <TableCell align="right"><Typography variant="caption" color="text.secondary">Value</Typography><Typography variant="body2" fontWeight="medium">{formatCurrency(gV)}</Typography></TableCell>
-                    <TableCell align="right" colSpan={3}><Typography variant="caption" color="text.secondary">P&L</Typography><Typography variant="body2" fontWeight="medium" color={gP >= 0 ? 'success.main' : 'error.main'}>{formatCurrency(gP)}</Typography></TableCell>
+                    <TableCell align="right" colSpan={4}><Typography variant="caption" color="text.secondary">P&L</Typography><Typography variant="body2" fontWeight="medium" color={gP >= 0 ? 'success.main' : 'error.main'}>{formatCurrency(gP)}</Typography></TableCell>
                   </TableRow>
                   {ga.map((asset) => (
                     <TableRow key={asset.id} hover>
@@ -174,6 +175,18 @@ const InvITs: React.FC = () => {
                       <TableCell align="right">{formatCurrency(asset.current_value)}</TableCell>
                       <TableCell align="right" sx={{ color: asset.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>{formatCurrency(asset.profit_loss)}</TableCell>
                       <TableCell align="right"><Chip label={`${asset.profit_loss_percentage >= 0 ? '+' : ''}${asset.profit_loss_percentage?.toFixed(2)}%`} color={asset.profit_loss_percentage >= 0 ? 'success' : 'error'} size="small" icon={asset.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />} /></TableCell>
+                      <TableCell align="right">
+                          {asset.xirr != null ? (
+                            <Chip
+                              label={`${asset.xirr >= 0 ? '+' : ''}${asset.xirr.toFixed(2)}%`}
+                              color={asset.xirr >= 0 ? 'success' : 'error'}
+                              size="small"
+                              variant="outlined"
+                            />
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">N/A</Typography>
+                          )}
+                        </TableCell>
                       <TableCell align="center">
                         <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(asset.id, asset.symbol || asset.name)} disabled={updatingAssetId === asset.id}>{updatingAssetId === asset.id ? <CircularProgress size={16} /> : <Refresh fontSize="small" />}</IconButton>
                         <IconButton size="small" color="primary" onClick={() => handleEdit(asset)} title="Edit"><Edit fontSize="small" /></IconButton>
@@ -194,12 +207,14 @@ const InvITs: React.FC = () => {
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}><TextField fullWidth label="Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Symbol / Ticker" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="ISIN" value={form.isin} onChange={(e) => setForm({ ...form, isin: e.target.value })} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Quantity" type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} inputProps={{ min: 0, step: '0.0001' }} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Purchase Price" type="number" value={form.purchase_price} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} inputProps={{ min: 0, step: '0.01' }} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Current Price" type="number" value={form.current_price} onChange={(e) => setForm({ ...form, current_price: e.target.value })} inputProps={{ min: 0, step: '0.01' }} helperText="Leave empty to use purchase price" /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Broker" value={form.broker_name} onChange={(e) => setForm({ ...form, broker_name: e.target.value })} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Account ID" value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })} /></Grid>
             <Grid item xs={12}><TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Grid>
+            <Grid item xs={12} sm={6}><TextField label="XIRR (%)" type="number" value={form.xirr ?? ''} onChange={(e) => setForm({ ...form, xirr: e.target.value ? parseFloat(e.target.value) : null })} fullWidth helperText="Auto-calculated from transactions. Enter manually if needed." /></Grid>
             <Grid item xs={12}>
               <TextField
                 select

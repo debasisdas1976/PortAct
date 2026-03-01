@@ -13,6 +13,7 @@ from app.schemas.transaction import (
     TransactionUpdate,
     TransactionWithAsset
 )
+from app.services.xirr_service import calculate_asset_xirr
 
 router = APIRouter()
 
@@ -108,7 +109,8 @@ async def create_transaction(
     
     # Update asset based on transaction
     _update_asset_from_transaction(asset, new_transaction)
-    
+    _recalculate_asset_xirr(asset, db)
+
     db.commit()
     db.refresh(new_transaction)
     
@@ -202,18 +204,34 @@ def _update_asset_from_transaction(asset: Asset, transaction: Transaction):
     asset.calculate_metrics()
 
 
+def _recalculate_asset_xirr(asset: Asset, db: Session):
+    """Recalculate XIRR for an asset from its transactions."""
+    transactions = db.query(Transaction).filter(
+        Transaction.asset_id == asset.id
+    ).order_by(Transaction.transaction_date).all()
+
+    if not transactions:
+        return
+
+    asset.xirr = calculate_asset_xirr(transactions, asset.current_value or 0)
+
+
 def _recalculate_asset_from_transactions(asset: Asset, db: Session):
     """Recalculate asset metrics from all transactions"""
     transactions = db.query(Transaction).filter(
         Transaction.asset_id == asset.id
     ).order_by(Transaction.transaction_date).all()
-    
+
     asset.quantity = 0
     asset.total_invested = 0
-    
+
     for transaction in transactions:
         _update_asset_from_transaction(asset, transaction)
-    
+
     asset.calculate_metrics()
+
+    # Recalculate XIRR from the same transactions
+    if transactions:
+        asset.xirr = calculate_asset_xirr(transactions, asset.current_value or 0)
 
 # Made with Bob

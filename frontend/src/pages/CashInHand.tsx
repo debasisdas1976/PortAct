@@ -22,6 +22,7 @@ interface AssetItem {
   asset_type: string;
   notes?: string;
   details?: Record<string, any>;
+  xirr?: number | null;
 }
 
 const ASSET_TYPE = 'cash';
@@ -46,6 +47,7 @@ const EMPTY_FORM = {
   original_amount: '',
   inr_value: '',
   notes: '',
+  xirr: '' as string,
   portfolio_id: '' as number | '',
 };
 
@@ -113,6 +115,7 @@ const CashInHand: React.FC = () => {
       original_amount: String(originalAmount),
       inr_value: String(asset.current_value || ''),
       notes: asset.notes || '',
+      xirr: String(asset.xirr || ''),
       portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
     });
     setDialogError('');
@@ -165,6 +168,7 @@ const CashInHand: React.FC = () => {
       current_price: inrValue,
       notes: form.notes || undefined,
       details,
+      ...(form.xirr ? { xirr: parseFloat(form.xirr) } : {}),
       portfolio_id: form.portfolio_id || undefined,
     };
 
@@ -231,12 +235,13 @@ const CashInHand: React.FC = () => {
               <TableCell><strong>Currency</strong></TableCell>
               <TableCell align="right"><strong>Amount</strong></TableCell>
               <TableCell align="right"><strong>INR Value</strong></TableCell>
+              <TableCell align="right"><strong>XIRR</strong></TableCell>
               <TableCell align="center"><strong>Actions</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {assets.length === 0 ? (
-              <TableRow><TableCell colSpan={5} align="center"><Typography color="text.secondary">No cash holdings found. Click "Add" to create one.</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} align="center"><Typography color="text.secondary">No cash holdings found. Click "Add" to create one.</Typography></TableCell></TableRow>
             ) : (
               assets.map((asset) => {
                 const currency = asset.details?.currency || asset.symbol || 'INR';
@@ -250,6 +255,15 @@ const CashInHand: React.FC = () => {
                     <TableCell><Chip label={currency} size="small" variant="outlined" /></TableCell>
                     <TableCell align="right">{formatAmount(originalAmount, currency)}</TableCell>
                     <TableCell align="right">{formatCurrency(asset.current_value)}</TableCell>
+                    <TableCell align="right">
+                      {asset.xirr != null ? (
+                        <Typography variant="body2" color={asset.xirr >= 0 ? 'success.main' : 'error.main'}>
+                          {asset.xirr >= 0 ? '+' : ''}{asset.xirr.toFixed(2)}%
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">N/A</Typography>
+                      )}
+                    </TableCell>
                     <TableCell align="center">
                       <IconButton size="small" color="primary" onClick={() => handleEdit(asset)} title="Edit"><Edit fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => handleDelete(asset.id, asset.name)} title="Delete"><Delete fontSize="small" /></IconButton>
@@ -299,6 +313,9 @@ const CashInHand: React.FC = () => {
               <TextField select fullWidth label="Portfolio" value={form.portfolio_id} onChange={(e) => handleFormChange('portfolio_id', e.target.value ? e.target.value : '')}>
                 {portfolios.map((p: any) => (<MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>))}
               </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="XIRR (%)" type="number" value={form.xirr} onChange={(e) => handleFormChange('xirr', e.target.value)} helperText="Enter annualized return rate" />
             </Grid>
             <Grid item xs={12}>
               <TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => handleFormChange('notes', e.target.value)} />

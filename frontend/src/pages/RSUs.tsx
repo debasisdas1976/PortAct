@@ -50,6 +50,7 @@ interface RSUAsset {
   current_value: number;
   profit_loss: number;
   profit_loss_percentage: number;
+  xirr?: number | null;
   asset_type: string;
   demat_account_id?: number;
   broker_name?: string;
@@ -109,6 +110,7 @@ const RSUs: React.FC = () => {
     current_price: 0,
     shares_granted: 0,
     shares_vested: 0,
+    xirr: null as number | null,
     demat_broker_name: '',
     demat_account_id_input: '',
     demat_account_holder: '',
@@ -171,6 +173,7 @@ const RSUs: React.FC = () => {
         current_price: asset.details?.currency === 'USD' ? (asset.details?.price_usd || 0) : asset.current_price || 0,
         shares_granted: asset.details?.shares_granted || 0,
         shares_vested: asset.details?.shares_vested || asset.quantity || 0,
+        xirr: asset.xirr ?? null,
         demat_broker_name: linkedDemat?.broker_name || asset.broker_name || '',
         demat_account_id_input: linkedDemat?.account_id || asset.account_id || '',
         demat_account_holder: linkedDemat?.account_holder_name || asset.account_holder_name || '',
@@ -181,6 +184,7 @@ const RSUs: React.FC = () => {
         name: '', symbol: '', currency: 'INR', company_name: '',
         grant_date: '', vesting_date: '', fmv_at_grant: 0, current_price: 0,
         shares_granted: 0, shares_vested: 0,
+        xirr: null,
         demat_broker_name: '', demat_account_id_input: '', demat_account_holder: '',
       });
     }
@@ -230,6 +234,7 @@ const RSUs: React.FC = () => {
         purchase_price: formData.fmv_at_grant,
         current_price: formData.current_price,
         total_invested: formData.shares_vested * formData.fmv_at_grant,
+        ...(formData.xirr != null ? { xirr: formData.xirr } : {}),
         demat_account_id: dematAccountId,
         details: {
           currency: formData.currency,
@@ -383,13 +388,14 @@ const RSUs: React.FC = () => {
               <TableCell align="right"><strong>Value (INR)</strong></TableCell>
               <TableCell align="right"><strong>P&L</strong></TableCell>
               <TableCell align="right"><strong>P&L %</strong></TableCell>
+              <TableCell align="right"><strong>XIRR</strong></TableCell>
               <TableCell align="center"><strong>Actions</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {assets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center">
+                <TableCell colSpan={11} align="center">
                   <Typography color="text.secondary">No RSU holdings found.</Typography>
                 </TableCell>
               </TableRow>
@@ -420,7 +426,7 @@ const RSUs: React.FC = () => {
                         <Typography variant="caption" color="text.secondary">Value</Typography>
                         <Typography variant="body2" fontWeight="medium">{formatINR(gValue)}</Typography>
                       </TableCell>
-                      <TableCell align="right" colSpan={2}>
+                      <TableCell align="right" colSpan={3}>
                         <Typography variant="caption" color="text.secondary">P&L</Typography>
                         <Typography variant="body2" fontWeight="medium" color={gPnL >= 0 ? 'success.main' : 'error.main'}>
                           {formatINR(gPnL)}
@@ -474,6 +480,18 @@ const RSUs: React.FC = () => {
                               icon={asset.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
                             />
                           </TableCell>
+                          <TableCell align="right">
+                            {asset.xirr != null ? (
+                              <Chip
+                                label={`${asset.xirr >= 0 ? '+' : ''}${asset.xirr.toFixed(2)}%`}
+                                color={asset.xirr >= 0 ? 'success' : 'error'}
+                                size="small"
+                                variant="outlined"
+                              />
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">N/A</Typography>
+                            )}
+                          </TableCell>
                           <TableCell align="center">
                             <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(asset.id, asset.symbol || asset.name)} disabled={updatingAssetId === asset.id}>
                               {updatingAssetId === asset.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
@@ -526,6 +544,7 @@ const RSUs: React.FC = () => {
               <TextField label={`FMV at Grant (${formData.currency})`} type="number" value={formData.fmv_at_grant} onChange={(e) => setFormData({ ...formData, fmv_at_grant: parseFloat(e.target.value) || 0 })} fullWidth helperText="Fair Market Value at grant date" />
               <TextField label={`Current Price (${formData.currency})`} type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Update manually" />
             </Box>
+            <TextField label="XIRR (%)" type="number" value={formData.xirr ?? ''} onChange={(e) => setFormData({ ...formData, xirr: e.target.value ? parseFloat(e.target.value) : null })} fullWidth helperText="Auto-calculated from transactions. Enter manually if needed." />
             {/* ── Demat Account Information ─────────────────────────────────── */}
             <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1, mb: -1 }}>
               Demat Account Information

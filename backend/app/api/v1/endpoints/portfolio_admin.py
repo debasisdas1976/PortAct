@@ -476,6 +476,7 @@ async def restore_portfolio(
                 current_value=r.get("current_value", 0),
                 profit_loss=r.get("profit_loss", 0),
                 profit_loss_percentage=r.get("profit_loss_percentage", 0),
+                xirr=r.get("xirr"),
                 details=r.get("details"),
                 is_active=r.get("is_active", True),
                 notes=r.get("notes"),

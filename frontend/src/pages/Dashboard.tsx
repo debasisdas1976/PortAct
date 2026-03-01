@@ -80,12 +80,13 @@ interface StatCardProps {
   title: string;
   value: string;
   change?: number;
+  subtitle?: string;
   icon: React.ReactNode;
   color: string;
   hideNumbers: boolean;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color, hideNumbers }) => {
+const StatCard: React.FC<StatCardProps> = ({ title, value, change, subtitle, icon, color, hideNumbers }) => {
   const isPositive = change !== undefined && change >= 0;
   
   return (
@@ -113,6 +114,11 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon, color, 
                   {hideNumbers ? '••••' : `${isPositive ? '+' : ''}${change.toFixed(2)}%`}
                 </Typography>
               </Box>
+            )}
+            {subtitle && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                {hideNumbers ? '••••' : subtitle}
+              </Typography>
             )}
           </Box>
           <Box
@@ -460,6 +466,9 @@ const Dashboard: React.FC = () => {
             title="Total Gain/Loss"
             value={formatCurrency(summary?.portfolio_summary?.total_profit_loss || 0)}
             change={summary?.portfolio_summary?.total_profit_loss_percentage}
+            subtitle={summary?.portfolio_summary?.portfolio_xirr != null
+              ? `XIRR: ${summary.portfolio_summary.portfolio_xirr >= 0 ? '+' : ''}${summary.portfolio_summary.portfolio_xirr.toFixed(2)}% p.a.`
+              : undefined}
             icon={
               (summary?.portfolio_summary?.total_profit_loss || 0) >= 0 ? (
                 <TrendingUp sx={{ color: 'white' }} />

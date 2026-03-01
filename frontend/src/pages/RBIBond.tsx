@@ -16,13 +16,13 @@ import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 interface AssetItem {
   id: number; name: string; symbol: string; isin?: string; quantity: number;
   purchase_price: number; current_price: number; total_invested: number; current_value: number;
-  profit_loss: number; profit_loss_percentage: number; asset_type: string;
+  profit_loss: number; profit_loss_percentage: number; xirr?: number | null; asset_type: string;
   broker_name?: string; account_id?: string; notes?: string; details?: Record<string, any>;
 }
 
 const ASSET_TYPE = 'rbi_bond';
 const PAGE_TITLE = 'RBI Bonds';
-const EMPTY_FORM = { name: '', symbol: '', isin: '', quantity: '', purchase_price: '', current_price: '', interest_rate: '', maturity_date: '', broker_name: '', notes: '', portfolio_id: '' as number | '' };
+const EMPTY_FORM = { name: '', symbol: '', isin: '', quantity: '', purchase_price: '', current_price: '', xirr: null as number | null, interest_rate: '', maturity_date: '', broker_name: '', notes: '', portfolio_id: '' as number | '' };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
@@ -57,7 +57,7 @@ const RBIBond: React.FC = () => {
   const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') }); setDialogOpen(true); };
   const handleEdit = (asset: AssetItem) => {
     setEditingId(asset.id);
-    setForm({ name: asset.name || '', symbol: asset.symbol || '', isin: asset.isin || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), interest_rate: String(asset.details?.interest_rate || ''), maturity_date: asset.details?.maturity_date || '', broker_name: asset.broker_name || '', notes: asset.notes || '',
+    setForm({ name: asset.name || '', symbol: asset.symbol || '', isin: asset.isin || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), xirr: asset.xirr ?? null, interest_rate: String(asset.details?.interest_rate || ''), maturity_date: asset.details?.maturity_date || '', broker_name: asset.broker_name || '', notes: asset.notes || '',
       portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
     setDialogOpen(true);
   };
@@ -71,7 +71,7 @@ const RBIBond: React.FC = () => {
     const details: Record<string, any> = {};
     if (form.interest_rate) details.interest_rate = parseFloat(form.interest_rate);
     if (form.maturity_date) details.maturity_date = form.maturity_date;
-    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, isin: form.isin || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, broker_name: form.broker_name || undefined, notes: form.notes || undefined, details, portfolio_id: form.portfolio_id || undefined };
+    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, isin: form.isin || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, ...(form.xirr != null ? { xirr: form.xirr } : {}), broker_name: form.broker_name || undefined, notes: form.notes || undefined, details, portfolio_id: form.portfolio_id || undefined };
     try {
       setSaving(true);
       if (editingId) { await assetsAPI.update(editingId, payload); } else { await assetsAPI.create(payload); }
@@ -106,12 +106,13 @@ const RBIBond: React.FC = () => {
             <TableCell><strong>Bond</strong></TableCell><TableCell><strong>ISIN</strong></TableCell>
             <TableCell align="right"><strong>Qty</strong></TableCell><TableCell align="right"><strong>Invested</strong></TableCell>
             <TableCell align="right"><strong>Current Value</strong></TableCell><TableCell align="right"><strong>P&L</strong></TableCell>
+            <TableCell align="right"><strong>XIRR</strong></TableCell>
             <TableCell align="right"><strong>Coupon Rate</strong></TableCell><TableCell><strong>Maturity</strong></TableCell>
             <TableCell align="center"><strong>Actions</strong></TableCell>
           </TableRow></TableHead>
           <TableBody>
             {assets.length === 0 ? (
-              <TableRow><TableCell colSpan={9} align="center"><Typography color="text.secondary">No holdings found. Click "Add" to create one.</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} align="center"><Typography color="text.secondary">No holdings found. Click "Add" to create one.</Typography></TableCell></TableRow>
             ) : assets.map((asset) => (
               <TableRow key={asset.id} hover>
                 <TableCell><Typography variant="body2" fontWeight="medium">{asset.name}</Typography>{asset.broker_name && <Typography variant="caption" color="text.secondary">{asset.broker_name}</Typography>}</TableCell>
@@ -120,6 +121,18 @@ const RBIBond: React.FC = () => {
                 <TableCell align="right">{formatCurrency(asset.total_invested)}</TableCell>
                 <TableCell align="right">{formatCurrency(asset.current_value)}</TableCell>
                 <TableCell align="right"><Chip label={`${asset.profit_loss_percentage >= 0 ? '+' : ''}${asset.profit_loss_percentage?.toFixed(2)}%`} color={asset.profit_loss_percentage >= 0 ? 'success' : 'error'} size="small" icon={asset.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />} /></TableCell>
+                <TableCell align="right">
+                          {asset.xirr != null ? (
+                            <Chip
+                              label={`${asset.xirr >= 0 ? '+' : ''}${asset.xirr.toFixed(2)}%`}
+                              color={asset.xirr >= 0 ? 'success' : 'error'}
+                              size="small"
+                              variant="outlined"
+                            />
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">N/A</Typography>
+                          )}
+                        </TableCell>
                 <TableCell align="right">{asset.details?.interest_rate ? `${asset.details.interest_rate}%` : '-'}</TableCell>
                 <TableCell>{asset.details?.maturity_date ? new Date(asset.details.maturity_date).toLocaleDateString('en-IN') : '-'}</TableCell>
                 <TableCell align="center">
@@ -145,6 +158,7 @@ const RBIBond: React.FC = () => {
             <Grid item xs={12} sm={6}><TextField fullWidth label="Coupon / Interest Rate (%)" type="number" value={form.interest_rate} onChange={(e) => setForm({ ...form, interest_rate: e.target.value })} inputProps={{ min: 0, step: '0.01' }} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Maturity Date" type="date" value={form.maturity_date} onChange={(e) => setForm({ ...form, maturity_date: e.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Broker" value={form.broker_name} onChange={(e) => setForm({ ...form, broker_name: e.target.value })} /></Grid>
+            <Grid item xs={12} sm={6}><TextField label="XIRR (%)" type="number" value={form.xirr ?? ''} onChange={(e) => setForm({ ...form, xirr: e.target.value ? parseFloat(e.target.value) : null })} fullWidth helperText="Auto-calculated from transactions. Enter manually if needed." /></Grid>
             <Grid item xs={12} sm={6}><TextField select fullWidth label="Portfolio" value={form.portfolio_id} onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}>{portfolios.map((p: any) => (<MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>))}</TextField></Grid>
             <Grid item xs={12}><TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Grid>
           </Grid>

@@ -16,11 +16,12 @@ import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 interface AssetItem {
   id: number; name: string; symbol: string; total_invested: number; current_value: number;
   asset_type: string; broker_name?: string; account_id?: string; notes?: string; details?: Record<string, any>;
+  xirr?: number | null;
 }
 
 const ASSET_TYPE = 'scss';
 const PAGE_TITLE = 'Senior Citizens Savings Scheme (SCSS)';
-const EMPTY_FORM = { name: '', symbol: '', total_invested: '', current_value: '', interest_rate: '', maturity_date: '', broker_name: '', notes: '', portfolio_id: '' as number | '' };
+const EMPTY_FORM = { name: '', symbol: '', total_invested: '', current_value: '', interest_rate: '', maturity_date: '', broker_name: '', notes: '', xirr: '' as string, portfolio_id: '' as number | '' };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
@@ -55,6 +56,7 @@ const SCSS: React.FC = () => {
     setEditingId(asset.id);
     setForm({ name: asset.name || '', symbol: asset.symbol || '', total_invested: String(asset.total_invested || ''), current_value: String(asset.current_value || ''),
       interest_rate: String(asset.details?.interest_rate || ''), maturity_date: asset.details?.maturity_date || '', broker_name: asset.broker_name || '', notes: asset.notes || '',
+      xirr: String(asset.xirr || ''),
       portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
     setDialogOpen(true);
   };
@@ -67,7 +69,7 @@ const SCSS: React.FC = () => {
     const details: Record<string, any> = {};
     if (form.interest_rate) details.interest_rate = parseFloat(form.interest_rate);
     if (form.maturity_date) details.maturity_date = form.maturity_date;
-    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, total_invested: invested, quantity: 1, purchase_price: invested, current_price: value, broker_name: form.broker_name || undefined, notes: form.notes || undefined, details, portfolio_id: form.portfolio_id || undefined };
+    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, total_invested: invested, quantity: 1, purchase_price: invested, current_price: value, broker_name: form.broker_name || undefined, notes: form.notes || undefined, details, ...(form.xirr ? { xirr: parseFloat(form.xirr) } : {}), portfolio_id: form.portfolio_id || undefined };
     try {
       setSaving(true);
       if (editingId) { await assetsAPI.update(editingId, payload); } else { await assetsAPI.create(payload); }
@@ -101,11 +103,11 @@ const SCSS: React.FC = () => {
             <TableCell><strong>Name</strong></TableCell><TableCell><strong>Account No.</strong></TableCell>
             <TableCell align="right"><strong>Invested</strong></TableCell><TableCell align="right"><strong>Current Value</strong></TableCell>
             <TableCell align="right"><strong>Interest Rate</strong></TableCell><TableCell><strong>Maturity Date</strong></TableCell>
-            <TableCell align="center"><strong>Actions</strong></TableCell>
+            <TableCell align="right"><strong>XIRR</strong></TableCell><TableCell align="center"><strong>Actions</strong></TableCell>
           </TableRow></TableHead>
           <TableBody>
             {assets.length === 0 ? (
-              <TableRow><TableCell colSpan={7} align="center"><Typography color="text.secondary">No holdings found. Click "Add" to create one.</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} align="center"><Typography color="text.secondary">No holdings found. Click "Add" to create one.</Typography></TableCell></TableRow>
             ) : assets.map((asset) => (
               <TableRow key={asset.id} hover>
                 <TableCell><Typography variant="body2" fontWeight="medium">{asset.name}</Typography>{asset.broker_name && <Typography variant="caption" color="text.secondary">{asset.broker_name}</Typography>}</TableCell>
@@ -114,6 +116,15 @@ const SCSS: React.FC = () => {
                 <TableCell align="right">{formatCurrency(asset.current_value)}</TableCell>
                 <TableCell align="right">{asset.details?.interest_rate ? `${asset.details.interest_rate}%` : '-'}</TableCell>
                 <TableCell>{asset.details?.maturity_date ? new Date(asset.details.maturity_date).toLocaleDateString('en-IN') : '-'}</TableCell>
+                <TableCell align="right">
+                  {asset.xirr != null ? (
+                    <Typography variant="body2" color={asset.xirr >= 0 ? 'success.main' : 'error.main'}>
+                      {asset.xirr >= 0 ? '+' : ''}{asset.xirr.toFixed(2)}%
+                    </Typography>
+                  ) : (
+                    <Typography variant="caption" color="text.secondary">N/A</Typography>
+                  )}
+                </TableCell>
                 <TableCell align="center">
                   <IconButton size="small" color="primary" onClick={() => handleEdit(asset)} title="Edit"><Edit fontSize="small" /></IconButton>
                   <IconButton size="small" color="error" onClick={() => handleDelete(asset.id, asset.name)} title="Delete"><Delete fontSize="small" /></IconButton>
@@ -136,6 +147,7 @@ const SCSS: React.FC = () => {
             <Grid item xs={12} sm={6}><TextField fullWidth label="Interest Rate (%)" type="number" value={form.interest_rate} onChange={(e) => setForm({ ...form, interest_rate: e.target.value })} inputProps={{ min: 0, step: '0.01' }} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Maturity Date" type="date" value={form.maturity_date} onChange={(e) => setForm({ ...form, maturity_date: e.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
             <Grid item xs={12} sm={6}><TextField select fullWidth label="Portfolio" value={form.portfolio_id} onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}>{portfolios.map((p: any) => (<MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>))}</TextField></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="XIRR (%)" type="number" value={form.xirr} onChange={(e) => setForm({ ...form, xirr: e.target.value })} helperText="Enter annualized return rate" /></Grid>
             <Grid item xs={12}><TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Grid>
           </Grid>
         </DialogContent>
