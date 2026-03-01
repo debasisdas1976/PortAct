@@ -282,7 +282,7 @@ const Layout: React.FC = () => {
 
         <DialogContent sx={{ pt: 3, pb: 4, px: 4 }}>
           {[
-            { label: 'Version', value: '1.3.0' },
+            { label: 'Version', value: '1.4.0' },
             { label: 'Developer', value: 'Debasis Das' },
             { label: 'Stack', value: 'React, FastAPI, PostgreSQL' },
             { label: 'License', value: 'Private' },
