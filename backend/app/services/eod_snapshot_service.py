@@ -221,7 +221,12 @@ class EODSnapshotService:
         portfolio_snapshot.total_current_value = total_current_value
         portfolio_snapshot.total_profit_loss = total_profit_loss
         portfolio_snapshot.total_profit_loss_percentage = total_profit_loss_percentage
-        demat_accounts_with_cash = [a for a in demat_accounts if a.cash_balance and a.cash_balance > 0]
+        def _demat_has_cash(d):
+            cash_inr = d.cash_balance or 0.0
+            if d.currency == 'USD' and d.cash_balance_usd and cash_inr <= 0:
+                cash_inr = d.cash_balance_usd  # just checking > 0, exact rate not needed
+            return cash_inr > 0
+        demat_accounts_with_cash = [a for a in demat_accounts if _demat_has_cash(a)]
         crypto_accounts_with_cash = [a for a in crypto_accounts if a.cash_balance_usd and a.cash_balance_usd > 0]
         portfolio_snapshot.total_assets_count = (
             len(assets) + len(bank_accounts) + len(demat_accounts_with_cash) + len(crypto_accounts_with_cash)
@@ -268,6 +273,7 @@ class EODSnapshotService:
                     EODSnapshotService.capture_snapshot(db, user.id, snapshot_date)
                     success_count += 1
                 except Exception as e:
+                    db.rollback()
                     error_count += 1
                     logger.error(f"Error capturing snapshot for user {user.id}: {str(e)}")
             
@@ -339,6 +345,7 @@ class EODSnapshotService:
                         logger.info(f"Capturing missed snapshot for user {user.id} on {missed_date}")
                         EODSnapshotService.capture_snapshot(db, user.id, missed_date)
                     except Exception as e:
+                        db.rollback()
                         logger.error(
                             f"Error capturing missed snapshot for user {user.id} "
                             f"on {missed_date}: {str(e)}"

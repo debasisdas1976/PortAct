@@ -18,6 +18,7 @@ from app.schemas.alert import (
 )
 from app.schemas.news_progress import NewsProgress
 from app.services.ai_news_service import ai_news_service
+from app.services.free_news_service import free_news_service
 from app.services.news_progress_tracker import progress_tracker
 
 router = APIRouter()
@@ -199,16 +200,31 @@ async def fetch_portfolio_news(
     The job runs in the background. Poll ``/alerts/progress/{session_id}`` to
     track progress.
     """
-    # Validate API key upfront so we can fail fast with a clear message
+    # Check AI API key — if missing, fall back to free alerts instead of failing
     provider_config = ai_news_service.get_provider_config()
-    if not provider_config.get("api_key"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"No API key configured for {provider_config['display_name']}. "
-                f"Set it in Settings → AI Configuration."
-            ),
-        )
+    has_ai_key = bool(provider_config.get("api_key"))
+
+    if not has_ai_key:
+        # No AI key configured — run free alerts as fallback
+        async def _process_free_fallback():
+            try:
+                alerts_created, _ = await free_news_service.process_free_alerts(
+                    db=db, user_id=current_user.id,
+                )
+                logger.info(
+                    f"Free alerts (AI fallback) for user {current_user.id}: "
+                    f"{alerts_created} alerts created."
+                )
+            except Exception as exc:
+                logger.error(f"Error in free alert fallback for user {current_user.id}: {exc}")
+
+        background_tasks.add_task(_process_free_fallback)
+        return {
+            "message": "No AI key configured. Running free alerts (RSS, price analysis) instead.",
+            "status": "processing",
+            "ai_available": False,
+            "sources": ["rss", "price_analysis", "finnhub"],
+        }
 
     # Only fetch market-driven assets for per-asset alerts
     assets = (
@@ -317,3 +333,36 @@ async def cancel_news_fetch(
 
     progress_tracker.cancel_session(session_id)
     return {"message": "News fetching cancelled", "status": "cancelled", "session_id": session_id}
+
+
+# ---------------------------------------------------------------------------
+# Free (non-AI) alert endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/fetch-free-alerts", status_code=status.HTTP_202_ACCEPTED)
+async def fetch_free_alerts(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Trigger free (non-AI) alert fetching: RSS feeds, price analysis, and
+    Finnhub (if configured). Works without any API key configuration.
+    """
+    async def _process():
+        try:
+            alerts_created, _ = await free_news_service.process_free_alerts(
+                db=db,
+                user_id=current_user.id,
+            )
+            logger.info(f"Free alerts complete for user {current_user.id}: {alerts_created} alerts.")
+        except Exception as exc:
+            logger.error(f"Error in free alert fetch for user {current_user.id}: {exc}")
+
+    background_tasks.add_task(_process)
+
+    return {
+        "message": "Free alert fetching started in background",
+        "status": "processing",
+        "sources": ["rss", "price_analysis", "finnhub"],
+    }

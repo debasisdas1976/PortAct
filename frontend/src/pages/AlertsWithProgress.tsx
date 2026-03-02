@@ -28,6 +28,8 @@ import {
   Refresh,
   HourglassEmpty,
   CheckCircleOutline,
+  RssFeed,
+  OpenInNew,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import {
@@ -90,6 +92,7 @@ const AlertsWithProgress: React.FC = () => {
   const fetchingNews = !!(activeSessionId && polling);
 
   const [tabValue, setTabValue] = useState(0);
+  const [fetchingFree, setFetchingFree] = useState(false);
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
     message: '',
@@ -134,6 +137,18 @@ const AlertsWithProgress: React.FC = () => {
   const handleFetchNews = async () => {
     try {
       const response = await api.post('/alerts/fetch-news');
+
+      // If AI is not available, the backend runs free alerts as fallback
+      if (response.data.ai_available === false) {
+        showSnackbar(
+          response.data.message || 'Running free alerts (RSS, price analysis).',
+          'info',
+        );
+        // Refresh alerts after a short delay to pick up new free alerts
+        setTimeout(() => dispatch(fetchAlerts()), 5000);
+        return;
+      }
+
       dispatch(setActiveSession({
         sessionId: response.data.session_id,
         provider: response.data.provider
@@ -147,6 +162,28 @@ const AlertsWithProgress: React.FC = () => {
         err.response?.data?.detail || 'Failed to start news fetching. Please try again.',
         'error',
       );
+    }
+  };
+
+  const handleFetchFreeAlerts = async () => {
+    setFetchingFree(true);
+    try {
+      const response = await api.post('/alerts/fetch-free-alerts');
+      showSnackbar(
+        response.data.message || 'Free alerts are being fetched in the background.',
+        'info',
+      );
+      // Refresh alerts after a delay to pick up new results
+      setTimeout(() => {
+        dispatch(fetchAlerts());
+        setFetchingFree(false);
+      }, 5000);
+    } catch (err: any) {
+      showSnackbar(
+        err.response?.data?.detail || 'Failed to fetch free alerts.',
+        'error',
+      );
+      setFetchingFree(false);
     }
   };
 
@@ -275,10 +312,18 @@ const AlertsWithProgress: React.FC = () => {
             </Button>
           )}
           <Button
+            variant="outlined"
+            startIcon={fetchingFree ? <CircularProgress size={20} color="inherit" /> : <RssFeed />}
+            onClick={handleFetchFreeAlerts}
+            disabled={fetchingFree || fetchingNews}
+          >
+            {fetchingFree ? 'Fetching…' : 'Free Alerts'}
+          </Button>
+          <Button
             variant="contained"
             startIcon={fetchingNews ? <CircularProgress size={20} color="inherit" /> : <Refresh />}
             onClick={handleFetchNews}
-            disabled={fetchingNews}
+            disabled={fetchingNews || fetchingFree}
           >
             {fetchingNews ? 'Fetching News…' : 'Fetch Latest News'}
           </Button>
@@ -317,20 +362,54 @@ const AlertsWithProgress: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  alerts.map((alert) => (
+                  alerts.map((alert) => {
+                    // Extract source tag from title (e.g., "[RSS] Title" → source="RSS", cleanTitle="Title")
+                    const sourceMatch = alert.title?.match(/^\[(.+?)\]\s*/);
+                    const sourceTag = sourceMatch ? sourceMatch[1] : null;
+                    const cleanTitle = sourceMatch ? alert.title.replace(sourceMatch[0], '') : alert.title;
+                    const sourceColor = sourceTag === 'RSS' ? 'primary'
+                      : sourceTag === 'PRICE_ANALYSIS' ? 'secondary'
+                      : sourceTag === 'FINNHUB' ? 'success'
+                      : 'default';
+
+                    return (
                     <TableRow key={alert.id}>
                       <TableCell>{getSeverityIcon(alert.severity)}</TableCell>
                       <TableCell>
-                        <Typography variant="body2" fontWeight="medium">
-                          {alert.alert_type}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                          {sourceTag && (
+                            <Chip
+                              label={sourceTag === 'PRICE_ANALYSIS' ? 'PRICE' : sourceTag}
+                              size="small"
+                              variant="outlined"
+                              color={sourceColor as any}
+                              sx={{ fontSize: '0.65rem', height: 20 }}
+                            />
+                          )}
+                          <Typography variant="body2" fontWeight="medium">
+                            {alert.alert_type}
+                          </Typography>
+                        </Box>
+                        {cleanTitle && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                            {cleanTitle}
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">{alert.message}</Typography>
+                        {alert.action_url && alert.action_url.startsWith('http') && (
+                          <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                            <a href={alert.action_url} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                              Read more <OpenInNew sx={{ fontSize: 12 }} />
+                            </a>
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell>
-                        {alert.asset ? (
-                          <Typography variant="body2">{alert.asset.symbol}</Typography>
+                        {alert.asset_id ? (
+                          <Typography variant="body2">#{alert.asset_id}</Typography>
                         ) : (
                           <Typography variant="body2" color="text.secondary">-</Typography>
                         )}
@@ -353,7 +432,8 @@ const AlertsWithProgress: React.FC = () => {
                         </IconButton>
                       </TableCell>
                     </TableRow>
-                  ))
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

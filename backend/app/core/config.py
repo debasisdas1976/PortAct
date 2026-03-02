@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     MISTRAL_API_KEY: Optional[str] = None
     AI_NEWS_PROVIDER: str = "openai"
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
+    FINNHUB_API_KEY: Optional[str] = None
 
     # External API endpoints (overridable for proxies / staging mirrors)
     OPENAI_API_ENDPOINT: str = "https://api.openai.com/v1/chat/completions"

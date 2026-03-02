@@ -222,6 +222,23 @@ DEFAULT_APP_SETTINGS = [
         "label": "Mistral Model",
         "description": "Mistral model name.",
     },
+    # ── Free Alert Sources ──
+    {
+        "key": "finnhub_api_key",
+        "value": "",
+        "value_type": "secret",
+        "category": "ai",
+        "label": "Finnhub API Key (Free Tier)",
+        "description": "Optional free API key from finnhub.io for stock news alerts. Get one at https://finnhub.io/register",
+    },
+    {
+        "key": "free_alerts_enabled",
+        "value": "true",
+        "value_type": "bool",
+        "category": "scheduler",
+        "label": "Free Alerts Enabled",
+        "description": "Enable RSS news feeds and price-based portfolio alerts (no API key required).",
+    },
     {
         "key": "session_timeout_minutes",
         "value": "30",

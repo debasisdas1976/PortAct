@@ -283,7 +283,7 @@ async def restore_portfolio(
                 account_id=r.get("account_id"),
                 account_holder_name=r.get("account_holder_name"),
                 demat_account_number=r.get("demat_account_number"),
-                account_market=r.get("account_market"),
+                account_market=r.get("account_market") or "domestic",
                 cash_balance=r.get("cash_balance", 0),
                 cash_balance_usd=r.get("cash_balance_usd"),
                 currency=r.get("currency", "INR"),
@@ -341,6 +341,7 @@ async def restore_portfolio(
                 account_holder_name=r.get("account_holder_name"),
                 wallet_address=r.get("wallet_address"),
                 cash_balance_usd=r.get("cash_balance_usd"),
+                cash_balance_inr=r.get("cash_balance_inr", 0),
                 total_value_usd=r.get("total_value_usd"),
                 is_active=r.get("is_active", True),
                 is_primary=r.get("is_primary", False),
@@ -481,6 +482,9 @@ async def restore_portfolio(
                 is_active=r.get("is_active", True),
                 notes=r.get("notes"),
                 purchase_date=_parse_dt(r.get("purchase_date")),
+                price_update_failed=r.get("price_update_failed", False),
+                last_price_update=_parse_dt(r.get("last_price_update")),
+                price_update_error=r.get("price_update_error"),
             )
             db.add(obj)
             db.flush()
@@ -603,6 +607,7 @@ async def restore_portfolio(
                 is_recurring=r.get("is_recurring", False),
                 is_split=r.get("is_split", False),
                 is_reconciled=r.get("is_reconciled", False),
+                reconciled_at=_parse_dt(r.get("reconciled_at")),
                 location=r.get("location"),
                 notes=r.get("notes"),
                 tags=r.get("tags"),
@@ -779,7 +784,7 @@ async def generate_pdf_statement(
     asset_pl_pct = (asset_pl / asset_invested * 100) if asset_invested else 0
     bank_total = sum(b.current_balance or 0 for b in bank_accounts)
     demat_cash_total = sum(d.cash_balance or 0 for d in demat_accounts)
-    crypto_cash_total = sum(c.cash_balance_usd or 0 for c in crypto_accounts)
+    crypto_cash_total = sum(c.cash_balance_inr or 0 for c in crypto_accounts)
 
     # Dashboard-matching totals: include bank + demat + crypto cash in invested & value
     total_invested = asset_invested + bank_total + demat_cash_total + crypto_cash_total
@@ -961,7 +966,7 @@ async def generate_pdf_statement(
             "+Rs.0", "+0.00%",
         ])
     # Crypto Cash row (invested = value = cash balance in USD, P&L = 0)
-    crypto_with_cash = [c for c in crypto_accounts if (c.cash_balance_usd or 0) > 0]
+    crypto_with_cash = [c for c in crypto_accounts if (c.cash_balance_inr or 0) > 0]
     if crypto_with_cash:
         alloc_rows.append([
             "Crypto Cash", str(len(crypto_with_cash)),
@@ -1075,15 +1080,15 @@ async def generate_pdf_statement(
     # ── Crypto accounts (5 cols, 17 cm: [3.5, 3.0, 3.5, 4.0, 3.0]) ────────
     if crypto_accounts:
         story.append(Paragraph("Crypto Accounts", section_style))
-        ca_rows = [["Exchange", "Account", "Currency", "Nickname", "Cash (USD)"]]
+        ca_rows = [["Exchange", "Account", "Currency", "Nickname", "Cash (INR)"]]
         for c in crypto_accounts:
             exchange = str(c.exchange_name)
             ca_rows.append([
                 exchange.replace("_", " ").title(),
                 c.account_id or "—",
                 "USD",
-                c.account_name or "—",
-                inr(c.cash_balance_usd or 0),
+                c.nickname or "—",
+                inr(c.cash_balance_inr or 0),
             ])
         ca_rows.append(["", "", "", "Total", inr(crypto_cash_total)])
         ca_tbl = Table(ca_rows, colWidths=[3.5*cm, 3.0*cm, 3.5*cm, 4.0*cm, 3.0*cm])

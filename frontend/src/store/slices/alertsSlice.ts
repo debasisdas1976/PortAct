@@ -33,7 +33,7 @@ export const fetchAlerts = createAsyncThunk(
   'alerts/fetchAll',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await alertsAPI.getAll();
+      const response = await alertsAPI.getAll({ is_dismissed: false });
       return response;
     } catch (error: any) {
       return rejectWithValue(getErrorMessage(error, 'Failed to load alerts.'));
@@ -45,7 +45,7 @@ export const deleteAlert = createAsyncThunk(
   'alerts/delete',
   async (alertId: number, { rejectWithValue }) => {
     try {
-      await alertsAPI.dismiss(alertId);
+      await api.delete(`/alerts/${alertId}`);
       return alertId;
     } catch (error: any) {
       return rejectWithValue(getErrorMessage(error, 'Failed to delete alert.'));
@@ -121,6 +121,7 @@ const alertsSlice = createSlice({
     clearActiveSession: (state) => {
       state.activeSessionId = null;
       state.activeProvider = null;
+      state.polling = false;
     },
     // Internal actions used by the polling thunk
     _setProgress: (state, action) => {

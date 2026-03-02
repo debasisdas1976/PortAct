@@ -21,6 +21,7 @@ import {
 import api from '../services/api';
 
 interface RestoreStats {
+  portfolios: { imported: number; skipped: number };
   bank_accounts: { imported: number; skipped: number };
   demat_accounts: { imported: number; skipped: number };
   crypto_accounts: { imported: number; skipped: number };
@@ -28,9 +29,14 @@ interface RestoreStats {
   expense_categories: { imported: number; skipped: number };
   expenses: { imported: number; skipped: number };
   transactions: { imported: number; skipped: number };
+  mutual_fund_holdings: { imported: number; skipped: number };
+  alerts: { imported: number; skipped: number };
+  portfolio_snapshots: { imported: number; skipped: number };
+  asset_snapshots: { imported: number; skipped: number };
 }
 
 const STAT_LABELS: Record<string, string> = {
+  portfolios: 'Portfolios',
   bank_accounts: 'Bank Accounts',
   demat_accounts: 'Demat / Trading Accounts',
   crypto_accounts: 'Crypto Accounts',
@@ -38,6 +44,10 @@ const STAT_LABELS: Record<string, string> = {
   expense_categories: 'Expense Categories',
   expenses: 'Expenses',
   transactions: 'Transactions',
+  mutual_fund_holdings: 'Mutual Fund Holdings',
+  alerts: 'Alerts',
+  portfolio_snapshots: 'Portfolio Snapshots',
+  asset_snapshots: 'Asset Snapshots',
 };
 
 const PortfolioAdmin: React.FC = () => {

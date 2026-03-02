@@ -162,8 +162,8 @@ const Alerts: React.FC = () => {
                       <Typography variant="body2">{alert.message}</Typography>
                     </TableCell>
                     <TableCell>
-                      {alert.asset ? (
-                        <Typography variant="body2">{alert.asset.symbol}</Typography>
+                      {alert.asset_id ? (
+                        <Typography variant="body2">#{alert.asset_id}</Typography>
                       ) : (
                         <Typography variant="body2" color="text.secondary">
                           -

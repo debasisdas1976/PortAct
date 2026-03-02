@@ -31,6 +31,7 @@ export const login = createAsyncThunk(
     try {
       const response = await authAPI.login(credentials);
       localStorage.setItem('token', response.access_token);
+      localStorage.setItem('refreshToken', response.refresh_token);
       return response;
     } catch (error: any) {
       return rejectWithValue(getErrorMessage(error, 'Login failed. Please check your credentials.'));
@@ -71,6 +72,7 @@ const authSlice = createSlice({
       state.token = null;
       state.isAuthenticated = false;
       localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
     },
     clearError: (state) => {
       state.error = null;
@@ -118,6 +120,7 @@ const authSlice = createSlice({
         state.isAuthenticated = false;
         state.token = null;
         localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
       });
   },
 });

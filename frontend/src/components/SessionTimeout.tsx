@@ -4,8 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import { logout } from '../store/slices/authSlice';
 import { RootState } from '../store';
 
-// Session expires after being hidden/away for this long
-const HIDDEN_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const DEFAULT_TIMEOUT_MINUTES = 30;
+
+/** Read the configurable timeout from localStorage (synced by Settings page). */
+const getTimeoutMs = (): number => {
+  const stored = localStorage.getItem('sessionTimeoutMinutes');
+  const minutes = stored ? parseInt(stored, 10) : DEFAULT_TIMEOUT_MINUTES;
+  return (isNaN(minutes) || minutes < 1 ? DEFAULT_TIMEOUT_MINUTES : minutes) * 60 * 1000;
+};
 
 const SessionTimeout: React.FC = () => {
   const dispatch = useDispatch();
@@ -24,7 +30,6 @@ const SessionTimeout: React.FC = () => {
   }, [dispatch, navigate]);
 
   // Stable ref so the visibility handler always calls the latest doLogout
-  // without the effect needing to re-run (and re-add listeners) when it changes
   const doLogoutRef = useRef(doLogout);
   useEffect(() => {
     doLogoutRef.current = doLogout;
@@ -41,7 +46,7 @@ const SessionTimeout: React.FC = () => {
 
     const startTimer = () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => doLogoutRef.current(), HIDDEN_TIMEOUT_MS);
+      timeoutRef.current = setTimeout(() => doLogoutRef.current(), getTimeoutMs());
     };
 
     const cancelTimer = () => {
@@ -56,8 +61,15 @@ const SessionTimeout: React.FC = () => {
         // Tab switched / window minimised → start countdown
         startTimer();
       } else {
-        // User is back → cancel any pending logout
+        // User is back → check if session already expired based on last API activity
         cancelTimer();
+        const lastActivity = localStorage.getItem('lastApiActivity');
+        if (lastActivity) {
+          const elapsed = Date.now() - parseInt(lastActivity, 10);
+          if (elapsed > getTimeoutMs()) {
+            doLogoutRef.current();
+          }
+        }
       }
     };
 
@@ -79,5 +91,3 @@ const SessionTimeout: React.FC = () => {
 };
 
 export default SessionTimeout;
-
-// Made with Bob

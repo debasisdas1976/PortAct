@@ -28,6 +28,34 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// --- Silent token refresh logic ---
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (error: any) => void;
+}> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (token) {
+      prom.resolve(token);
+    } else {
+      prom.reject(error);
+    }
+  });
+  failedQueue = [];
+};
+
+const forceLogout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('lastApiActivity');
+  const currentPath = window.location.pathname;
+  if (currentPath !== '/login' && currentPath !== '/register') {
+    window.location.href = '/login?session_expired=true';
+  }
+};
+
 // Response interceptor to handle errors
 api.interceptors.response.use(
   (response) => {
@@ -35,19 +63,64 @@ api.interceptors.response.use(
     localStorage.setItem('lastApiActivity', Date.now().toString());
     return response;
   },
-  (error) => {
-    if (error.response?.status === 401) {
-      // Clear auth data from localStorage
-      localStorage.removeItem('token');
-      localStorage.removeItem('lastApiActivity');
+  async (error) => {
+    const originalRequest = error.config;
 
-      // Only redirect to login if not already on login or register page
-      const currentPath = window.location.pathname;
-      if (currentPath !== '/login' && currentPath !== '/register') {
-        // Redirect with session expired message
-        // The App component will detect the missing token and update Redux state
-        window.location.href = '/login?session_expired=true';
+    // Only attempt refresh on 401, and not for auth endpoints themselves
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/')
+    ) {
+      const refreshToken = localStorage.getItem('refreshToken');
+
+      if (!refreshToken) {
+        forceLogout();
+        return Promise.reject(error);
       }
+
+      if (isRefreshing) {
+        // Another refresh is in progress — queue this request
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const response = await axios.post(
+          `${API_URL}/auth/refresh`,
+          null,
+          { params: { refresh_token: refreshToken } }
+        );
+
+        const { access_token, refresh_token: newRefreshToken } = response.data;
+        localStorage.setItem('token', access_token);
+        localStorage.setItem('refreshToken', newRefreshToken);
+
+        // Retry queued requests with the new token
+        processQueue(null, access_token);
+
+        // Retry the original request
+        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+        forceLogout();
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    if (error.response?.status === 401) {
+      // 401 on an auth endpoint (e.g., bad credentials) — don't try to refresh
+      forceLogout();
     }
 
     // Normalize detail: if it's an array (validation errors), join into a readable string

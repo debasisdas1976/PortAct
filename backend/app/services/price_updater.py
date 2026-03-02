@@ -337,7 +337,8 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                 asset.details['price_usd'] = us_price_usd
                 asset.details['usd_to_inr_rate'] = usd_to_inr
                 asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
-                
+                flag_modified(asset, 'details')
+
                 logger.info(f"Updated US stock {asset.symbol}: ${us_price_usd} (₹{new_price:.2f} at rate {usd_to_inr})")
             else:
                 error_message = f"Failed to fetch US stock price for {lookup_symbol}"
@@ -455,6 +456,7 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                     asset.details['price_usd'] = us_price_usd
                     asset.details['usd_to_inr_rate'] = usd_to_inr
                     asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
+                    flag_modified(asset, 'details')
                     logger.info(f"Updated {asset.asset_type.value} {asset.symbol}: ${us_price_usd} (₹{new_price:.2f})")
                 else:
                     error_message = f"Failed to fetch US price for {lookup_symbol} ({asset.asset_type.value})"

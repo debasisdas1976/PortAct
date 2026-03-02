@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from typing import Optional
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
 from app.models.asset import Asset, AssetType
+from app.models.bank_account import BankAccount
+from app.models.demat_account import DematAccount
+from app.models.crypto_account import CryptoAccount
 from app.models.transaction import Transaction, TransactionType
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
@@ -57,9 +60,12 @@ async def get_dashboard_overview(
             value_by_type[asset_type.value] = sum(a.current_value for a in type_assets)
     
     # Recent transactions
-    recent_transactions = db.query(Transaction).join(Asset).filter(
+    recent_txn_query = db.query(Transaction).join(Asset).filter(
         Asset.user_id == current_user.id
-    ).order_by(Transaction.transaction_date.desc()).limit(10).all()
+    )
+    if portfolio_id is not None:
+        recent_txn_query = recent_txn_query.filter(Asset.portfolio_id == portfolio_id)
+    recent_transactions = recent_txn_query.order_by(Transaction.transaction_date.desc()).limit(10).all()
     
     # Unread alerts
     unread_alerts_count = db.query(Alert).filter(
@@ -83,14 +89,17 @@ async def get_dashboard_overview(
     
     # Monthly investment trend (last 6 months)
     six_months_ago = datetime.utcnow() - timedelta(days=180)
-    monthly_investments = db.query(
+    monthly_inv_query = db.query(
         func.date_trunc('month', Transaction.transaction_date).label('month'),
         func.sum(Transaction.total_amount).label('total')
     ).join(Asset).filter(
         Asset.user_id == current_user.id,
         Transaction.transaction_type.in_([TransactionType.BUY, TransactionType.DEPOSIT]),
         Transaction.transaction_date >= six_months_ago
-    ).group_by('month').order_by('month').all()
+    )
+    if portfolio_id is not None:
+        monthly_inv_query = monthly_inv_query.filter(Asset.portfolio_id == portfolio_id)
+    monthly_investments = monthly_inv_query.group_by('month').order_by('month').all()
     
     # Calculate portfolio-level XIRR
     txn_query = db.query(Transaction).join(Asset).filter(
@@ -243,11 +252,18 @@ async def get_portfolio_performance(
                 func.sum(AssetSnapshot.profit_loss).label("total_profit_loss"),
                 func.count(AssetSnapshot.id).label("total_assets_count"),
             )
-            .join(Asset, AssetSnapshot.asset_id == Asset.id)
+            .outerjoin(Asset, AssetSnapshot.asset_id == Asset.id)
+            .outerjoin(BankAccount, AssetSnapshot.bank_account_id == BankAccount.id)
+            .outerjoin(DematAccount, AssetSnapshot.demat_account_id == DematAccount.id)
+            .outerjoin(CryptoAccount, AssetSnapshot.crypto_account_id == CryptoAccount.id)
             .filter(
-                Asset.user_id == current_user.id,
-                Asset.portfolio_id == portfolio_id,
                 AssetSnapshot.snapshot_date >= start_date,
+                or_(
+                    (Asset.user_id == current_user.id) & (Asset.portfolio_id == portfolio_id),
+                    (BankAccount.user_id == current_user.id) & (BankAccount.portfolio_id == portfolio_id),
+                    (DematAccount.user_id == current_user.id) & (DematAccount.portfolio_id == portfolio_id),
+                    (CryptoAccount.user_id == current_user.id) & (CryptoAccount.portfolio_id == portfolio_id),
+                ),
             )
             .group_by(AssetSnapshot.snapshot_date)
             .order_by(AssetSnapshot.snapshot_date)
@@ -287,11 +303,11 @@ async def get_portfolio_performance(
         "snapshots": [
             {
                 "date": s.snapshot_date.isoformat(),
-                "total_invested": round(s.total_invested, 2),
-                "total_current_value": round(s.total_current_value, 2),
-                "total_profit_loss": round(s.total_profit_loss, 2),
-                "total_profit_loss_percentage": round(s.total_profit_loss_percentage, 2),
-                "total_assets_count": s.total_assets_count
+                "total_invested": round(s.total_invested or 0, 2),
+                "total_current_value": round(s.total_current_value or 0, 2),
+                "total_profit_loss": round(s.total_profit_loss or 0, 2),
+                "total_profit_loss_percentage": round(s.total_profit_loss_percentage or 0, 2),
+                "total_assets_count": s.total_assets_count or 0
             }
             for s in snapshots
         ]
@@ -339,12 +355,12 @@ async def get_asset_performance(
         "snapshots": [
             {
                 "date": s.snapshot_date.isoformat(),
-                "quantity": s.quantity,
-                "current_price": round(s.current_price, 2),
-                "total_invested": round(s.total_invested, 2),
-                "current_value": round(s.current_value, 2),
-                "profit_loss": round(s.profit_loss, 2),
-                "profit_loss_percentage": round(s.profit_loss_percentage, 2)
+                "quantity": s.quantity or 0,
+                "current_price": round(s.current_price or 0, 2),
+                "total_invested": round(s.total_invested or 0, 2),
+                "current_value": round(s.current_value or 0, 2),
+                "profit_loss": round(s.profit_loss or 0, 2),
+                "profit_loss_percentage": round(s.profit_loss_percentage or 0, 2)
             }
             for s in asset_snapshots
         ]
@@ -369,7 +385,10 @@ async def get_assets_list(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.order_by(Asset.name).all()
-    
+
+    for asset in assets:
+        asset.calculate_metrics()
+
     return {
         "assets": [
             {

@@ -61,6 +61,7 @@ const API_KEY_FIELDS = [
   { key: 'ai_anthropic_api_key', label: 'Anthropic Claude API Key', provider: 'anthropic' },
   { key: 'ai_deepseek_api_key', label: 'DeepSeek API Key', provider: 'deepseek' },
   { key: 'ai_mistral_api_key', label: 'Mistral API Key', provider: 'mistral' },
+  { key: 'finnhub_api_key', label: 'Finnhub API Key (Free)', provider: 'finnhub' },
 ];
 
 /* ─────────────────── component ─────────────────── */
@@ -103,7 +104,12 @@ const Settings: React.FC = () => {
       setEmployment(user);
       setAppSettings(settings);
       const form: Record<string, string> = {};
-      for (const s of settings as AppSetting[]) form[s.key] = s.value ?? '';
+      for (const s of settings as AppSetting[]) {
+        form[s.key] = s.value ?? '';
+        if (s.key === 'session_timeout_minutes') {
+          localStorage.setItem('sessionTimeoutMinutes', s.value ?? '30');
+        }
+      }
       setSettingsForm(form);
     } catch {
       setSnackbar({ open: true, message: 'Failed to load settings' });
@@ -171,7 +177,12 @@ const Settings: React.FC = () => {
       const updated = await settingsAPI.bulkUpdate(changed);
       setAppSettings(updated);
       const form: Record<string, string> = {};
-      for (const s of updated as AppSetting[]) form[s.key] = s.value ?? '';
+      for (const s of updated as AppSetting[]) {
+        form[s.key] = s.value ?? '';
+        if (s.key === 'session_timeout_minutes') {
+          localStorage.setItem('sessionTimeoutMinutes', s.value ?? '30');
+        }
+      }
       setSettingsForm(form);
       setSnackbar({ open: true, message: `${changed.length} setting(s) updated. Schedulers rescheduled.` });
     } catch (err: any) {
@@ -188,7 +199,12 @@ const Settings: React.FC = () => {
       const updated = await settingsAPI.reset();
       setAppSettings(updated);
       const form: Record<string, string> = {};
-      for (const s of updated as AppSetting[]) form[s.key] = s.value ?? '';
+      for (const s of updated as AppSetting[]) {
+        form[s.key] = s.value ?? '';
+        if (s.key === 'session_timeout_minutes') {
+          localStorage.setItem('sessionTimeoutMinutes', s.value ?? '30');
+        }
+      }
       setSettingsForm(form);
       setSnackbar({ open: true, message: 'Settings reset to defaults' });
     } catch (err: any) {

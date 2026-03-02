@@ -65,6 +65,7 @@ const ASSET_TYPE_ROUTES: Record<string, string> = {
   scss: '/scss',
   mis: '/mis',
   cash: '/cash-in-hand',
+  pension: '/pension',
   land: '/land',
   farm_land: '/farm-land',
   house: '/house',

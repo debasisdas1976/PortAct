@@ -110,8 +110,8 @@ class Asset(Base):
     
     def calculate_metrics(self):
         """Calculate profit/loss metrics"""
+        self.current_value = self.quantity * self.current_price
         if self.total_invested > 0:
-            self.current_value = self.quantity * self.current_price
             self.profit_loss = self.current_value - self.total_invested
             self.profit_loss_percentage = (self.profit_loss / self.total_invested) * 100
         else:

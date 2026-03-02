@@ -1,7 +1,8 @@
 """
 Scheduler service for periodic AI news fetching.
 """
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import asyncio
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 from loguru import logger
@@ -11,13 +12,23 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.user import User
 from app.services.ai_news_service import ai_news_service
+from app.services.free_news_service import free_news_service
+
+
+def _run_async(coro):
+    """Run an async coroutine from a sync BackgroundScheduler thread."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 class NewsScheduler:
     """Scheduler for periodic AI-powered news fetching."""
 
     def __init__(self):
-        self.scheduler: Optional[AsyncIOScheduler] = None
+        self.scheduler: Optional[BackgroundScheduler] = None
         self.is_running = False
 
     def start(self):
@@ -26,7 +37,7 @@ class NewsScheduler:
             logger.warning("News scheduler is already running.")
             return
 
-        self.scheduler = AsyncIOScheduler()
+        self.scheduler = BackgroundScheduler()
 
         # Morning run (IST)
         self.scheduler.add_job(
@@ -69,7 +80,7 @@ class NewsScheduler:
             self.is_running = False
             logger.info("News scheduler stopped.")
 
-    async def _fetch_news_for_all_users(self):
+    def _fetch_news_for_all_users(self):
         """Scheduled job: fetch AI news for all active users."""
         db: Session = SessionLocal()
         try:
@@ -81,9 +92,11 @@ class NewsScheduler:
 
             for user in users:
                 try:
-                    assets_processed, alerts_created, _ = await ai_news_service.process_user_portfolio(
-                        db=db,
-                        user_id=user.id,
+                    assets_processed, alerts_created, _ = _run_async(
+                        ai_news_service.process_user_portfolio(
+                            db=db,
+                            user_id=user.id,
+                        )
                     )
                     total_assets += assets_processed
                     total_alerts += alerts_created
@@ -91,10 +104,27 @@ class NewsScheduler:
                     logger.error(f"Error processing news for user {user.id}: {exc}")
                     continue
 
+            # Also run free alerts (RSS, price analysis, Finnhub) for all users
+            total_free_alerts = 0
+            for user in users:
+                try:
+                    free_count, _ = _run_async(
+                        free_news_service.process_free_alerts(
+                            db=db,
+                            user_id=user.id,
+                        )
+                    )
+                    total_free_alerts += free_count
+                except Exception as exc:
+                    logger.error(f"Error processing free alerts for user {user.id}: {exc}")
+                    continue
+
             logger.info(
                 f"Scheduled news fetch complete: "
-                f"{total_assets} assets processed, "
-                f"{total_alerts} alerts created across {len(users)} user(s)."
+                f"{total_assets} assets processed (AI), "
+                f"{total_alerts} AI alerts, "
+                f"{total_free_alerts} free alerts "
+                f"across {len(users)} user(s)."
             )
 
         except Exception as exc:
@@ -130,12 +160,21 @@ class NewsScheduler:
             assets_processed, alerts_created, _ = await ai_news_service.process_user_portfolio(
                 db=db,
                 user_id=user_id,
+                limit=limit,
             )
+
+            # Also run free alerts for this user
+            free_count, _ = await free_news_service.process_free_alerts(
+                db=db,
+                user_id=user_id,
+            )
+
             logger.info(
                 f"Manual news fetch for user {user_id}: "
-                f"{assets_processed} assets processed, {alerts_created} alerts created."
+                f"{assets_processed} assets processed, {alerts_created} AI alerts, "
+                f"{free_count} free alerts created."
             )
-            return assets_processed, alerts_created
+            return assets_processed, alerts_created + free_count
         except Exception as exc:
             logger.error(f"Error in manual news fetch for user {user_id}: {exc}")
             return 0, 0
