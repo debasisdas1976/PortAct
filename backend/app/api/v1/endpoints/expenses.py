@@ -138,18 +138,22 @@ async def get_expenses(
     if category_ids:
         categories = db.query(ExpenseCategory).filter(ExpenseCategory.id.in_(category_ids)).all()
         for cat in categories:
-            category_map[cat.id] = cat.name
+            category_map[cat.id] = {"name": cat.name, "icon": cat.icon, "color": cat.color}
 
-    # Enrich with bank account and category names from the pre-loaded maps
+    # Enrich with bank account and category details from the pre-loaded maps
     result = []
     for expense in expenses:
-        expense_dict = expense.__dict__.copy()
+        expense_dict = {k: v for k, v in expense.__dict__.items() if not k.startswith('_')}
 
         if expense.bank_account_id:
             expense_dict['bank_account_name'] = bank_account_map.get(expense.bank_account_id)
 
         if expense.category_id:
-            expense_dict['category_name'] = category_map.get(expense.category_id)
+            cat_info = category_map.get(expense.category_id)
+            if cat_info:
+                expense_dict['category_name'] = cat_info["name"]
+                expense_dict['category_icon'] = cat_info["icon"]
+                expense_dict['category_color'] = cat_info["color"]
 
         result.append(ExpenseWithDetails(**expense_dict))
 
@@ -487,9 +491,12 @@ async def get_monthly_expenses_by_category(
         dashboard_query = dashboard_query.filter(Expense.portfolio_id == portfolio_id)
     expenses = dashboard_query.all()
     
-    # Get all categories (including income categories to handle all cases)
+    # Get all categories (system + user-defined)
     categories = db.query(ExpenseCategory).filter(
-        ExpenseCategory.user_id == current_user.id
+        or_(
+            ExpenseCategory.is_system == True,
+            ExpenseCategory.user_id == current_user.id
+        )
     ).all()
     
     # Create a dictionary to store monthly data
@@ -656,18 +663,21 @@ async def get_expense(
             detail="Expense not found"
         )
     
-    expense_dict = expense.__dict__.copy()
-    
+    expense_dict = {k: v for k, v in expense.__dict__.items() if not k.startswith('_')}
+
     # Get bank account name
     if expense.bank_account_id:
         bank_account = db.query(BankAccount).filter(BankAccount.id == expense.bank_account_id).first()
         expense_dict['bank_account_name'] = bank_account.nickname or f"{bank_account.bank_name} - {bank_account.account_number[-4:]}" if bank_account else None
-    
-    # Get category name
+
+    # Get category details
     if expense.category_id:
         category = db.query(ExpenseCategory).filter(ExpenseCategory.id == expense.category_id).first()
-        expense_dict['category_name'] = category.name if category else None
-    
+        if category:
+            expense_dict['category_name'] = category.name
+            expense_dict['category_icon'] = category.icon
+            expense_dict['category_color'] = category.color
+
     return ExpenseWithDetails(**expense_dict)
 
 
@@ -698,10 +708,22 @@ async def create_expense(
     if not expense_dict.get('portfolio_id'):
         expense_dict['portfolio_id'] = get_default_portfolio_id(current_user.id, db)
 
+    # Auto-categorize if no category provided
+    category_id = expense_dict.get('category_id')
+    if not category_id:
+        from app.services.expense_categorizer import ExpenseCategorizer
+        categorizer = ExpenseCategorizer(db, user_id=current_user.id)
+        category_id = categorizer.categorize(
+            expense_dict.get('description', ''),
+            expense_dict.get('merchant_name')
+        )
+        if category_id:
+            expense_dict['category_id'] = category_id
+
     expense = Expense(
         **expense_dict,
         user_id=current_user.id,
-        is_categorized=expense_data.category_id is not None
+        is_categorized=expense_dict.get('category_id') is not None
     )
 
     db.add(expense)

@@ -26,6 +26,7 @@ except ImportError:
 # Import US broker parsers
 from app.services.vested_parser import VestedParser
 from app.services.indmoney_parser import INDMoneyParser
+from app.services.tradebook_parser import parse_zerodha_tradebook
 from app.services.currency_converter import convert_usd_to_inr, get_usd_to_inr_rate
 from app.services.isin_lookup import lookup_isin_for_asset
 from app.api.dependencies import get_default_portfolio_id
@@ -375,7 +376,142 @@ def _process_bank_statement_via_parser(statement: Statement, db: Session, portfo
     }
 
 
-def process_statement(statement_id: int, db: Session, portfolio_id: int = None, expected_institution: str = None):
+def _process_tradebook_statement(statement: Statement, db: Session, demat_account_id: int = None) -> dict:
+    """
+    Process a tradebook statement (e.g. Zerodha equity/MF tradebook CSV or Excel).
+    Parses trades and creates Transaction records linked to existing or new assets
+    in the specified demat account.
+    """
+    if not demat_account_id:
+        raise ValueError("demat_account_id is required for tradebook uploads")
+
+    # Verify demat account belongs to user
+    demat_account = db.query(DematAccount).filter(
+        DematAccount.id == demat_account_id,
+        DematAccount.user_id == statement.user_id,
+    ).first()
+    if not demat_account:
+        raise ValueError("Demat account not found or does not belong to the user")
+
+    trades, total_count = parse_zerodha_tradebook(statement.file_path, statement.file_type)
+
+    if not trades:
+        raise ValueError("No trades found in tradebook file")
+
+    # Build a lookup of existing assets in this demat account by symbol and ISIN
+    existing_assets = db.query(Asset).filter(
+        Asset.demat_account_id == demat_account_id,
+        Asset.user_id == statement.user_id,
+    ).all()
+
+    asset_by_symbol = {}
+    asset_by_isin = {}
+    for a in existing_assets:
+        if a.symbol:
+            sym = a.symbol.upper()
+            asset_by_symbol[sym] = a
+            # Zerodha holdings append -E/-BE suffixes to ETF symbols;
+            # index the base symbol too so tradebook entries match.
+            if sym.endswith('-E'):
+                asset_by_symbol[sym[:-2]] = a
+            elif sym.endswith('-BE'):
+                asset_by_symbol[sym[:-3]] = a
+        if a.isin:
+            asset_by_isin[a.isin.upper()] = a
+
+    # Build a set of existing transaction signatures for content-based dedup.
+    # This catches re-uploads even after consolidation changes trade_id strings.
+    from sqlalchemy import cast, Date
+    existing_sigs = set()
+    existing_txns = db.query(
+        Transaction.asset_id,
+        cast(Transaction.transaction_date, Date),
+        Transaction.transaction_type,
+        Transaction.quantity,
+        Transaction.price_per_unit,
+    ).join(Asset).filter(
+        Asset.demat_account_id == demat_account_id,
+    ).all()
+    for row in existing_txns:
+        # signature: (asset_id, date, txn_type, qty, price)
+        existing_sigs.add((row[0], row[1], str(row[2]), round(row[3], 4), round(row[4], 2)))
+
+    created_count = 0
+    duplicate_count = 0
+    skipped_no_asset = 0
+
+    for trade in trades:
+        symbol_upper = trade['symbol'].upper()
+        isin_upper = trade['isin'].upper() if trade['isin'] else None
+
+        # Find matching asset: try ISIN first, then symbol
+        asset = None
+        if isin_upper:
+            asset = asset_by_isin.get(isin_upper)
+        if not asset:
+            asset = asset_by_symbol.get(symbol_upper)
+
+        # Discard trades with no matching asset
+        if not asset:
+            skipped_no_asset += 1
+            continue
+
+        # Content-based dedup: same asset + date + type + qty + price
+        trade_date = trade['trade_date']
+        trade_date_key = trade_date.date() if hasattr(trade_date, 'date') else trade_date
+        trade_type_str = trade['trade_type']
+        txn_type_str = 'TransactionType.BUY' if trade_type_str == 'buy' else (
+            'TransactionType.SELL' if trade_type_str == 'sell' else 'TransactionType.BUY'
+        )
+        sig = (asset.id, trade_date_key, txn_type_str, round(trade['quantity'], 4), round(trade['price'], 2))
+        if sig in existing_sigs:
+            duplicate_count += 1
+            continue
+
+        # Map trade_type to TransactionType
+        trade_type_str = trade['trade_type']
+        if trade_type_str == 'buy':
+            txn_type = TransactionType.BUY
+        elif trade_type_str == 'sell':
+            txn_type = TransactionType.SELL
+        else:
+            txn_type = TransactionType.BUY
+
+        txn = Transaction(
+            asset_id=asset.id,
+            statement_id=statement.id,
+            transaction_type=txn_type,
+            transaction_date=trade['trade_date'],
+            quantity=trade['quantity'],
+            price_per_unit=trade['price'],
+            total_amount=trade['total_amount'],
+            fees=0,
+            taxes=0,
+            description=f"{trade['exchange']} {trade['segment']}",
+            reference_number=trade['trade_id'],
+        )
+        db.add(txn)
+        created_count += 1
+        existing_sigs.add(sig)
+
+    db.flush()
+
+    logger.info(
+        f"Tradebook processed for demat account {demat_account_id}: "
+        f"{created_count} imported, {duplicate_count} duplicates skipped, "
+        f"{skipped_no_asset} discarded (no matching asset)"
+    )
+
+    return {
+        'total_found': total_count,
+        'imported': created_count,
+        'duplicates': duplicate_count,
+        'skipped_no_asset': skipped_no_asset,
+    }
+
+
+def process_statement(statement_id: int, db: Session, portfolio_id: int = None,
+                      expected_institution: str = None, demat_account_id: int = None):
     """
     Main function to process an uploaded statement.
     If portfolio_id is provided, all created assets will be assigned to that portfolio.
@@ -383,6 +519,8 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
     If expected_institution is provided, the extracted broker/institution from the
     parsed statement will be validated against it. A mismatch causes the statement
     to be marked as FAILED.
+    If demat_account_id is provided (for tradebook uploads), transactions are linked
+    to assets in that specific demat account.
     """
     statement = db.query(Statement).filter(Statement.id == statement_id).first()
     if not statement:
@@ -412,11 +550,37 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
             db.commit()
             return
 
+        # Handle tradebook statements
+        if statement.statement_type == StatementType.TRADEBOOK_STATEMENT:
+            result = _process_tradebook_statement(statement, db, demat_account_id)
+            statement.assets_found = 0
+            statement.transactions_found = result['imported']
+            statement.status = StatementStatus.PROCESSED
+            statement.processing_completed_at = datetime.utcnow()
+            if result['duplicates'] > 0:
+                statement.error_message = (
+                    f"{result['imported']} new, {result['duplicates']} duplicate(s) skipped"
+                )
+            db.commit()
+            return
+
+        # When uploading from a specific demat account page, validate broker match
+        target_demat_account = None
+        if demat_account_id:
+            target_demat_account = db.query(DematAccount).filter(
+                DematAccount.id == demat_account_id,
+                DematAccount.user_id == statement.user_id,
+            ).first()
+            if not target_demat_account:
+                raise ValueError("Demat account not found or does not belong to the user")
+
         # Check for US broker statements (Vested, INDMoney)
+        # Auto-detect from demat account broker when uploading from the account page
         cash_balance_usd = None
-        if statement.statement_type == StatementType.VESTED_STATEMENT:
+        broker_lower = (target_demat_account.broker_name.lower() if target_demat_account else '')
+        if statement.statement_type == StatementType.VESTED_STATEMENT or broker_lower == 'vested':
             assets, transactions, cash_balance_usd = process_vested_statement(statement)
-        elif statement.statement_type == StatementType.INDMONEY_STATEMENT:
+        elif statement.statement_type == StatementType.INDMONEY_STATEMENT or broker_lower == 'indmoney':
             assets, transactions, cash_balance_usd = process_indmoney_statement(statement)
         # Check if it's an NSDL CAS PDF (password-protected)
         elif 'pdf' in statement.file_type.lower() and statement.password:
@@ -533,16 +697,68 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
         assets_count = 0
         transactions_count = 0
 
-        # Create or get accounts for all assets.
-        # Every demat-type asset (stock, MF, commodity, etc.) gets a DematAccount.
-        # Every crypto asset gets a CryptoAccount.
-        # Assets are grouped by (broker_name, account_id) since a single statement
-        # (e.g. NSDL CAS) can produce assets with different broker_names.
+        if target_demat_account and assets and len(assets) > 0:
+            # Uploading from a specific demat account page.
+            # Validate broker: the parsed statement must be from the same broker.
+            extracted_broker = assets[0].get('broker_name', '')
+            if extracted_broker:
+                norm_account = target_demat_account.broker_name.lower()
+                norm_extracted = BROKER_MAPPING.get(extracted_broker.lower(), extracted_broker.lower())
+                if norm_account != norm_extracted:
+                    statement.status = StatementStatus.FAILED
+                    statement.error_message = (
+                        f"Statement mismatch: this statement is from '{extracted_broker}', "
+                        f"but this account belongs to '{target_demat_account.broker_name}'. "
+                        f"Please upload to the correct account."
+                    )
+                    statement.processing_completed_at = datetime.utcnow()
+                    db.commit()
+                    return
 
-        demat_account_map = {}  # (broker_name, account_id) -> DematAccount
-        crypto_account = None
+            # Only delete existing assets of the same types being imported,
+            # so uploading a MF statement doesn't wipe out stocks and vice versa.
+            incoming_types = {ad.get('asset_type') for ad in assets if ad.get('asset_type')}
+            existing_asset_ids = [a.id for a in db.query(Asset.id).filter(
+                Asset.demat_account_id == target_demat_account.id,
+                Asset.asset_type.in_([t.value if hasattr(t, 'value') else str(t) for t in incoming_types]),
+            ).all()]
+            if existing_asset_ids:
+                db.query(Alert).filter(Alert.asset_id.in_(existing_asset_ids)).update(
+                    {Alert.asset_id: None}, synchronize_session=False
+                )
+                db.query(AssetSnapshot).filter(AssetSnapshot.asset_id.in_(existing_asset_ids)).update(
+                    {AssetSnapshot.asset_id: None}, synchronize_session=False
+                )
+                db.query(MutualFundHolding).filter(MutualFundHolding.asset_id.in_(existing_asset_ids)).delete(
+                    synchronize_session=False
+                )
+                db.query(Transaction).filter(Transaction.asset_id.in_(existing_asset_ids)).delete(
+                    synchronize_session=False
+                )
+                db.query(Asset).filter(Asset.id.in_(existing_asset_ids)).delete(
+                    synchronize_session=False
+                )
+                db.flush()
 
-        if assets and len(assets) > 0:
+            # Link all parsed assets directly to this demat account
+            for asset_data in assets:
+                asset_data['demat_account_id'] = target_demat_account.id
+                asset_data['broker_name'] = target_demat_account.broker_name
+                asset_data['account_id'] = target_demat_account.account_id
+                if not asset_data.get('portfolio_id'):
+                    asset_data['portfolio_id'] = target_demat_account.portfolio_id
+
+        elif assets and len(assets) > 0:
+            # Normal upload (not from a specific demat account page).
+            # Create or get accounts for all assets.
+            # Every demat-type asset (stock, MF, commodity, etc.) gets a DematAccount.
+            # Every crypto asset gets a CryptoAccount.
+            # Assets are grouped by (broker_name, account_id) since a single statement
+            # (e.g. NSDL CAS) can produce assets with different broker_names.
+
+            demat_account_map = {}  # (broker_name, account_id) -> DematAccount
+            crypto_account = None
+
             # Group assets by account
             demat_groups = {}   # (broker_name, account_id) -> list of asset indices
             crypto_indices = []
@@ -608,22 +824,24 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
                     db,
                 )
 
+            for asset_data in assets:
+                # Link asset to the appropriate account
+                at = asset_data.get('asset_type')
+                if at in DEMAT_ASSET_TYPES:
+                    bn = asset_data.get('broker_name') or (statement.institution_name if statement.institution_name else 'unknown')
+                    aid = asset_data.get('account_id') or f"{bn.upper().replace(' ', '-')}-AUTO-{statement.user_id}"
+                    da = demat_account_map.get((bn, aid))
+                    if da:
+                        asset_data['demat_account_id'] = da.id
+                elif at in CRYPTO_ASSET_TYPES and crypto_account:
+                    asset_data['crypto_account_id'] = crypto_account.id
+
+                # Assign portfolio_id to each asset
+                if portfolio_id:
+                    asset_data['portfolio_id'] = portfolio_id
+
+        # Create Asset records (runs for both demat-account and normal uploads)
         for asset_data in assets:
-            # Link asset to the appropriate account
-            at = asset_data.get('asset_type')
-            if at in DEMAT_ASSET_TYPES:
-                bn = asset_data.get('broker_name') or (statement.institution_name if statement.institution_name else 'unknown')
-                aid = asset_data.get('account_id') or f"{bn.upper().replace(' ', '-')}-AUTO-{statement.user_id}"
-                da = demat_account_map.get((bn, aid))
-                if da:
-                    asset_data['demat_account_id'] = da.id
-            elif at in CRYPTO_ASSET_TYPES and crypto_account:
-                asset_data['crypto_account_id'] = crypto_account.id
-
-            # Assign portfolio_id to each asset
-            if portfolio_id:
-                asset_data['portfolio_id'] = portfolio_id
-
             # Lookup ISIN if not provided in statement
             if not asset_data.get('isin'):
                 try:
@@ -640,7 +858,7 @@ def process_statement(statement_id: int, db: Session, portfolio_id: int = None, 
                             logger.info(f"Auto-populated API Symbol for {asset_data.get('symbol')}: {api_symbol}")
                 except Exception as e:
                     logger.warning(f"Could not lookup ISIN for {asset_data.get('symbol')}: {str(e)}")
-            
+
             # Create new asset (we deleted old ones above for demat accounts)
             new_asset = Asset(
                 user_id=statement.user_id,
@@ -1373,9 +1591,10 @@ def parse_icici_direct_stock_csv(df: pd.DataFrame, statement: Statement, account
             symbol = str(row.get('Stock Symbol', '')).strip()
             if not symbol or symbol.lower() in ['total', 'grand total']:
                 continue
-            
+
             company_name = str(row.get('Company Name', symbol)).strip()
-            isin = str(row.get('ISIN Code', '')).strip()
+            isin_raw = row.get('ISIN Code', row.get('ISIN', ''))
+            isin = str(isin_raw).strip() if pd.notna(isin_raw) and str(isin_raw).strip() else None
             
             # Extract quantity
             qty = row.get('Qty', 0)
@@ -1423,6 +1642,7 @@ def parse_icici_direct_stock_csv(df: pd.DataFrame, statement: Statement, account
                 'asset_type': asset_type,
                 'name': company_name[:100],
                 'symbol': symbol,
+                'isin': isin,
                 'quantity': qty,
                 'purchase_price': avg_cost,
                 'current_price': current_price,
@@ -1433,26 +1653,12 @@ def parse_icici_direct_stock_csv(df: pd.DataFrame, statement: Statement, account
                 'statement_id': statement.id,
                 'details': {
                     'source': 'icici_direct_import',
-                    'isin': isin,
                     'import_date': datetime.utcnow().isoformat()
                 }
             }
             
             assets.append(asset_data)
-            
-            # Create transaction
-            transaction_data = {
-                'asset_symbol': symbol,
-                'transaction_type': TransactionType.BUY,
-                'transaction_date': statement.uploaded_at,
-                'quantity': qty,
-                'price_per_unit': avg_cost,
-                'total_amount': value_at_cost,
-                'description': f'Imported from ICICI Direct - {statement.filename}'
-            }
-            
-            transactions.append(transaction_data)
-            
+
         except Exception as e:
             logger.debug(f"Error processing row {index}: {str(e)}", exc_info=True)
             continue
@@ -1483,9 +1689,13 @@ def parse_icici_direct_mf_csv(df: pd.DataFrame, statement: Statement, account_in
             fund_house = str(row.get('Fund', '')).strip()
             scheme_name = str(row.get('Scheme', '')).strip()
             folio = str(row.get('Folio', '')).strip()
-            
+
             if not scheme_name or scheme_name.lower() in ['total', 'grand total']:
                 continue
+
+            # Extract ISIN if available (some ICICI MF CSVs include it)
+            isin_raw = row.get('ISIN Code', row.get('ISIN', row.get('ISIN No', '')))
+            isin = str(isin_raw).strip() if pd.notna(isin_raw) and str(isin_raw).strip() else None
             
             # Extract units
             units = row.get('Units', 0)
@@ -1542,6 +1752,7 @@ def parse_icici_direct_mf_csv(df: pd.DataFrame, statement: Statement, account_in
                 'asset_type': asset_type,
                 'name': scheme_name[:100],
                 'symbol': scheme_name,  # Use scheme name as symbol
+                'isin': isin,
                 'quantity': units,
                 'purchase_price': avg_cost,
                 'current_price': nav,
@@ -1559,20 +1770,7 @@ def parse_icici_direct_mf_csv(df: pd.DataFrame, statement: Statement, account_in
             }
             
             assets.append(asset_data)
-            
-            # Create transaction
-            transaction_data = {
-                'asset_symbol': scheme_name,
-                'transaction_type': TransactionType.BUY,
-                'transaction_date': statement.uploaded_at,
-                'quantity': units,
-                'price_per_unit': avg_cost,
-                'total_amount': value_at_cost,
-                'description': f'Imported from ICICI Direct MF - {statement.filename}'
-            }
-            
-            transactions.append(transaction_data)
-            
+
         except Exception as e:
             logger.debug(f"Error processing row {index}: {str(e)}", exc_info=True)
             continue
@@ -1779,17 +1977,6 @@ def parse_financial_statement(text: str, statement: Statement) -> tuple:
             'total_invested': float(amount),
             'details': {'source': 'statement_import'}
         })
-        
-        # Create transaction
-        transactions.append({
-            'asset_symbol': symbol,
-            'transaction_type': TransactionType.BUY,
-            'transaction_date': datetime.strptime(date_str, '%d/%m/%Y'),
-            'quantity': float(qty),
-            'price_per_unit': float(price),
-            'total_amount': float(amount),
-            'description': f'Imported from {statement.filename}'
-        })
     
     return assets, transactions
 
@@ -1889,22 +2076,56 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
     # Detect asset type based on content
     for index, row in df.iterrows():
         try:
-            # Get symbol
-            symbol = row.get('Symbol', row.get('symbol', ''))
+            # Get symbol — try Symbol, Instrument, then symbol (lowercase)
+            symbol = row.get('Symbol', row.get('Instrument', row.get('symbol', row.get('instrument', ''))))
             if pd.isna(symbol) or not symbol:
                 continue
-            
+
             symbol = str(symbol).strip()
             if not symbol or symbol.lower() in ['total', 'grand total', 'symbol']:
                 continue
-            
-            logger.debug(f"Processing symbol: {symbol}")
-            
+
+            # Extract ISIN from dedicated column if available
+            isin = row.get('ISIN', row.get('isin', ''))
+            if pd.isna(isin) or not isin:
+                isin = None
+            else:
+                isin = str(isin).strip()
+
+            # Detect if symbol column actually contains an ISIN
+            # ISINs are 12-char alphanumeric starting with IN (e.g., INE, INF)
+            symbol_is_isin = len(symbol) == 12 and symbol[:2] == 'IN' and symbol.isalnum()
+            if symbol_is_isin:
+                if isin and isin != symbol:
+                    # ISIN column disagrees with symbol column — prefer symbol (often more accurate)
+                    logger.warning(f"ISIN conflict: Symbol={symbol} vs ISIN column={isin}. Using Symbol value.")
+                isin = symbol
+                symbol = ''  # Will need to derive name from other columns
+
+            # Try to get a proper name from the Name column if symbol was an ISIN
+            if not symbol:
+                name = row.get('Name', row.get('name', row.get('Stock Name', row.get('stock name', ''))))
+                if pd.notna(name) and str(name).strip():
+                    symbol = str(name).strip()
+                elif isin:
+                    # Use ISIN as last resort for symbol
+                    symbol = isin
+
+            # Strip -E / -BE suffix from Zerodha ETF symbols for cleaner storage
+            base_symbol = symbol.upper()
+            if base_symbol.endswith('-BE'):
+                base_symbol = base_symbol[:-3]
+            elif base_symbol.endswith('-E'):
+                base_symbol = base_symbol[:-2]
+
+            logger.debug(f"Processing symbol: {symbol} (base: {base_symbol}, ISIN: {isin})")
+
             # Determine asset type - use sheet name as primary indicator
             asset_type = default_asset_type
-            
+
             # Reclassify SILVERBEES and GOLDBEES as commodities
-            if symbol.upper() in ['SILVERBEES', 'GOLDBEES', 'GOLDSHARE', 'SILVERSHARE']:
+            commodity_symbols = {'SILVERBEES', 'GOLDBEES', 'GOLDSHARE', 'SILVERSHARE'}
+            if base_symbol in commodity_symbols:
                 asset_type = AssetType.COMMODITY
             # Override based on sector if available
             elif sector := str(row.get('Sector', row.get('sector', ''))).strip():
@@ -1913,24 +2134,27 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
             elif 'mutual' in symbol.lower():
                 asset_type = AssetType.EQUITY_MUTUAL_FUND
             
-            # Extract quantity - use "Quantity Available"
-            qty = row.get('Quantity Available', row.get('quantity available', 0))
+            # Extract quantity - try multiple column name variants
+            qty = row.get('Quantity Available', row.get('quantity available',
+                    row.get('Qty.', row.get('Qty', row.get('qty', 0)))))
             if pd.isna(qty):
                 qty = 0
             qty = float(str(qty).replace(',', ''))
-            
+
             if qty <= 0:
                 logger.debug(f"Skipping {symbol} - zero quantity")
                 continue
 
-            # Extract average price
-            avg_price = row.get('Average Price', row.get('average price', 0))
+            # Extract average price - try multiple column name variants
+            avg_price = row.get('Average Price', row.get('average price',
+                        row.get('Avg. cost', row.get('avg. cost', 0))))
             if pd.isna(avg_price):
                 avg_price = 0
             avg_price = float(str(avg_price).replace(',', '').replace('₹', '').strip())
-            
-            # Extract current price (Previous Closing Price)
-            current_price = row.get('Previous Closing Price', row.get('previous closing price', avg_price))
+
+            # Extract current price - try multiple column name variants
+            current_price = row.get('Previous Closing Price', row.get('previous closing price',
+                            row.get('LTP', row.get('ltp', avg_price))))
             if pd.isna(current_price):
                 current_price = avg_price
             current_price = float(str(current_price).replace(',', '').replace('₹', '').strip())
@@ -1949,10 +2173,13 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
             logger.debug(f"  Qty: {qty}, Avg Price: {avg_price}, Current Price: {current_price}")
             
             # Create asset with account information
+            # Use the original symbol (with suffix) for display name,
+            # but use base_symbol (without -E/-BE) for the symbol field
             asset_data = {
                 'asset_type': asset_type,
-                'name': symbol,
-                'symbol': symbol,
+                'name': symbol if symbol != isin else base_symbol,
+                'symbol': base_symbol if base_symbol else symbol,
+                'isin': isin,
                 'quantity': qty,
                 'purchase_price': avg_price,
                 'current_price': current_price,
@@ -1971,20 +2198,7 @@ def parse_zerodha_holdings(df: pd.DataFrame, statement: Statement, sheet_name: s
             }
             
             assets.append(asset_data)
-            
-            # Create a transaction record for the holding
-            transaction_data = {
-                'asset_symbol': symbol,
-                'transaction_type': TransactionType.BUY,
-                'transaction_date': statement.uploaded_at,
-                'quantity': qty,
-                'price_per_unit': avg_price,
-                'total_amount': total_invested,
-                'description': f'Imported from Zerodha holdings - {statement.filename}'
-            }
-            
-            transactions.append(transaction_data)
-            
+
         except Exception as e:
             # Log error but continue processing other rows
             logger.debug(f"Error processing row {index}: {str(e)}", exc_info=True)
@@ -2143,23 +2357,11 @@ def parse_groww_holdings(df: pd.DataFrame, statement: Statement, account_info: d
             }
             assets.append(asset_data)
 
-            # Create transaction record
-            transaction_data = {
-                'asset_symbol': symbol,
-                'transaction_type': TransactionType.BUY,
-                'transaction_date': statement.uploaded_at,
-                'quantity': qty,
-                'price_per_unit': avg_price,
-                'total_amount': buy_value,
-                'description': f'Imported from Groww holdings - {statement.filename}'
-            }
-            transactions.append(transaction_data)
-
         except Exception as e:
             logger.debug(f"Error processing row {index}: {str(e)}", exc_info=True)
             continue
 
-    logger.info(f"Parsed {len(assets)} assets and {len(transactions)} transactions from Groww")
+    logger.info(f"Parsed {len(assets)} assets from Groww")
     return assets, transactions
 
 
@@ -2352,23 +2554,11 @@ def parse_groww_mf_holdings(df: pd.DataFrame, statement: Statement, account_info
             }
             assets.append(asset_data)
 
-            # Create a buy transaction record
-            transaction_data = {
-                'asset_symbol': scheme_name[:50],
-                'transaction_type': TransactionType.BUY,
-                'transaction_date': statement.uploaded_at,
-                'quantity': units,
-                'price_per_unit': avg_cost,
-                'total_amount': invested_value,
-                'description': f'Imported from Groww MF holdings - {statement.filename}'
-            }
-            transactions.append(transaction_data)
-
         except Exception as e:
             logger.debug(f"Error processing MF row {index}: {str(e)}", exc_info=True)
             continue
 
-    logger.info(f"Parsed {len(assets)} mutual funds and {len(transactions)} transactions from Groww MF")
+    logger.info(f"Parsed {len(assets)} mutual funds from Groww MF")
     return assets, transactions
 
 

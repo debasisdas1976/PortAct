@@ -167,10 +167,16 @@ class ConsolidatedMFParser:
         """Clean and normalize fund name"""
         # Remove extra whitespace
         name = ' '.join(name.split())
-        
+
         # Remove common prefixes/suffixes
         name = re.sub(r'^(Scheme Name|Fund Name|Name)[\s:]+', '', name, flags=re.IGNORECASE)
-        
+
+        # Remove "Portfolio of" prefix (used by Kotak AMC)
+        name = re.sub(r'^Portfolio\s+of\s+', '', name, flags=re.IGNORECASE)
+
+        # Remove trailing "as on <date>" suffix (e.g., "as on 31-Jan-2026")
+        name = re.sub(r'\s+as\s+on\s+\d{1,2}[-/]\w{3,9}[-/]\d{2,4}\s*$', '', name, flags=re.IGNORECASE)
+
         return name.strip()
     
     def _extract_holdings(self, df: pd.DataFrame) -> List[Dict]:
@@ -212,7 +218,13 @@ class ConsolidatedMFParser:
         if name_col is None or pct_col is None:
             logger.warning("Could not find required columns (name and percentage)")
             return []
-        
+
+        # Handle merged cell offset: some AMCs (e.g., Kotak) have the name header
+        # in a different column than the actual stock name data due to merged cells.
+        # Detect this by checking if the name column is mostly NaN in data rows,
+        # and if so, scan rightward to find the actual data column.
+        name_col = self._resolve_name_column_offset(df, name_col, isin_col)
+
         # Extract holdings
         for idx, row in df.iterrows():
             try:
@@ -368,6 +380,65 @@ class ConsolidatedMFParser:
         
         return None
     
+    def _resolve_name_column_offset(self, df: pd.DataFrame, name_col, isin_col) -> str:
+        """
+        Detect and fix merged-cell column offset for the name column.
+
+        Some AMC sheets (e.g., Kotak) have the "Name of Instrument" header in
+        column 0 due to merged cells, but actual stock names in column 2.
+        This detects the mismatch and returns the correct column reference.
+        """
+        col_list = list(df.columns)
+        try:
+            name_col_idx = col_list.index(name_col)
+        except ValueError:
+            return name_col
+
+        # Check if the name column is mostly NaN in the first several data rows
+        sample_size = min(10, len(df))
+        if sample_size == 0:
+            return name_col
+
+        sample_nan = sum(1 for i in range(sample_size) if pd.isna(df.iloc[i, name_col_idx]))
+        if sample_nan <= sample_size * 0.7:
+            return name_col  # Name column has data, no offset issue
+
+        # Name column is mostly NaN — find the actual data column.
+        # Scan rightward from name_col up to (but not including) isin_col.
+        isin_col_idx = len(col_list)
+        if isin_col is not None:
+            try:
+                isin_col_idx = col_list.index(isin_col)
+            except ValueError:
+                pass
+
+        best_col_idx = None
+        best_meaningful_count = 0
+
+        for offset_idx in range(name_col_idx + 1, min(isin_col_idx, len(col_list))):
+            # Count rows with meaningful string data (not NaN, not whitespace-only,
+            # and at least 3 chars — i.e., looks like an actual stock name)
+            meaningful = 0
+            for i in range(sample_size):
+                val = df.iloc[i, offset_idx]
+                if pd.notna(val) and isinstance(val, str) and len(val.strip()) >= 3:
+                    meaningful += 1
+            if meaningful > best_meaningful_count:
+                best_meaningful_count = meaningful
+                best_col_idx = offset_idx
+
+        if best_col_idx is not None and best_meaningful_count >= sample_size * 0.3:
+            # Reassign the name label to the actual data column
+            col_list[best_col_idx] = name_col
+            col_list[name_col_idx] = f'_offset_orig_{name_col_idx}'
+            df.columns = col_list
+            logger.info(
+                f"Name column offset detected: header at col {name_col_idx}, "
+                f"data at col {best_col_idx}. Reassigned."
+            )
+
+        return name_col
+
     def _is_foreign_stock(self, isin: str) -> bool:
         """Check if stock is foreign based on ISIN"""
         if not isin or len(isin) < 2:

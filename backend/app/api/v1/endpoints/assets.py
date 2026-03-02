@@ -31,6 +31,7 @@ async def get_assets(
     asset_type: Optional[AssetType] = None,
     is_active: Optional[bool] = None,
     portfolio_id: Optional[int] = None,
+    demat_account_id: Optional[int] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     current_user: User = Depends(get_current_active_user),
@@ -49,6 +50,9 @@ async def get_assets(
 
     if is_active is not None:
         query = query.filter(Asset.is_active == is_active)
+
+    if demat_account_id is not None:
+        query = query.filter(Asset.demat_account_id == demat_account_id)
 
     assets = query.offset(skip).limit(limit).all()
     

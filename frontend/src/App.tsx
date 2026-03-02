@@ -23,6 +23,7 @@ const Statements = React.lazy(() => import('./pages/Statements'));
 const AlertsWithProgress = React.lazy(() => import('./pages/AlertsWithProgress'));
 const BankAccounts = React.lazy(() => import('./pages/BankAccounts'));
 const DematAccounts = React.lazy(() => import('./pages/DematAccounts'));
+const DematAccountDetail = React.lazy(() => import('./pages/DematAccountDetail'));
 const CryptoAccounts = React.lazy(() => import('./pages/CryptoAccounts'));
 const CryptoAssets = React.lazy(() => import('./pages/CryptoAssets'));
 const CryptoExchanges = React.lazy(() => import('./pages/CryptoExchanges'));
@@ -134,6 +135,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="alerts" element={<AlertsWithProgress />} />
             <Route path="bank-accounts" element={<BankAccounts />} />
             <Route path="demat-accounts" element={<DematAccounts />} />
+            <Route path="demat-accounts/:id" element={<DematAccountDetail />} />
             <Route path="crypto-accounts" element={<CryptoAccounts />} />
             <Route path="crypto-assets" element={<CryptoAssets />} />
             <Route path="crypto-exchanges" element={<CryptoExchanges />} />

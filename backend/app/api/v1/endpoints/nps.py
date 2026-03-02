@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import func
 
 from app.api.dependencies import get_current_active_user, get_db, get_default_portfolio_id
@@ -156,7 +157,7 @@ async def get_nps_account(
             amount=abs(trans.total_amount),
             nav=trans.price_per_unit if trans.price_per_unit else None,
             units=trans.quantity if trans.quantity else None,
-            scheme=trans.details.get('scheme') if trans.details else None,
+            scheme=trans.notes if trans.notes else None,
             description=trans.description or '',
             financial_year=trans.reference_number,
             created_at=trans.created_at
@@ -304,12 +305,13 @@ async def update_nps_account(
         asset.details['scheme_preference'] = update_data['scheme_preference']
     if 'notes' in update_data:
         asset.notes = update_data['notes']
-    
+
     asset.last_updated = datetime.utcnow()
-    
+    flag_modified(asset, 'details')
+
     db.commit()
     db.refresh(asset)
-    
+
     return NPSAccountResponse(
         id=asset.id,
         user_id=asset.user_id,
@@ -425,7 +427,7 @@ async def add_nps_transaction(
         taxes=0,
         description=transaction_data.description,
         reference_number=transaction_data.financial_year,
-        details={'scheme': transaction_data.scheme} if transaction_data.scheme else {}
+        notes=transaction_data.scheme if transaction_data.scheme else None
     )
     
     db.add(transaction)
@@ -436,12 +438,13 @@ async def add_nps_transaction(
         if transaction_data.transaction_type == 'employer_contribution':
             current_employer = asset.details.get('employer_contributions', 0)
             asset.details['employer_contributions'] = current_employer + transaction_data.amount
+            flag_modified(asset, 'details')
     elif transaction_data.transaction_type == 'returns':
         asset.profit_loss += transaction_data.amount
-    
+
     asset.current_value += transaction_data.amount
     asset.last_updated = datetime.utcnow()
-    
+
     db.commit()
     db.refresh(transaction)
     
@@ -504,6 +507,7 @@ async def upload_nps_statement_auto(
                 asset.profit_loss = account_data['total_returns']
             if account_data.get('employer_contributions'):
                 asset.details['employer_contributions'] = account_data['employer_contributions']
+                flag_modified(asset, 'details')
             asset.last_updated = datetime.utcnow()
         else:
             # Create new NPS asset
@@ -579,7 +583,7 @@ async def upload_nps_statement_auto(
                     taxes=0,
                     description=trans_data.get('description'),
                     reference_number=trans_data.get('financial_year'),
-                    details={'scheme': trans_data.get('scheme')} if trans_data.get('scheme') else {}
+                    notes=trans_data.get('scheme')
                 )
                 db.add(transaction)
 
@@ -685,7 +689,8 @@ async def upload_nps_statement(
             asset.profit_loss = account_data['total_returns']
         if account_data.get('employer_contributions'):
             asset.details['employer_contributions'] = account_data['employer_contributions']
-        
+            flag_modified(asset, 'details')
+
         asset.last_updated = datetime.utcnow()
         
         # Add transactions
@@ -721,13 +726,13 @@ async def upload_nps_statement(
                     taxes=0,
                     description=trans_data.get('description'),
                     reference_number=trans_data.get('financial_year'),
-                    details={'scheme': trans_data.get('scheme')} if trans_data.get('scheme') else {}
+                    notes=trans_data.get('scheme')
                 )
                 db.add(transaction)
-        
+
         db.commit()
         db.refresh(asset)
-        
+
         return NPSAccountResponse(
             id=asset.id,
             user_id=asset.user_id,

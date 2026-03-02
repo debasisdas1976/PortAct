@@ -917,76 +917,12 @@
   ],
   "expense_categories": [
     {
-      "name": "Groceries",
-      "description": "Food and household items",
-      "icon": "🛒",
-      "color": "#4CAF50",
-      "is_income": false,
-      "keywords": "grocery,supermarket,walmart,target,costco,whole foods,trader joe,safeway,kroger,food,vegetables,fruits,meat,dairy"
-    },
-    {
-      "name": "Dining & Restaurants",
-      "description": "Eating out, restaurants, cafes",
-      "icon": "🍽️",
-      "color": "#FF9800",
-      "is_income": false,
-      "keywords": "restaurant,cafe,coffee,starbucks,mcdonald,burger,pizza,food delivery,uber eats,doordash,grubhub,zomato,swiggy,dining,eatery"
-    },
-    {
       "name": "Transportation",
-      "description": "Fuel, public transport, ride-sharing",
+      "description": "Fuel, cab, metro, parking, vehicle services",
       "icon": "🚗",
       "color": "#2196F3",
       "is_income": false,
-      "keywords": "uber,lyft,taxi,cab,fuel,gas,petrol,diesel,metro,bus,train,parking,toll,transport,ola"
-    },
-    {
-      "name": "Utilities",
-      "description": "Electricity, water, gas, internet",
-      "icon": "💡",
-      "color": "#FFC107",
-      "is_income": false,
-      "keywords": "electricity,water,gas,internet,broadband,wifi,phone bill,mobile,utility,power,energy"
-    },
-    {
-      "name": "Rent & Mortgage",
-      "description": "Housing payments",
-      "icon": "🏠",
-      "color": "#9C27B0",
-      "is_income": false,
-      "keywords": "rent,mortgage,housing,lease,landlord,property,apartment"
-    },
-    {
-      "name": "Healthcare & Medical",
-      "description": "Doctor visits, medicines, insurance",
-      "icon": "⚕️",
-      "color": "#F44336",
-      "is_income": false,
-      "keywords": "doctor,hospital,clinic,pharmacy,medicine,medical,health,insurance,dental,prescription,lab test"
-    },
-    {
-      "name": "Entertainment",
-      "description": "Movies, games, hobbies",
-      "icon": "🎬",
-      "color": "#E91E63",
-      "is_income": false,
-      "keywords": "movie,cinema,netflix,spotify,amazon prime,disney,gaming,xbox,playstation,entertainment,concert,theater"
-    },
-    {
-      "name": "Shopping & Clothing",
-      "description": "Clothes, accessories, personal items",
-      "icon": "👕",
-      "color": "#673AB7",
-      "is_income": false,
-      "keywords": "clothing,clothes,fashion,shoes,accessories,mall,amazon,flipkart,myntra,shopping,apparel"
-    },
-    {
-      "name": "Education",
-      "description": "Tuition, books, courses",
-      "icon": "📚",
-      "color": "#3F51B5",
-      "is_income": false,
-      "keywords": "school,college,university,tuition,books,course,education,training,udemy,coursera,learning"
+      "keywords": "uber,ola,rapido,blu smart,meru,taxi,namma yatri,auto,indriver,indian oil,iocl,bharat petroleum,bpcl,hp petrol,hpcl,shell,essar,reliance petrol,petrol,diesel,fuel,cng,gas station,petrol pump,fuel station,bmtc,namma metro,bangalore metro,bmrcl,purple line,green line,metro,dmrc,best,bus,train,railway,local train,mumbai metro,chennai metro,hyderabad metro,kolkata metro,parking,toll,fastag,paytm fastag,netc fastag,park plus,park+,car wash,servicing,car service,bike service,tyre,battery,mechanic,garage,transport,cab,rickshaw,vehicle,commute"
     },
     {
       "name": "Fitness & Gym",
@@ -994,31 +930,95 @@
       "icon": "💪",
       "color": "#FF5722",
       "is_income": false,
-      "keywords": "gym,fitness,yoga,sports,workout,exercise,trainer,membership,health club"
+      "keywords": "cult fit,cure fit,healthifyme,fitness,gym,yoga,gold gym,anytime fitness,talwalkar,snap fitness,workout,exercise,trainer,sports,health club,crossfit,pilates,zumba"
+    },
+    {
+      "name": "Dining & Restaurants",
+      "description": "Restaurants, food delivery, dining out",
+      "icon": "🍽️",
+      "color": "#FF9800",
+      "is_income": false,
+      "keywords": "swiggy,zomato,uber eats,dunzo,shadowfax,bundl technologies,eatsure,box8,faasos,behrouz,oven story,magicpin,dominos,pizza hut,kfc,mcdonald,burger king,subway,starbucks,cafe coffee day,ccd,barista,costa coffee,haldiram,bikanervala,sagar ratna,saravana bhavan,paradise biryani,behrouz biryani,charcoal biryani,taco bell,wow momo,chaayos,chai point,third wave coffee,mtr,vidyarthi bhavan,mavalli tiffin room,brahmins coffee bar,by 2 coffee,hole in the wall,toit,truffles,meghana foods,empire,nandhini,udupi,darshini,veena stores,airlines hotel,koshy,indian coffee house,corner house,a2b,adyar ananda bhavan,shanti sagar,sukh sagar,sangeetha,vasanta bhavan,junior kuppanna,nagarjuna,rajdhani,mainland china,bikano,chitale,gwalia,aggarwal,annapurna,restaurant,cafe,coffee,food,dining,eatery,meal,breakfast,lunch,dinner,bakery,sweet shop,dhaba,tiffin,canteen,mess,biryani,thali,dosa,idli,paratha"
+    },
+    {
+      "name": "Groceries",
+      "description": "Supermarket, grocery, household items",
+      "icon": "🛒",
+      "color": "#4CAF50",
+      "is_income": false,
+      "keywords": "bigbasket,grofers,blinkit,zepto,dunzo,jiomart,amazon fresh,amazon pantry,instamart,swiggy instamart,milkbasket,supr daily,licious,freshtohome,meatigo,country delight,ninjacart,dmart,reliance fresh,reliance smart,more,spencer,star bazaar,hypercity,big bazaar,easyday,nilgiris,24 seven,spar,nature basket,foodhall,le marche,namdhari,namdhari fresh,hopcoms,namma basket,total mall,ratnadeep,starmarket,kirana,provision,general store,departmental store,grocery,supermarket,vegetables,fruits,milk,bread,food items,household,provisions,ration,sabzi,mandi, FirstClub, FroosRetailLlp, Mymarket"
+    },
+    {
+      "name": "Utilities",
+      "description": "Electricity, water, internet, mobile, gas",
+      "icon": "💡",
+      "color": "#FFC107",
+      "is_income": false,
+      "keywords": "airtel,jio,vodafone,vi,bsnl,mtnl,mobile recharge,prepaid,postpaid,phone bill,broadband,wifi,internet,fiber,act fibernet,tata sky,dish tv,sun direct,dth,cable,hathway,you broadband,excitel,tikona,bescom,bwssb,bangalore water,bbmp,kaveri,cauvery water,electricity,power,msedcl,tata power,adani electricity,torrent power,cesc,water,water bill,gas,lpg,indane,bharat gas,hp gas,piped gas,png,mahanagar gas,adani gas,gail gas,bill payment,bbps,billdesk,utility,paytm bill,cred bill,phonepe bill"
+    },
+    {
+      "name": "Rent & Mortgage",
+      "description": "Housing rent, EMI, maintenance",
+      "icon": "🏠",
+      "color": "#9C27B0",
+      "is_income": false,
+      "keywords": "rent,lease,housing,apartment,flat,maintenance,society,housing society,pg,paying guest,accommodation,landlord,cred rent,nobroker,magicbricks,housing.com,99acres,nestaway,colive,zolo,security deposit,brokerage,rental agreement,mortgage,emi,home loan"
+    },
+    {
+      "name": "Healthcare & Medical",
+      "description": "Hospitals, pharmacy, diagnostics, wellness",
+      "icon": "⚕️",
+      "color": "#F44336",
+      "is_income": false,
+      "keywords": "apollo,fortis,max,medanta,manipal,narayana,hospital,clinic,doctor,medical,health,aster,columbia asia,sakra,sparsh,narayana hrudayalaya,manipal hospital,st johns,nimhans,kidwai,victoria hospital,jayadeva,sagar hospital,bangalore hospital,bgs global,ramaiah,apollo pharmacy,medplus,netmeds,1mg,pharmeasy,pharmacy,medicine,chemist,drug store,truemeds,wellness forever,frank ross,thyrocare,dr lal pathlabs,metropolis,lab test,diagnostic,pathology,x-ray,scan,srl diagnostics,neuberg,orange health,redcliffe,dental,dentist,clove dental,sabka dentist,eye care,ophthalmologist,titan eye,ayurveda,patanjali,himalaya,dabur,ayurvedic,homeopathy,siddha"
+    },
+    {
+      "name": "Entertainment",
+      "description": "Movies, streaming, games, events",
+      "icon": "🎬",
+      "color": "#E91E63",
+      "is_income": false,
+      "keywords": "netflix,amazon prime,prime video,hotstar,disney,zee5,sony liv,voot,alt balaji,mx player,spotify,youtube premium,gaana,jio saavn,wynk,apple music,audible,kindle unlimited,jio cinema,fancode,lionsgate,pvr,inox,pvr inox,cinepolis,carnival,movie,cinema,theatre,multiplex,bookmyshow,paytm movies,innovative multiplex,gopalan cinemas,fun cinemas,cubbon park,lalbagh,bannerghatta,wonderla,nandi hills,innovative film city,imagica,essel world,kingdom of dreams,comic con,sunburn,nh7 weekender,steam,playstation,xbox,nintendo,gaming,epic games,riot games,entertainment,subscription,ott,streaming,concert,event,show,performance,ticket"
+    },
+    {
+      "name": "Shopping & Clothing",
+      "description": "Online shopping, retail, fashion, electronics",
+      "icon": "👕",
+      "color": "#673AB7",
+      "is_income": false,
+      "keywords": "amazon,amazonin,amzn,flipkart,myntra,ajio,meesho,snapdeal,shopclues,tata cliq,nykaa,purplle,jiomart,firstcry,lenskart,mamaearth,boat,zara,h&m,max fashion,pantaloons,westside,lifestyle,shoppers stop,central,reliance trends,uniqlo,marks and spencer,mango,allen solly,peter england,van heusen,louis philippe,raymond,arvind,croma,reliance digital,vijay sales,poorvika,sangeetha mobiles,lot mobiles,samsung store,apple store,ikea,pepperfry,urban ladder,hometown,fabindia,wakefit,sleepwell,duroflex,godrej interio,orion mall,phoenix marketcity,forum mall,mantri mall,garuda mall,royal meenakshi mall,vr bengaluru,commercial street,brigade road,chickpet,avenue road,jayanagar shopping,malleswaram shopping,shopping,mall,store,retail,fashion,clothing,shoes,electronics,mobile,laptop,accessories,jewellery,tanishq,kalyan,malabar gold,joyalukkas"
+    },
+    {
+      "name": "Education",
+      "description": "Schools, courses, books, training",
+      "icon": "📚",
+      "color": "#3F51B5",
+      "is_income": false,
+      "keywords": "school,college,university,institute,academy,tuition,coaching,classes,iisc,iim bangalore,nls,christ university,jain university,pes university,reva,nitte,dayananda sagar,bms college,rv college,sir mvit,udemy,coursera,byju,unacademy,vedantu,toppr,white hat jr,upgrad,simplilearn,skill share,linkedin learning,scaler,coding ninjas,great learning,intellipaat,edureka,pluralsight,allen,fiitjee,aakash,resonance,bansal,ims,time institute,career launcher,test series,amazon books,flipkart books,crossword,landmark,books,stationery,notebook,pen,sapna book house,gangaram,blossoms,education,learning,course,training,exam fee,certification,workshop,seminar,webinar"
     },
     {
       "name": "Travel & Vacation",
-      "description": "Hotels, flights, vacation expenses",
+      "description": "Flights, hotels, vacation, visa",
       "icon": "✈️",
       "color": "#00BCD4",
       "is_income": false,
-      "keywords": "hotel,flight,airline,booking,airbnb,travel,vacation,trip,tourism,resort"
+      "keywords": "indigo,spicejet,air india,vistara,go air,air asia,akasa air,flight,airline,airways,star air,alliance air,oyo,treebo,fab hotels,airbnb,booking.com,makemytrip,goibibo,cleartrip,yatra,ixigo,hotel,resort,accommodation,stay,taj hotels,itc hotels,oberoi,lemon tree,ginger hotel,zostel,hostel,homestay,irctc,train,railway,redbus,abhibus,bus booking,confirmtkt,railyatri,trainman,kempegowda airport,blr airport,kia,bial,ksrtc,bmtc volvo,shivajinagar bus,majestic bus,mysore road,coorg,ooty,wayanad,chikmagalur,travel,vacation,holiday,tour,trip,visa,passport,forex,travel insurance,luggage"
     },
     {
       "name": "Insurance",
-      "description": "Life, health, car insurance",
+      "description": "Life, health, vehicle insurance",
       "icon": "🛡️",
       "color": "#607D8B",
       "is_income": false,
-      "keywords": "insurance,premium,policy,life insurance,health insurance,car insurance"
+      "keywords": "insurance,premium,policy,lic,hdfc life,icici prudential,sbi life,max life,bajaj allianz,tata aia,kotak life,birla sun life,aegon life,star health,care health,acko,digit insurance,vehicle insurance,car insurance,bike insurance,niva bupa,manipal cigna,aditya birla health,hdfc ergo,icici lombard,bajaj finserv,new india assurance,united india insurance,national insurance,term plan,endowment,ulip,term insurance"
     },
     {
       "name": "Personal Care",
-      "description": "Salon, spa, grooming",
+      "description": "Salon, spa, beauty, grooming",
       "icon": "💇",
       "color": "#E91E63",
       "is_income": false,
-      "keywords": "salon,spa,haircut,beauty,grooming,cosmetics,skincare,barber"
+      "keywords": "salon,spa,lakme,jawed habib,naturals,green trends,toni and guy,looks salon,urban company,urbanclap,bounce salon,bodycraft,studio11,beauty,grooming,haircut,parlour,facial,manicure,pedicure,waxing,massage,nykaa,purplle,mcaffeine,mamaearth,wow,cosmetics,skincare,makeup,personal care,bath and body works,the body shop,forest essentials,plum,sugar cosmetics,myglamm,beardo,bombay shaving"
     },
     {
       "name": "Subscriptions",
@@ -1026,15 +1026,15 @@
       "icon": "📱",
       "color": "#9E9E9E",
       "is_income": false,
-      "keywords": "subscription,membership,monthly,recurring,netflix,spotify,amazon prime,youtube premium"
+      "keywords": "subscription,membership,monthly,recurring,netflix,spotify,amazon prime,youtube premium,apple one,icloud,google one,microsoft 365,adobe,notion,chatgpt,claude,cred,premium"
     },
     {
       "name": "Gifts & Donations",
-      "description": "Gifts, charity, donations",
+      "description": "Gifts, charity, religious offerings",
       "icon": "🎁",
       "color": "#FF4081",
       "is_income": false,
-      "keywords": "gift,donation,charity,present,contribution,ngo"
+      "keywords": "gift,donation,charity,ngo,temple,church,mosque,gurudwara,religious,contribution,offering,dakshina,prasad,ketto,milaap,give india,donatekart,tirupati,iskcon,shirdi,vaishno devi"
     },
     {
       "name": "Pet Care",
@@ -1042,7 +1042,7 @@
       "icon": "🐾",
       "color": "#795548",
       "is_income": false,
-      "keywords": "pet,dog,cat,vet,veterinary,pet food,pet supplies,grooming"
+      "keywords": "pet,dog,cat,vet,veterinary,pet food,pet supplies,supertails,heads up for tails,petsy,mars petcare"
     },
     {
       "name": "Home Maintenance",
@@ -1050,31 +1050,71 @@
       "icon": "🔧",
       "color": "#607D8B",
       "is_income": false,
-      "keywords": "repair,maintenance,plumber,electrician,cleaning,handyman,home improvement"
+      "keywords": "repair,maintenance,plumber,electrician,cleaning,handyman,home improvement,urban company,urbanclap,housejoy,carpenter,painter,pest control,water purifier,ac service,appliance repair"
     },
     {
       "name": "Taxes",
-      "description": "Income tax, property tax",
+      "description": "Income tax, GST, property tax",
       "icon": "📋",
       "color": "#455A64",
       "is_income": false,
-      "keywords": "tax,income tax,property tax,tds,gst,irs"
+      "keywords": "tax,income tax,property tax,tds,gst,advance tax,stamp duty,cess,self assessment tax,challan,professional tax,municipal tax"
     },
     {
       "name": "Salary & Income",
-      "description": "Salary, wages, income",
+      "description": "Salary, wages, freelance income",
       "icon": "💰",
       "color": "#4CAF50",
       "is_income": true,
-      "keywords": "salary,wage,income,payment,paycheck,earnings,compensation"
+      "keywords": "salary,wages,income,payment received,credit salary,sal credit,payroll,stipend,bonus,incentive,commission,honorarium,freelance,consulting fee,professional fee"
+    },
+    {
+      "name": "Domestic Help",
+      "description": "Maid, driver, laundry, nanny, household staff",
+      "icon": "🏡",
+      "color": "#8D6E63",
+      "is_income": false,
+      "keywords": "maid,driver,laundry,car wash,nanny,snabbit,housekeeper,cook,domestic help,house help,bai,dhobi,ironing,pressing,dry cleaning,washerman,gardener,watchman,security guard,ayah,caretaker,babysitter,cleaner,sweeper,household staff"
     },
     {
       "name": "Investments & Returns",
-      "description": "Investment returns, dividends, interest",
+      "description": "Trading, mutual funds, dividends, fixed income",
       "icon": "📈",
       "color": "#009688",
       "is_income": true,
-      "keywords": "dividend,interest,investment,returns,profit,capital gain,mutual fund"
+      "keywords": "zerodha,groww,upstox,angel one,paytm money,5paisa,iifl,motilal oswal,sharekhan,kite,coin by zerodha,dhan,fi money,ind money,mutual fund,mf,sip,systematic investment,amc,hdfc mf,icici mf,sbi mf,nippon mf,axis mf,kotak mf,dsp mf,mirae asset,ppfas,quant mf,parag parikh,ppf,nsc,kvp,fixed deposit,fd,recurring deposit,rd,post office,sukanya samriddhi,ssy,bonds,sgb,sovereign gold bond,nps,atal pension,stock,share,equity,investment,trading,demat,portfolio,fund,dividend,ipo"
+    },
+    {
+      "name": "Fees & Charges",
+      "description": "Bank fees, penalties, service charges",
+      "icon": "💳",
+      "color": "#B2BEC3",
+      "is_income": false,
+      "keywords": "fee,charge,penalty,fine,late fee,processing fee,service charge,annual fee,membership fee,registration,emi processing,foreclosure charge,bounce charge,convenience fee,platform fee,delivery charge"
+    },
+    {
+      "name": "ATM Withdrawal",
+      "description": "Cash withdrawals from ATM",
+      "icon": "🏧",
+      "color": "#2D3436",
+      "is_income": false,
+      "keywords": "atm,cash withdrawal,withdrawal,cash,atm cash,self withdrawal,cash deposit machine,cdm"
+    },
+    {
+      "name": "Refund",
+      "description": "Refunds, reversals, cashback",
+      "icon": "↩️",
+      "color": "#55EFC4",
+      "is_income": true,
+      "keywords": "refund,reversal,cashback,reward,credit adjustment,return,cancelled,refunded,reversed,chargeback,dispute,claim settled"
+    },
+    {
+      "name": "Transfer",
+      "description": "Money transfers, UPI, NEFT, IMPS",
+      "icon": "💸",
+      "color": "#6C5CE7",
+      "is_income": false,
+      "keywords": "transfer,neft,imps,rtgs,upi transfer,fund transfer,money transfer,payment to,sent to,transferred to,upi,paytm,phonepe,gpay,google pay,bhim,mobikwik,freecharge,amazon pay,bil/inft,inft,bil/ont,self transfer,internal transfer"
     }
   ]
 }

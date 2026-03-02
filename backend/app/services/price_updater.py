@@ -166,28 +166,40 @@ def get_mutual_fund_price(identifier: str) -> tuple:
                 logger.info(f"Found NAV for ISIN '{identifier}': ₹{scheme.nav} ({scheme.scheme_name[:60]})")
                 return (scheme.nav, scheme.isin)
         else:
-            # Name-based search against cached schemes
-            search_name = identifier.upper()
-            search_name = search_name.replace('-E', '').replace(' - E', '')
-            search_name = search_name.replace(' - DIRECT PLAN', '').replace(' -DIRECT PLAN', '')
-            search_name = search_name.replace(' - REGULAR PLAN', '').replace(' -REGULAR PLAN', '')
-            search_name = search_name.strip()
-            search_name = re.sub(r'\s+', ' ', search_name)
+            # Name-based search using token matching for robustness.
+            # Tokenization strips noise words (DIRECT/REGULAR PLAN, GROWTH,
+            # OPTION, etc.) and stop words (FUND, MUTUAL, SCHEME) so both
+            # the search term and scheme names are compared on significant
+            # tokens only (e.g. "NIPPON INDIA GILT").
+            from app.services.amfi_cache import _tokenize
+            search_tokens = _tokenize(identifier)
+            want_direct = 'DIRECT' in identifier.upper()
+            want_growth = 'GROWTH' in identifier.upper()
 
             matching_funds = []
             for scheme in AMFICache.get_schemes():
-                # Normalize scheme name for comparison
-                scheme_name_normalized = re.sub(r'\s+', ' ', scheme.name_upper)
-                if search_name in scheme_name_normalized:
-                    if scheme.nav > 0:
-                        matching_funds.append(scheme)
+                if scheme.nav <= 0:
+                    continue
+                # All search tokens must appear in the scheme's tokens
+                if search_tokens and search_tokens.issubset(scheme.name_tokens):
+                    matching_funds.append(scheme)
 
             if matching_funds:
-                # Prioritize Growth plans
-                growth_funds = [f for f in matching_funds if f.is_growth]
-                fund = growth_funds[0] if growth_funds else matching_funds[0]
+                # Prefer Direct over Regular when the search explicitly has "Direct"
+                if want_direct:
+                    direct = [f for f in matching_funds if f.is_direct]
+                    if direct:
+                        matching_funds = direct
+
+                # Prefer Growth plans
+                if want_growth:
+                    growth = [f for f in matching_funds if f.is_growth]
+                    if growth:
+                        matching_funds = growth
+
+                fund = matching_funds[0]
                 logger.info(
-                    f"Found NAV for '{identifier}' (searched as '{search_name}'): "
+                    f"Found NAV for '{identifier}' (token match): "
                     f"₹{fund.nav} ({fund.scheme_name[:60]}) ISIN: {fund.isin}"
                 )
                 return (fund.nav, fund.isin)
@@ -345,7 +357,7 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
             if result and result[0]:
                 new_price, fetched_isin = result
                 # Update ISIN if we don't have one or if the stored one is stale
-                if fetched_isin and fetched_isin != asset.isin:
+                if fetched_isin and len(fetched_isin) > 3 and fetched_isin != asset.isin:
                     old_isin = asset.isin
                     asset.isin = fetched_isin
                     logger.info(f"Updated ISIN for {asset.name}: {old_isin} → {fetched_isin}")
@@ -353,21 +365,23 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                 error_message = f"Failed to fetch NAV for {search_identifier}"
         
         elif asset.asset_type == AssetType.COMMODITY:
-            # For commodity ETFs, try to fetch as stock first if api_symbol is provided
-            if lookup_symbol and lookup_symbol != asset.symbol:
-                # api_symbol is different, likely a stock symbol for an ETF
+            # Commodity ETFs — try stock price sources first, then MF NAV as fallback.
+            # Many commodity ETFs (e.g. SBIGOL, NIPGOLD) have INF* ISINs and are
+            # registered as MF schemes with AMFI, so NAV lookup works for them.
+            if asset.isin:
+                new_price = get_stock_price_yfinance(asset.isin)
+                if new_price:
+                    logger.info(f"Fetched commodity price via ISIN {asset.isin} for {asset.symbol}")
+            if not new_price:
                 new_price = get_stock_price_nse(lookup_symbol)
-                if not new_price:
-                    error_message = f"Failed to fetch stock price for commodity ETF {lookup_symbol}"
-            # For gold ETFs/funds, get gold price
-            elif 'GOLD' in asset.name.upper():
-                gold_price = get_gold_price()
-                if gold_price:
-                    # For gold ETFs, the price is usually per unit
-                    # We'll use the gold price as reference
-                    new_price = gold_price
-                else:
-                    error_message = f"Failed to fetch gold price for {asset.name}"
+            if not new_price and asset.isin and asset.isin.startswith('INF'):
+                # INF* ISINs are mutual fund schemes — try AMFI NAV
+                result = get_mutual_fund_price(asset.isin)
+                if result and result[0]:
+                    new_price = result[0]
+                    logger.info(f"Fetched commodity price via MF NAV for {asset.symbol} (ISIN: {asset.isin})")
+            if not new_price:
+                error_message = f"Failed to fetch price for commodity {asset.isin or lookup_symbol}"
         
         elif asset.asset_type == AssetType.CASH:
             # For cash holdings, update INR value based on current exchange rate

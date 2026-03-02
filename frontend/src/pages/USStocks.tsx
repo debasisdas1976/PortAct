@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -444,6 +445,7 @@ const USStocks: React.FC = () => {
               onChange={(e) => setFormData({ ...formData, demat_account_id: e.target.value ? Number(e.target.value) : '' })}
               fullWidth
               required
+              helperText={<>Required (International accounts only). Don't have one? <RouterLink to="/demat-accounts" style={{ color: 'inherit' }}>Create a Demat Account</RouterLink></>}
             >
               {dematAccounts
                 .filter((da) => da.account_market === 'INTERNATIONAL')

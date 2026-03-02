@@ -6,6 +6,10 @@ describe('alertsSlice', () => {
     unreadCount: 0,
     loading: false,
     error: null,
+    activeSessionId: null,
+    activeProvider: null,
+    lastProgress: null,
+    polling: false,
   };
 
   it('returns initial state', () => {

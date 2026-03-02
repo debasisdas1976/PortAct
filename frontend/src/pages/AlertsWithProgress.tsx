@@ -30,7 +30,14 @@ import {
   CheckCircleOutline,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
-import { fetchAlerts, deleteAlert } from '../store/slices/alertsSlice';
+import {
+  fetchAlerts,
+  deleteAlert,
+  setActiveSession,
+  clearActiveSession,
+  startSessionPolling,
+  stopSessionPolling,
+} from '../store/slices/alertsSlice';
 import api from '../services/api';
 
 interface AssetProgress {
@@ -54,6 +61,9 @@ interface NewsProgress {
   assets: AssetProgress[];
   started_at: string;
   completed_at: string | null;
+  error_detail: string | null;
+  provider: string | null;
+  model: string | null;
 }
 
 type SnackbarSeverity = 'success' | 'error' | 'info' | 'warning';
@@ -66,10 +76,19 @@ interface SnackbarState {
 
 const AlertsWithProgress: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { alerts, loading, error } = useSelector((state: RootState) => state.alerts);
-  const [fetchingNews, setFetchingNews] = useState(false);
-  const [progress, setProgress] = useState<NewsProgress | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const {
+    alerts,
+    loading,
+    error,
+    activeSessionId,
+    activeProvider,
+    lastProgress,
+    polling,
+  } = useSelector((state: RootState) => state.alerts);
+
+  const progress = lastProgress as NewsProgress | null;
+  const fetchingNews = !!(activeSessionId && polling);
+
   const [tabValue, setTabValue] = useState(0);
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
@@ -77,40 +96,32 @@ const AlertsWithProgress: React.FC = () => {
     severity: 'info',
   });
 
+  // Track previous progress status to show snackbar on completion
+  const [prevStatus, setPrevStatus] = useState<string | null>(null);
+
   useEffect(() => {
     dispatch(fetchAlerts());
   }, [dispatch]);
 
-  // Poll for progress updates
+  // Show snackbar when progress transitions to completed/failed
   useEffect(() => {
-    if (!sessionId || !fetchingNews) return;
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await api.get(`/alerts/progress/${sessionId}`);
-        setProgress(response.data);
-
-        if (response.data.status === 'completed' || response.data.status === 'failed') {
-          setFetchingNews(false);
-          dispatch(fetchAlerts());
-          clearInterval(pollInterval);
-
-          if (response.data.status === 'completed') {
-            showSnackbar(
-              `Processing complete. ${response.data.alerts_created} new alert(s) created.`,
-              'success',
-            );
-          } else {
-            showSnackbar('News fetching encountered an error. Please try again.', 'error');
-          }
-        }
-      } catch (err) {
-        // Non-fatal: poll will retry on next tick
+    if (!progress) return;
+    const status = progress.status;
+    if (prevStatus && prevStatus !== status) {
+      if (status === 'completed') {
+        showSnackbar(
+          `Processing complete. ${progress.alerts_created} new alert(s) created.`,
+          'success',
+        );
+      } else if (status === 'failed') {
+        showSnackbar(
+          progress.error_detail || 'News fetching encountered an error. Please try again.',
+          'error',
+        );
       }
-    }, 2000);
-
-    return () => clearInterval(pollInterval);
-  }, [sessionId, fetchingNews, dispatch]);
+    }
+    setPrevStatus(status);
+  }, [progress?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showSnackbar = (message: string, severity: SnackbarSeverity) => {
     setSnackbar({ open: true, message, severity });
@@ -121,26 +132,30 @@ const AlertsWithProgress: React.FC = () => {
   };
 
   const handleFetchNews = async () => {
-    setFetchingNews(true);
-    setProgress(null);
     try {
       const response = await api.post('/alerts/fetch-news');
-      setSessionId(response.data.session_id);
+      dispatch(setActiveSession({
+        sessionId: response.data.session_id,
+        provider: response.data.provider
+          ? { provider: response.data.provider, model: response.data.model }
+          : null,
+      }));
+      dispatch(startSessionPolling());
       setTabValue(1);
     } catch (err: any) {
       showSnackbar(
         err.response?.data?.detail || 'Failed to start news fetching. Please try again.',
         'error',
       );
-      setFetchingNews(false);
     }
   };
 
   const handleStopFetch = async () => {
-    if (!sessionId) return;
+    if (!activeSessionId) return;
     try {
-      await api.post(`/alerts/cancel/${sessionId}`);
-      setFetchingNews(false);
+      await api.post(`/alerts/cancel/${activeSessionId}`);
+      stopSessionPolling();
+      dispatch(clearActiveSession());
       showSnackbar('News fetching has been stopped.', 'info');
     } catch (err: any) {
       showSnackbar(
@@ -273,7 +288,7 @@ const AlertsWithProgress: React.FC = () => {
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
         <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)}>
           <Tab label={`Alerts (${alerts.length})`} />
-          <Tab label="Processing Progress" disabled={!progress} />
+          <Tab label="Processing Progress" />
         </Tabs>
       </Box>
 
@@ -297,7 +312,7 @@ const AlertsWithProgress: React.FC = () => {
                   <TableRow>
                     <TableCell colSpan={7} align="center">
                       <Typography color="text.secondary">
-                        No alerts at the moment. Click "Fetch Latest News" to check for updates!
+                        No alerts at the moment. Click &quot;Fetch Latest News&quot; to check for updates!
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -348,9 +363,25 @@ const AlertsWithProgress: React.FC = () => {
 
       {tabValue === 1 && progress && (
         <Paper sx={{ p: 2 }}>
+          {progress.status === 'failed' && progress.error_detail && (
+            <MuiAlert severity="error" sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Alert processing stopped
+              </Typography>
+              {progress.error_detail}
+            </MuiAlert>
+          )}
           <Box sx={{ mb: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="h6">Processing Assets</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Box>
+                <Typography variant="h6">Processing Assets</Typography>
+                {(activeProvider || progress.provider) && (
+                  <Typography variant="caption" color="text.secondary">
+                    Using {activeProvider?.provider || progress.provider}
+                    {(activeProvider?.model || progress.model) && ` (${activeProvider?.model || progress.model})`}
+                  </Typography>
+                )}
+              </Box>
               <Chip
                 label={progress.status}
                 color={
@@ -422,6 +453,14 @@ const AlertsWithProgress: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+        </Paper>
+      )}
+
+      {tabValue === 1 && !progress && (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography color="text.secondary">
+            No processing data yet. Click &quot;Fetch Latest News&quot; to start.
+          </Typography>
         </Paper>
       )}
 

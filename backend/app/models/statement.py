@@ -28,6 +28,7 @@ class StatementType(UpperStrEnum):
     NPS_STATEMENT = auto()
     VESTED_STATEMENT = auto()
     INDMONEY_STATEMENT = auto()
+    TRADEBOOK_STATEMENT = auto()
     OTHER = auto()
 
 

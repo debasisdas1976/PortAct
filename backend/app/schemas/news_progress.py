@@ -29,5 +29,8 @@ class NewsProgress(BaseModel):
     assets: list[AssetProgress]
     started_at: datetime
     completed_at: Optional[datetime] = None
+    error_detail: Optional[str] = None  # session-level error (e.g. "OpenAI — quota exhausted")
+    provider: Optional[str] = None      # AI provider display name
+    model: Optional[str] = None         # AI model used
 
 # Made with Bob

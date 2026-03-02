@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -430,6 +431,7 @@ const Stocks: React.FC = () => {
               onChange={(e) => setFormData({ ...formData, demat_account_id: e.target.value ? Number(e.target.value) : '' })}
               fullWidth
               required
+              helperText={<>Required. Don't have one? <RouterLink to="/demat-accounts" style={{ color: 'inherit' }}>Create a Demat Account</RouterLink></>}
             >
               {dematAccounts.map((da) => (
                 <MenuItem key={da.id} value={da.id}>{buildDematLabel(da)}</MenuItem>

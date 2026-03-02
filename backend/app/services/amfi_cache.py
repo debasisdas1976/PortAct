@@ -140,6 +140,8 @@ class AMFICache:
             amc_index = {}
             current_amc = ''
 
+            isin_placeholders = frozenset(('-', 'N.A.', 'N.A', 'NA', ''))
+
             for line in lines:
                 line = line.strip()
                 if not line:
@@ -164,7 +166,9 @@ class AMFICache:
 
                 scheme_code = parts[0].strip()
                 isin1 = parts[1].strip()
+                isin1 = '' if isin1 in isin_placeholders else isin1
                 isin2 = parts[2].strip()
+                isin2 = '' if isin2 in isin_placeholders else isin2
                 scheme_name = parts[3].strip()
                 nav_str = parts[4].strip()
                 nav_date = parts[5].strip() if len(parts) > 5 else ''

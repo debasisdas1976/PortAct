@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -30,8 +31,11 @@ import {
   Delete as DeleteIcon,
   CloudUpload as UploadIcon,
   Visibility,
-  VisibilityOff
+  VisibilityOff,
+  RocketLaunch as GettingStartedIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import api, { brokersAPI } from '../services/api';
@@ -60,6 +64,7 @@ interface DematAccount {
 }
 
 const DematAccounts: React.FC = () => {
+  const navigate = useNavigate();
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
   const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
@@ -88,6 +93,7 @@ const DematAccounts: React.FC = () => {
   const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
   const [unmatchedDialogOpen, setUnmatchedDialogOpen] = useState(false);
   const [unmatchedStatementId, setUnmatchedStatementId] = useState<number | null>(null);
+  const [gettingStartedOpen, setGettingStartedOpen] = useState(false);
 
   const statementTypes = [
     { value: 'broker_statement', label: 'Broker Statement' },
@@ -286,6 +292,19 @@ const DematAccounts: React.FC = () => {
         </Box>
       </Box>
 
+      <Alert
+        severity="info"
+        icon={<GettingStartedIcon />}
+        action={
+          <Button color="inherit" size="small" onClick={() => setGettingStartedOpen(true)}>
+            Learn More
+          </Button>
+        }
+        sx={{ mb: 3 }}
+      >
+        New to Demat Accounts? Learn how to create accounts, upload statements, and manage tradebooks.
+      </Alert>
+
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md>
           <Card>
@@ -362,7 +381,16 @@ const DematAccounts: React.FC = () => {
             {accounts.map((account) => (
               <TableRow key={account.id}>
                 <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      cursor: 'pointer',
+                      '&:hover': { textDecoration: 'underline' },
+                    }}
+                    onClick={() => navigate(`/demat-accounts/${account.id}`)}
+                  >
                     <CompanyIcon
                       website={brokerNames.find((b) => b.value === account.broker_name)?.website}
                       name={brokerNames.find((b) => b.value === account.broker_name)?.label || account.broker_name}
@@ -370,7 +398,14 @@ const DematAccounts: React.FC = () => {
                     {brokerNames.find((b) => b.value === account.broker_name)?.label || account.broker_name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                   </Box>
                 </TableCell>
-                <TableCell>{account.account_id}</TableCell>
+                <TableCell>
+                  <Typography
+                    sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' }, color: 'primary.main' }}
+                    onClick={() => navigate(`/demat-accounts/${account.id}`)}
+                  >
+                    {account.account_id}
+                  </Typography>
+                </TableCell>
                 <TableCell>{account.account_holder_name || '-'}</TableCell>
                 <TableCell>{account.nickname || '-'}</TableCell>
                 <TableCell align="right">
@@ -677,6 +712,53 @@ const DematAccounts: React.FC = () => {
             {editingAccount ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Getting Started Dialog */}
+      <Dialog open={gettingStartedOpen} onClose={() => setGettingStartedOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <GettingStartedIcon color="primary" />
+            How Demat/Trading Accounts work
+          </Box>
+          <IconButton size="small" onClick={() => setGettingStartedOpen(false)}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {([
+            <>Every <strong>Stock</strong>, <strong>Mutual Fund</strong>, <strong>US Stock</strong>, <strong>ESOP</strong>, <strong>RSU</strong>, and <strong>Commodity</strong> must belong to a Demat/Trading account. If you don't have a real demat account for certain assets (e.g. Physical Gold, ESOPs, RSUs held outside a broker), create a dummy demat account (e.g. "Personal Holdings") and add those assets under it.</>,
+            <>You can manually create a demat/trading account by clicking <strong>Add Account</strong>. Select the broker, enter your client ID, and optionally add the demat account number. This creates an empty account container that you can later populate with assets or statement uploads.</>,
+            <>To auto-create an account along with its holdings, click <strong>Upload Statement</strong> and upload a supported statement — <strong>NSDL/CDSL CAS</strong> (PDF), <strong>MF Central CAS</strong> (PDF), or broker-specific formats like <strong>Zerodha</strong>, <strong>Groww</strong>, <strong>ICICI Direct</strong> (CSV/XLSX), <strong>INDmoney</strong>, or <strong>Vested</strong>. The system will automatically create the demat account (if it doesn't already exist) and import all holdings under it.</>,
+            <>When a statement is processed, each asset is linked to a demat account using the <strong>client ID</strong> from the statement. If a matching demat account already exists, assets are added to it. If not, a new account is created. You can click on any account row to see its holdings, transactions, and upload history on the <strong>account detail</strong> page.</>,
+            <>To import your trade history, open an account's detail page and click <strong>Upload Statement</strong>, then choose <strong>Tradebook Statement</strong>. Currently, <strong>Zerodha tradebooks</strong> (CSV or Excel) are supported. The tradebook must be uploaded to a specific demat account — it will not create a new one. Make sure the account already exists before uploading.</>,
+            <>When a tradebook is processed, the system matches each trade to an <strong>existing asset</strong> in that demat account using the stock symbol or ISIN. Matched trades are imported as <strong>BUY/SELL transactions</strong>. Trades for the same symbol, same date, and same direction are consolidated into a single transaction with a weighted average price. Trades that don't match any existing asset in the account are discarded — so make sure your holdings are imported (via a CAS or broker statement) before uploading the tradebook.</>,
+          ] as React.ReactNode[]).map((content, i, arr) => (
+            <Box key={i} sx={{ display: 'flex', gap: 1.5, py: 1.2, borderBottom: i < arr.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+              <Typography
+                variant="body2"
+                component="span"
+                sx={{
+                  minWidth: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  bgcolor: 'primary.main',
+                  color: 'primary.contrastText',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  flexShrink: 0,
+                  mt: 0.1,
+                }}
+              >
+                {i + 1}
+              </Typography>
+              <Typography variant="body2" component="span">{content}</Typography>
+            </Box>
+          ))}
+        </DialogContent>
       </Dialog>
 
       {/* Unmatched MF Resolution Dialog */}

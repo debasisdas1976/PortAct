@@ -179,12 +179,11 @@ const CryptoAccounts: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
+  const formatINR = (amount: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+
+  const formatUSD = (amount: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
   const totalCashBalance = accounts.reduce((sum, acc) => sum + acc.cash_balance_usd, 0);
   const totalInvested = accounts.reduce((sum, acc) => sum + (acc.total_invested_usd || 0), 0);
@@ -219,9 +218,9 @@ const CryptoAccounts: React.FC = () => {
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
-                Cash Balance
+                Cash Balance (USD)
               </Typography>
-              <Typography variant="h4">{formatCurrency(totalCashBalance)}</Typography>
+              <Typography variant="h4">{formatUSD(totalCashBalance)}</Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -231,7 +230,7 @@ const CryptoAccounts: React.FC = () => {
               <Typography color="textSecondary" gutterBottom>
                 Total Invested
               </Typography>
-              <Typography variant="h4">{formatCurrency(totalInvested)}</Typography>
+              <Typography variant="h4">{formatINR(totalInvested)}</Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -245,7 +244,7 @@ const CryptoAccounts: React.FC = () => {
                 variant="h4"
                 color={totalProfitLoss >= 0 ? 'success.main' : 'error.main'}
               >
-                {formatCurrency(totalProfitLoss)}
+                {formatINR(totalProfitLoss)}
               </Typography>
             </CardContent>
           </Card>
@@ -261,7 +260,7 @@ const CryptoAccounts: React.FC = () => {
               <TableCell>Holder Name</TableCell>
               <TableCell>Nickname</TableCell>
               <TableCell align="right">Cash Balance (USD)</TableCell>
-              <TableCell align="right">Holdings Value (USD)</TableCell>
+              <TableCell align="right">Holdings Value (INR)</TableCell>
               <TableCell>Status</TableCell>
               <TableCell align="center">Actions</TableCell>
             </TableRow>
@@ -292,9 +291,9 @@ const CryptoAccounts: React.FC = () => {
                 <TableCell>{account.account_id}</TableCell>
                 <TableCell>{account.account_holder_name || '-'}</TableCell>
                 <TableCell>{account.nickname || '-'}</TableCell>
-                <TableCell align="right">{formatCurrency(account.cash_balance_usd)}</TableCell>
+                <TableCell align="right">{formatUSD(account.cash_balance_usd)}</TableCell>
                 <TableCell align="right">
-                  {account.current_value_usd ? formatCurrency(account.current_value_usd) : '-'}
+                  {account.current_value_usd ? formatINR(account.current_value_usd) : '-'}
                 </TableCell>
                 <TableCell>
                   <Chip

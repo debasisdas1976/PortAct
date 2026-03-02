@@ -394,12 +394,14 @@ async def upload_statement(
     institution_name: str = Form(None),
     password: str = Form(None),
     portfolio_id: int = Form(None),
+    demat_account_id: int = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Upload a financial statement for processing
     Optional password parameter for encrypted PDFs (e.g., NSDL CAS)
+    Optional demat_account_id for tradebook uploads to link transactions to specific account
     """
     from app.core.config import settings
     
@@ -464,7 +466,8 @@ async def upload_statement(
     # Process statement asynchronously (in a real app, use Celery or similar)
     try:
         process_statement(new_statement.id, db, portfolio_id=portfolio_id,
-                          expected_institution=institution_name)
+                          expected_institution=institution_name,
+                          demat_account_id=demat_account_id)
     except Exception as e:
         logger.error(f"Error processing statement {new_statement.id}: {e}")
         new_statement.status = StatementStatus.FAILED
@@ -482,15 +485,15 @@ async def upload_statement(
             detail=message
         )
 
-    # Bank statements produce transactions (not assets)
-    is_bank_stmt = statement_type == StatementType.BANK_STATEMENT
-    records_found = new_statement.transactions_found if is_bank_stmt else new_statement.assets_found
+    # Bank and tradebook statements produce transactions (not assets)
+    is_txn_stmt = statement_type in (StatementType.BANK_STATEMENT, StatementType.TRADEBOOK_STATEMENT)
+    records_found = new_statement.transactions_found if is_txn_stmt else new_statement.assets_found
 
     if records_found and records_found > 0:
-        record_label = "transaction(s)" if is_bank_stmt else "asset(s)"
+        record_label = "transaction(s)" if is_txn_stmt else "asset(s)"
         # Include import details (e.g. "3 new, 0 duplicate(s) skipped") if available
         import_details = new_statement.error_message if (
-            is_bank_stmt and new_statement.status == StatementStatus.PROCESSED
+            is_txn_stmt and new_statement.status == StatementStatus.PROCESSED
             and new_statement.error_message
         ) else None
         if import_details:

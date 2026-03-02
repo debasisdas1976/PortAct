@@ -74,6 +74,8 @@ class ExpenseWithDetails(Expense):
     """Schema for expense with related details"""
     bank_account_name: Optional[str] = None
     category_name: Optional[str] = None
+    category_icon: Optional[str] = None
+    category_color: Optional[str] = None
 
 
 class ExpenseSummary(BaseModel):

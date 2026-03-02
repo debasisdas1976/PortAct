@@ -5,6 +5,7 @@ Includes fuzzy matching and learning from user corrections
 """
 from typing import Optional, Dict, List, Tuple
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from app.models.expense_category import ExpenseCategory
 from app.models.expense import Expense
 import difflib
@@ -14,187 +15,283 @@ from collections import Counter
 class ExpenseCategorizer:
     """Service to auto-categorize expenses based on keywords"""
     
-    # Enhanced category keywords mapping with comprehensive Indian merchants
+    # Fallback keywords — keys MUST match seed_data.json category names exactly
+    # so that _category_cache lookups succeed.  The canonical source of truth
+    # for system categories is seed_data.json (synced to DB at startup).
     DEFAULT_KEYWORDS = {
-        'Food & Dining': [
-            # Food Delivery
+        'Dining & Restaurants': [
             'swiggy', 'zomato', 'uber eats', 'dunzo', 'shadowfax', 'bundl technologies',
-            # Restaurants & Cafes
+            'eatsure', 'box8', 'faasos', 'behrouz', 'oven story', 'magicpin',
             'dominos', 'pizza hut', 'kfc', 'mcdonald', 'burger king', 'subway',
-            'starbucks', 'cafe coffee day', 'barista', 'costa coffee',
+            'starbucks', 'cafe coffee day', 'ccd', 'barista', 'costa coffee',
             'haldiram', 'bikanervala', 'sagar ratna', 'saravana bhavan',
-            # Generic
+            'paradise biryani', 'behrouz biryani', 'charcoal biryani',
+            'taco bell', 'wow momo', 'chaayos', 'chai point', 'third wave coffee',
+            'mtr', 'vidyarthi bhavan', 'mavalli tiffin room', 'brahmins coffee bar',
+            'by 2 coffee', 'hole in the wall', 'toit', 'truffles', 'meghana foods',
+            'empire', 'nandhini', 'udupi', 'darshini', 'veena stores',
+            'airlines hotel', 'koshy', 'indian coffee house', 'corner house',
+            'a2b', 'adyar ananda bhavan', 'shanti sagar', 'sukh sagar',
+            'sangeetha', 'vasanta bhavan', 'junior kuppanna',
+            'nagarjuna', 'rajdhani', 'mainland china',
+            'bikano', 'chitale', 'gwalia', 'aggarwal', 'annapurna',
             'restaurant', 'cafe', 'coffee', 'food', 'dining', 'eatery',
-            'meal', 'breakfast', 'lunch', 'dinner', 'bakery', 'sweet shop'
+            'meal', 'breakfast', 'lunch', 'dinner', 'bakery', 'sweet shop',
+            'dhaba', 'tiffin', 'canteen', 'mess', 'biryani', 'thali',
+            'dosa', 'idli', 'paratha'
         ],
         'Groceries': [
-            # Online Grocery
             'bigbasket', 'grofers', 'blinkit', 'zepto', 'dunzo', 'jiomart',
             'amazon fresh', 'amazon pantry', 'instamart', 'swiggy instamart',
-            # Supermarkets
-            'dmart', 'reliance fresh', 'more', 'spencer', 'star bazaar',
+            'milkbasket', 'supr daily', 'licious', 'freshtohome', 'meatigo',
+            'country delight', 'ninjacart',
+            'dmart', 'reliance fresh', 'reliance smart', 'more', 'spencer', 'star bazaar',
             'hypercity', 'big bazaar', 'easyday', 'nilgiris', '24 seven',
-            # Local stores
-            'kirana', 'provision', 'general store',
-            # Generic
+            'spar', 'nature basket', 'foodhall', 'le marche',
+            'namdhari', 'namdhari fresh', 'hopcoms', 'namma basket',
+            'total mall', 'ratnadeep', 'star market',
+            'kirana', 'provision', 'general store', 'departmental store',
             'grocery', 'supermarket', 'vegetables', 'fruits', 'milk', 'bread',
-            'food items', 'household', 'provisions'
+            'food items', 'household', 'provisions', 'ration', 'sabzi', 'mandi'
         ],
         'Transportation': [
-            # Ride-sharing
             'uber', 'ola', 'rapido', 'blu smart', 'meru', 'taxi',
-            # Fuel
-            'indian oil', 'bharat petroleum', 'hp petrol', 'shell', 'essar',
-            'petrol', 'diesel', 'fuel', 'cng', 'gas station',
-            # Public Transport
-            'metro', 'dmrc', 'bmtc', 'best', 'bus', 'train', 'railway',
-            # Parking & Tolls
-            'parking', 'toll', 'fastag', 'paytm fastag',
-            # Generic
-            'transport', 'cab', 'auto', 'rickshaw', 'vehicle'
+            'namma yatri', 'auto', 'indriver',
+            'indian oil', 'iocl', 'bharat petroleum', 'bpcl', 'hp petrol', 'hpcl',
+            'shell', 'essar', 'reliance petrol',
+            'petrol', 'diesel', 'fuel', 'cng', 'gas station', 'petrol pump', 'fuel station',
+            'bmtc', 'namma metro', 'bangalore metro', 'bmrcl', 'purple line', 'green line',
+            'metro', 'dmrc', 'best', 'bus', 'train', 'railway', 'local train',
+            'mumbai metro', 'chennai metro', 'hyderabad metro', 'kolkata metro',
+            'parking', 'toll', 'fastag', 'paytm fastag', 'netc fastag',
+            'park plus', 'park+',
+            'car wash', 'servicing', 'car service', 'bike service',
+            'tyre', 'battery', 'mechanic', 'garage',
+            'transport', 'cab', 'rickshaw', 'vehicle', 'commute'
         ],
-        'Shopping': [
-            # E-commerce
-            'amazon', 'amazonin', 'flipkart', 'myntra', 'ajio', 'meesho',
+        'Shopping & Clothing': [
+            'amazon', 'amazonin', 'amzn', 'flipkart', 'myntra', 'ajio', 'meesho',
             'snapdeal', 'shopclues', 'tata cliq', 'nykaa', 'purplle',
-            # Fashion
+            'jiomart', 'firstcry', 'lenskart', 'mamaearth', 'boat',
             'zara', 'h&m', 'max fashion', 'pantaloons', 'westside',
             'lifestyle', 'shoppers stop', 'central', 'reliance trends',
-            # Electronics
+            'uniqlo', 'marks and spencer', 'mango', 'allen solly', 'peter england',
+            'van heusen', 'louis philippe', 'raymond', 'arvind',
             'croma', 'reliance digital', 'vijay sales', 'poorvika',
-            # Furniture & Home
+            'sangeetha mobiles', 'lot mobiles', 'samsung store', 'apple store',
             'ikea', 'pepperfry', 'urban ladder', 'hometown', 'fabindia',
-            # Generic
+            'wakefit', 'sleepwell', 'duroflex', 'godrej interio',
+            'orion mall', 'phoenix marketcity', 'forum mall', 'mantri mall',
+            'garuda mall', 'royal meenakshi mall', 'vr bengaluru',
+            'commercial street', 'brigade road', 'chickpet', 'avenue road',
+            'jayanagar shopping', 'malleswaram shopping',
             'shopping', 'mall', 'store', 'retail', 'fashion', 'clothing',
-            'shoes', 'electronics', 'mobile', 'laptop', 'accessories'
+            'shoes', 'electronics', 'mobile', 'laptop', 'accessories',
+            'jewellery', 'tanishq', 'kalyan', 'malabar gold', 'joyalukkas'
         ],
         'Entertainment': [
-            # Streaming
             'netflix', 'amazon prime', 'prime video', 'hotstar', 'disney',
             'zee5', 'sony liv', 'voot', 'alt balaji', 'mx player',
             'spotify', 'youtube premium', 'gaana', 'jio saavn', 'wynk',
-            # Movies & Theater
-            'pvr', 'inox', 'cinepolis', 'carnival', 'movie', 'cinema',
+            'apple music', 'audible', 'kindle unlimited',
+            'jio cinema', 'fancode', 'lionsgate',
+            'pvr', 'inox', 'pvr inox', 'cinepolis', 'carnival', 'movie', 'cinema',
             'theatre', 'multiplex', 'bookmyshow', 'paytm movies',
-            # Gaming
+            'innovative multiplex', 'gopalan cinemas', 'fun cinemas',
+            'cubbon park', 'lalbagh', 'bannerghatta', 'wonderla',
+            'nandi hills', 'innovative film city',
+            'imagica', 'essel world', 'kingdom of dreams',
+            'comic con', 'sunburn', 'nh7 weekender',
             'steam', 'playstation', 'xbox', 'nintendo', 'gaming',
-            # Generic
-            'entertainment', 'subscription', 'ott', 'streaming'
+            'epic games', 'riot games',
+            'entertainment', 'subscription', 'ott', 'streaming',
+            'concert', 'event', 'show', 'performance', 'ticket'
         ],
         'Utilities': [
-            # Telecom
             'airtel', 'jio', 'vodafone', 'vi', 'bsnl', 'mtnl',
             'mobile recharge', 'prepaid', 'postpaid', 'phone bill',
-            # Internet & DTH
             'broadband', 'wifi', 'internet', 'fiber', 'act fibernet',
             'tata sky', 'dish tv', 'sun direct', 'dth', 'cable',
-            # Utilities
-            'electricity', 'power', 'bescom', 'msedcl', 'tata power',
-            'water', 'water bill', 'gas', 'lpg', 'indane', 'bharat gas',
-            # Bill Payment
-            'bill payment', 'bbps', 'billdesk', 'utility', 'paytm bill'
+            'hathway', 'you broadband', 'excitel', 'tikona',
+            'bescom', 'bwssb', 'bangalore water', 'bbmp',
+            'kaveri', 'cauvery water',
+            'electricity', 'power', 'msedcl', 'tata power', 'adani electricity',
+            'torrent power', 'cesc',
+            'water', 'water bill', 'gas', 'lpg', 'indane', 'bharat gas', 'hp gas',
+            'piped gas', 'png', 'mahanagar gas', 'adani gas', 'gail gas',
+            'bill payment', 'bbps', 'billdesk', 'utility', 'paytm bill',
+            'cred bill', 'phonepe bill'
         ],
-        'Healthcare': [
-            # Hospitals & Clinics
+        'Healthcare & Medical': [
             'apollo', 'fortis', 'max', 'medanta', 'manipal', 'narayana',
             'hospital', 'clinic', 'doctor', 'medical', 'health',
-            # Pharmacy
+            'aster', 'columbia asia', 'sakra', 'sparsh',
+            'narayana hrudayalaya', 'manipal hospital', 'st johns', 'nimhans',
+            'kidwai', 'victoria hospital', 'jayadeva', 'sagar hospital',
+            'bangalore hospital', 'bgs global', 'ramaiah',
             'apollo pharmacy', 'medplus', 'netmeds', '1mg', 'pharmeasy',
             'pharmacy', 'medicine', 'chemist', 'drug store',
-            # Diagnostics
+            'truemeds', 'wellness forever', 'frank ross',
             'thyrocare', 'dr lal pathlabs', 'metropolis', 'lab test',
             'diagnostic', 'pathology', 'x-ray', 'scan',
-            # Insurance
-            'health insurance', 'mediclaim', 'star health', 'care health',
-            # Fitness
-            'cult fit', 'healthifyme', 'fitness', 'gym', 'yoga'
+            'srl diagnostics', 'neuberg', 'orange health', 'redcliffe',
+            'dental', 'dentist', 'clove dental', 'sabka dentist',
+            'eye care', 'ophthalmologist', 'titan eye',
+            'ayurveda', 'patanjali', 'himalaya', 'dabur',
+            'ayurvedic', 'homeopathy', 'siddha'
         ],
         'Education': [
-            # Schools & Colleges
             'school', 'college', 'university', 'institute', 'academy',
             'tuition', 'coaching', 'classes',
-            # Online Learning
+            'iisc', 'iim bangalore', 'nls', 'christ university', 'jain university',
+            'pes university', 'reva', 'nitte', 'dayananda sagar', 'bms college',
+            'rv college', 'sir mvit',
             'udemy', 'coursera', 'byju', 'unacademy', 'vedantu',
             'toppr', 'white hat jr', 'upgrad', 'simplilearn',
-            # Books & Stationery
+            'skill share', 'linkedin learning', 'scaler', 'coding ninjas',
+            'great learning', 'intellipaat', 'edureka', 'pluralsight',
+            'allen', 'fiitjee', 'aakash', 'resonance', 'bansal',
+            'ims', 'time institute', 'career launcher', 'test series',
             'amazon books', 'flipkart books', 'crossword', 'landmark',
             'books', 'stationery', 'notebook', 'pen',
-            # Generic
-            'education', 'learning', 'course', 'training', 'exam fee'
+            'sapna book house', 'gangaram', 'blossoms',
+            'education', 'learning', 'course', 'training', 'exam fee',
+            'certification', 'workshop', 'seminar', 'webinar'
         ],
-        'Travel': [
-            # Airlines
+        'Fitness & Gym': [
+            'cult fit', 'cure fit', 'healthifyme', 'fitness', 'gym', 'yoga',
+            'gold gym', 'anytime fitness', 'talwalkar', 'snap fitness',
+            'workout', 'exercise', 'trainer', 'sports', 'health club',
+            'crossfit', 'pilates', 'zumba'
+        ],
+        'Travel & Vacation': [
             'indigo', 'spicejet', 'air india', 'vistara', 'go air',
-            'air asia', 'flight', 'airline', 'airways',
-            # Hotels & Stays
+            'air asia', 'akasa air', 'flight', 'airline', 'airways',
+            'star air', 'alliance air',
             'oyo', 'treebo', 'fab hotels', 'airbnb', 'booking.com',
             'makemytrip', 'goibibo', 'cleartrip', 'yatra', 'ixigo',
             'hotel', 'resort', 'accommodation', 'stay',
-            # Transport
+            'taj hotels', 'itc hotels', 'oberoi', 'lemon tree', 'ginger hotel',
+            'zostel', 'hostel', 'homestay',
             'irctc', 'train', 'railway', 'redbus', 'abhibus', 'bus booking',
-            # Generic
-            'travel', 'vacation', 'holiday', 'tour', 'trip'
+            'confirmtkt', 'railyatri', 'trainman',
+            'kempegowda airport', 'blr airport', 'kia', 'bial',
+            'ksrtc', 'bmtc volvo', 'shivajinagar bus', 'majestic bus',
+            'mysore road', 'coorg', 'ooty', 'wayanad', 'chikmagalur',
+            'travel', 'vacation', 'holiday', 'tour', 'trip',
+            'visa', 'passport', 'forex', 'travel insurance', 'luggage'
         ],
         'Insurance': [
             'insurance', 'premium', 'policy', 'lic', 'hdfc life',
             'icici prudential', 'sbi life', 'max life', 'bajaj allianz',
             'tata aia', 'kotak life', 'birla sun life', 'aegon life',
             'star health', 'care health', 'acko', 'digit insurance',
-            'vehicle insurance', 'car insurance', 'bike insurance'
+            'vehicle insurance', 'car insurance', 'bike insurance',
+            'niva bupa', 'manipal cigna', 'aditya birla health',
+            'hdfc ergo', 'icici lombard', 'bajaj finserv', 'new india assurance',
+            'united india insurance', 'national insurance',
+            'term plan', 'endowment', 'ulip', 'term insurance'
         ],
-        'Investment': [
-            # Trading Platforms
+        'Investments & Returns': [
             'zerodha', 'groww', 'upstox', 'angel one', 'paytm money',
             '5paisa', 'iifl', 'motilal oswal', 'sharekhan',
-            # Mutual Funds
+            'kite', 'coin by zerodha', 'dhan', 'fi money', 'ind money',
             'mutual fund', 'mf', 'sip', 'systematic investment',
             'amc', 'hdfc mf', 'icici mf', 'sbi mf',
-            # Generic
+            'nippon mf', 'axis mf', 'kotak mf', 'dsp mf', 'mirae asset',
+            'ppfas', 'quant mf', 'parag parikh',
+            'ppf', 'nsc', 'kvp', 'fixed deposit', 'fd', 'recurring deposit', 'rd',
+            'post office', 'sukanya samriddhi', 'ssy',
+            'bonds', 'sgb', 'sovereign gold bond', 'nps', 'atal pension',
             'stock', 'share', 'equity', 'investment', 'trading',
-            'demat', 'portfolio', 'fund'
+            'demat', 'portfolio', 'fund', 'dividend', 'ipo'
         ],
-        'Rent': [
+        'Rent & Mortgage': [
             'rent', 'lease', 'housing', 'apartment', 'flat',
             'maintenance', 'society', 'housing society', 'pg',
-            'paying guest', 'accommodation', 'landlord'
+            'paying guest', 'accommodation', 'landlord',
+            'cred rent', 'nobroker', 'magicbricks', 'housing.com',
+            '99acres', 'nestaway', 'colive', 'zolo',
+            'security deposit', 'brokerage', 'rental agreement',
+            'mortgage', 'emi', 'home loan'
         ],
         'Personal Care': [
-            # Salons & Spas
             'salon', 'spa', 'lakme', 'jawed habib', 'naturals',
             'green trends', 'toni and guy', 'looks salon',
-            # Beauty & Grooming
+            'urban company', 'urbanclap',
+            'bounce salon', 'bodycraft', 'studio11',
             'beauty', 'grooming', 'haircut', 'parlour', 'facial',
             'manicure', 'pedicure', 'waxing', 'massage',
-            # Products
             'nykaa', 'purplle', 'mcaffeine', 'mamaearth', 'wow',
-            'cosmetics', 'skincare', 'makeup', 'personal care'
+            'cosmetics', 'skincare', 'makeup', 'personal care',
+            'bath and body works', 'the body shop', 'forest essentials',
+            'plum', 'sugar cosmetics', 'myglamm', 'beardo', 'bombay shaving'
+        ],
+        'Subscriptions': [
+            'subscription', 'membership', 'monthly', 'recurring',
+            'netflix', 'spotify', 'amazon prime', 'youtube premium',
+            'apple one', 'icloud', 'google one', 'microsoft 365',
+            'adobe', 'notion', 'chatgpt', 'claude', 'cred', 'premium'
         ],
         'Gifts & Donations': [
             'gift', 'donation', 'charity', 'ngo', 'temple',
             'church', 'mosque', 'gurudwara', 'religious',
-            'contribution', 'offering', 'dakshina', 'prasad'
+            'contribution', 'offering', 'dakshina', 'prasad',
+            'ketto', 'milaap', 'give india', 'donatekart',
+            'tirupati', 'iskcon', 'shirdi', 'vaishno devi'
+        ],
+        'Pet Care': [
+            'pet', 'dog', 'cat', 'vet', 'veterinary',
+            'pet food', 'pet supplies', 'supertails',
+            'heads up for tails', 'petsy', 'mars petcare'
+        ],
+        'Home Maintenance': [
+            'repair', 'maintenance', 'plumber', 'electrician', 'cleaning',
+            'handyman', 'home improvement', 'urban company', 'urbanclap',
+            'housejoy', 'carpenter', 'painter', 'pest control',
+            'water purifier', 'ac service', 'appliance repair'
         ],
         'Fees & Charges': [
             'fee', 'charge', 'penalty', 'fine', 'late fee',
-            'processing fee', 'service charge', 'gst', 'tax',
-            'annual fee', 'membership fee', 'registration'
+            'processing fee', 'service charge',
+            'annual fee', 'membership fee', 'registration',
+            'emi processing', 'foreclosure charge', 'bounce charge',
+            'convenience fee', 'platform fee', 'delivery charge'
+        ],
+        'Taxes': [
+            'tax', 'income tax', 'property tax', 'tds', 'gst',
+            'advance tax', 'stamp duty', 'cess',
+            'self assessment tax', 'challan', 'professional tax', 'municipal tax'
         ],
         'ATM Withdrawal': [
-            'atm', 'cash withdrawal', 'withdrawal', 'cash'
+            'atm', 'cash withdrawal', 'withdrawal', 'cash',
+            'atm cash', 'self withdrawal', 'cash deposit machine', 'cdm'
         ],
         'Transfer': [
             'transfer', 'neft', 'imps', 'rtgs', 'upi transfer',
             'fund transfer', 'money transfer', 'payment to',
-            'sent to', 'transferred to'
+            'sent to', 'transferred to',
+            'upi', 'paytm', 'phonepe', 'gpay', 'google pay',
+            'bhim', 'mobikwik', 'freecharge', 'amazon pay'
         ],
-        'Salary': [
+        'Salary & Income': [
             'salary', 'wages', 'income', 'payment received',
-            'credit salary', 'sal credit', 'payroll', 'stipend'
+            'credit salary', 'sal credit', 'payroll', 'stipend',
+            'bonus', 'incentive', 'commission', 'honorarium',
+            'freelance', 'consulting fee', 'professional fee'
         ],
         'Refund': [
             'refund', 'reversal', 'cashback', 'reward',
             'credit adjustment', 'return', 'cancelled',
-            'refunded', 'reversed'
+            'refunded', 'reversed',
+            'chargeback', 'dispute', 'claim settled'
+        ],
+        'Domestic Help': [
+            'maid', 'driver', 'laundry', 'car wash', 'nanny', 'snabbit',
+            'housekeeper', 'cook', 'domestic help', 'house help', 'bai',
+            'dhobi', 'ironing', 'pressing', 'dry cleaning', 'washerman',
+            'gardener', 'watchman', 'security guard', 'ayah', 'caretaker',
+            'babysitter', 'cleaner', 'sweeper', 'household staff'
         ]
     }
     
@@ -208,8 +305,18 @@ class ExpenseCategorizer:
             self._load_learned_patterns()
     
     def _load_categories(self):
-        """Load categories from database into cache"""
-        categories = self.db.query(ExpenseCategory).all()
+        """Load categories from database into cache (only current user's + system categories)"""
+        query = self.db.query(ExpenseCategory).filter(
+            ExpenseCategory.is_active == True
+        )
+        if self.user_id:
+            query = query.filter(
+                or_(
+                    ExpenseCategory.user_id == self.user_id,
+                    ExpenseCategory.is_system == True
+                )
+            )
+        categories = query.all()
         for category in categories:
             self._category_cache[category.name.lower()] = category.id
     
@@ -238,35 +345,49 @@ class ExpenseCategorizer:
     
     def _fuzzy_match(self, text: str, keywords: List[str], threshold: float = 0.8) -> Optional[str]:
         """
-        Perform fuzzy matching on text against keywords
-        Returns the best matching keyword if similarity > threshold
+        Perform fuzzy matching on text against keywords.
+        Compares keyword against individual words/windows in the text
+        (not the entire text string) so length differences don't kill the ratio.
+        Returns the best matching keyword if similarity >= threshold.
         """
         text_lower = text.lower()
+        text_words = text_lower.split()
         best_match = None
         best_ratio = 0.0
-        
+
         for keyword in keywords:
             keyword_lower = keyword.lower()
-            
+
             # First try exact substring match (fastest)
             if keyword_lower in text_lower:
                 return keyword
-            
-            # Then try fuzzy matching for partial matches
-            # Use SequenceMatcher for similarity ratio
-            ratio = difflib.SequenceMatcher(None, text_lower, keyword_lower).ratio()
-            
-            # Also check if keyword words are in text (for multi-word keywords)
+
             keyword_words = keyword_lower.split()
-            if len(keyword_words) > 1:
-                words_found = sum(1 for word in keyword_words if word in text_lower)
+
+            if len(keyword_words) <= 1:
+                # Single-word keyword: compare against each word in text
+                for word in text_words:
+                    ratio = difflib.SequenceMatcher(None, word, keyword_lower).ratio()
+                    if ratio > best_ratio and ratio >= threshold:
+                        best_ratio = ratio
+                        best_match = keyword
+            else:
+                # Multi-word keyword: sliding window of same word count
+                window_size = len(keyword_words)
+                for i in range(max(1, len(text_words) - window_size + 1)):
+                    window = ' '.join(text_words[i:i + window_size])
+                    ratio = difflib.SequenceMatcher(None, window, keyword_lower).ratio()
+                    if ratio > best_ratio and ratio >= threshold:
+                        best_ratio = ratio
+                        best_match = keyword
+
+                # Also check if all keyword words appear in text (even non-adjacent)
+                words_found = sum(1 for w in keyword_words if w in text_lower)
                 word_ratio = words_found / len(keyword_words)
-                ratio = max(ratio, word_ratio)
-            
-            if ratio > best_ratio and ratio >= threshold:
-                best_ratio = ratio
-                best_match = keyword
-        
+                if word_ratio > best_ratio and word_ratio >= threshold:
+                    best_ratio = word_ratio
+                    best_match = keyword
+
         return best_match
     
     def _get_learned_category(self, merchant_name: str) -> Optional[int]:
@@ -314,9 +435,21 @@ class ExpenseCategorizer:
         # Combine description and merchant name for matching
         text_to_match = f"{description} {merchant_name or ''}".lower()
         
-        # Strategy 2: Try exact matching with database categories
-        categories = self.db.query(ExpenseCategory).filter(
-            ExpenseCategory.keywords.isnot(None)
+        # Strategy 2: Try exact matching with database categories (user's + system, active only)
+        cat_query = self.db.query(ExpenseCategory).filter(
+            ExpenseCategory.keywords.isnot(None),
+            ExpenseCategory.is_active == True
+        )
+        if self.user_id:
+            cat_query = cat_query.filter(
+                or_(
+                    ExpenseCategory.user_id == self.user_id,
+                    ExpenseCategory.is_system == True
+                )
+            )
+        # User-defined categories first so they take priority over system ones
+        categories = cat_query.order_by(
+            ExpenseCategory.is_system.asc()
         ).all()
         
         for category in categories:
@@ -398,190 +531,5 @@ class ExpenseCategorizer:
         
         return expenses
     
-    def create_default_categories(self, user_id: int) -> List[ExpenseCategory]:
-        """
-        Create default expense categories for a new user
-        """
-        default_categories = [
-            {
-                'name': 'Food & Dining',
-                'description': 'Restaurants, food delivery, dining out',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Food & Dining']),
-                'color': '#FF6B6B',
-                'icon': '🍽️'
-            },
-            {
-                'name': 'Groceries',
-                'description': 'Supermarket, grocery shopping',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Groceries']),
-                'color': '#4ECDC4',
-                'icon': '🛒'
-            },
-            {
-                'name': 'Transportation',
-                'description': 'Fuel, cab, metro, parking',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Transportation']),
-                'color': '#45B7D1',
-                'icon': '🚗'
-            },
-            {
-                'name': 'Shopping',
-                'description': 'Online shopping, retail stores',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Shopping']),
-                'color': '#96CEB4',
-                'icon': '🛍️'
-            },
-            {
-                'name': 'Entertainment',
-                'description': 'Movies, streaming, games',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Entertainment']),
-                'color': '#FFEAA7',
-                'icon': '🎬'
-            },
-            {
-                'name': 'Utilities',
-                'description': 'Electricity, water, internet, mobile',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Utilities']),
-                'color': '#DFE6E9',
-                'icon': '💡'
-            },
-            {
-                'name': 'Healthcare',
-                'description': 'Medical, pharmacy, insurance',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Healthcare']),
-                'color': '#74B9FF',
-                'icon': '🏥'
-            },
-            {
-                'name': 'Education',
-                'description': 'School, courses, books',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Education']),
-                'color': '#A29BFE',
-                'icon': '📚'
-            },
-            {
-                'name': 'Travel',
-                'description': 'Flights, hotels, vacation',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Travel']),
-                'color': '#FD79A8',
-                'icon': '✈️'
-            },
-            {
-                'name': 'Insurance',
-                'description': 'Life, health, vehicle insurance',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Insurance']),
-                'color': '#636E72',
-                'icon': '🛡️'
-            },
-            {
-                'name': 'Investment',
-                'description': 'Mutual funds, stocks, SIP',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Investment']),
-                'color': '#00B894',
-                'icon': '📈'
-            },
-            {
-                'name': 'Rent',
-                'description': 'House rent, maintenance',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Rent']),
-                'color': '#FDCB6E',
-                'icon': '🏠'
-            },
-            {
-                'name': 'Personal Care',
-                'description': 'Salon, spa, grooming',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Personal Care']),
-                'color': '#E17055',
-                'icon': '💇'
-            },
-            {
-                'name': 'Gifts & Donations',
-                'description': 'Gifts, charity, donations',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Gifts & Donations']),
-                'color': '#F8A5C2',
-                'icon': '🎁'
-            },
-            {
-                'name': 'Fees & Charges',
-                'description': 'Bank fees, penalties, taxes',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Fees & Charges']),
-                'color': '#B2BEC3',
-                'icon': '💳'
-            },
-            {
-                'name': 'ATM Withdrawal',
-                'description': 'Cash withdrawals',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['ATM Withdrawal']),
-                'color': '#2D3436',
-                'icon': '🏧'
-            },
-            {
-                'name': 'Transfer',
-                'description': 'Money transfers, NEFT, IMPS',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Transfer']),
-                'color': '#6C5CE7',
-                'icon': '💸'
-            },
-            {
-                'name': 'Salary',
-                'description': 'Salary income',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Salary']),
-                'color': '#00B894',
-                'icon': '💰',
-                'is_income': True
-            },
-            {
-                'name': 'Refund',
-                'description': 'Refunds, cashback, rewards',
-                'keywords': ','.join(self.DEFAULT_KEYWORDS['Refund']),
-                'color': '#55EFC4',
-                'icon': '↩️',
-                'is_income': True
-            },
-            {
-                'name': 'Other Income',
-                'description': 'Other income sources',
-                'keywords': 'income,credit,received',
-                'color': '#81ECEC',
-                'icon': '💵',
-                'is_income': True
-            },
-            {
-                'name': 'Other Expenses',
-                'description': 'Miscellaneous expenses',
-                'keywords': 'other,misc,miscellaneous',
-                'color': '#B2BEC3',
-                'icon': '📦'
-            }
-        ]
-        
-        created_categories = []
-        for cat_data in default_categories:
-            # Check if category already exists
-            existing = self.db.query(ExpenseCategory).filter(
-                ExpenseCategory.user_id == user_id,
-                ExpenseCategory.name == cat_data['name']
-            ).first()
-            
-            if not existing:
-                category = ExpenseCategory(
-                    user_id=user_id,
-                    name=cat_data['name'],
-                    description=cat_data.get('description'),
-                    keywords=cat_data.get('keywords'),
-                    color=cat_data.get('color'),
-                    icon=cat_data.get('icon'),
-                    is_system=True,
-                    is_active=True
-                )
-                self.db.add(category)
-                created_categories.append(category)
-        
-        self.db.commit()
-        
-        # Reload cache
-        self._load_categories()
-        
-        return created_categories
 
 # Made with Bob

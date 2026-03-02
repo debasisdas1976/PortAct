@@ -43,36 +43,43 @@ def get_isin_from_amfi(fund_name: str) -> Optional[Tuple[str, str]]:
     Uses cached AMFI data for performance.
     Returns: (isin, exact_fund_name) or (None, None)
     """
-    from app.services.amfi_cache import AMFICache
+    from app.services.amfi_cache import AMFICache, _tokenize
 
     try:
         schemes = AMFICache.get_schemes()
+        search_upper = fund_name.upper().strip()
 
-        # Normalize search term
-        search_term = fund_name.upper().strip()
-        search_term = search_term.replace(' - DIRECT PLAN', '').replace(' -DIRECT PLAN', '')
-        search_term = search_term.replace(' - REGULAR PLAN', '').replace(' -REGULAR PLAN', '')
-        search_term = search_term.replace(' - GROWTH', '').replace(' -GROWTH', '')
-        search_term = search_term.replace('-E', '').replace(' - E', '')
+        # If the input looks like an ISIN, do direct lookup
+        if (search_upper.startswith('INF') or search_upper.startswith('INE')) and len(search_upper) == 12:
+            scheme = AMFICache.get_by_isin(search_upper)
+            if scheme and scheme.isin:
+                return (scheme.isin, scheme.scheme_name)
+            return (None, None)
 
-        # Collect matching funds via substring search
+        # Token-based matching: tokenize the search term and find schemes
+        # where all significant tokens appear.
+        search_tokens = _tokenize(fund_name)
+        want_direct = 'DIRECT' in search_upper
+        want_growth = 'GROWTH' in search_upper
+
         matches = []
-
         for scheme in schemes:
-            if search_term in scheme.name_upper:
-                isin = scheme.isin
-                if isin:
-                    score = (2 if scheme.is_direct else 0) + (1 if scheme.is_growth else 0)
-                    matches.append({
-                        'isin': isin,
-                        'name': scheme.scheme_name,
-                        'is_growth': scheme.is_growth,
-                        'is_direct': scheme.is_direct,
-                        'score': score,
-                    })
+            if not scheme.isin:
+                continue
+            if search_tokens and search_tokens.issubset(scheme.name_tokens):
+                score = (2 if scheme.is_direct else 0) + (1 if scheme.is_growth else 0)
+                # Bonus for matching Direct/Growth preference
+                if want_direct and scheme.is_direct:
+                    score += 2
+                if want_growth and scheme.is_growth:
+                    score += 1
+                matches.append({
+                    'isin': scheme.isin,
+                    'name': scheme.scheme_name,
+                    'score': score,
+                })
 
         if matches:
-            # Sort by score (Direct Growth > Direct IDCW > Regular Growth > Regular IDCW)
             matches.sort(key=lambda x: x['score'], reverse=True)
             best_match = matches[0]
             logger.info(f"Found ISIN for '{fund_name}' from AMFI: {best_match['isin']} ({best_match['name'][:60]})")

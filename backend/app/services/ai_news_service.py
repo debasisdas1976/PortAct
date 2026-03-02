@@ -5,8 +5,8 @@ Supports OpenAI, Grok (xAI), Google Gemini, Anthropic Claude, DeepSeek, and Mist
 import httpx
 import json
 import asyncio
+from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
-from datetime import datetime
 from sqlalchemy.orm import Session
 from loguru import logger
 
@@ -14,6 +14,18 @@ from app.core.config import settings
 from app.models.asset import Asset, AssetType
 from app.models.alert import Alert, AlertType, AlertSeverity
 from app.services.news_progress_tracker import progress_tracker
+
+
+@dataclass
+class AIResult:
+    """Structured result from an AI query — carries either content or error details."""
+    success: bool
+    content: Optional[str] = None
+    error: Optional[str] = None          # human-readable error message
+    error_type: Optional[str] = None     # "no_api_key", "rate_limit", "quota_exhausted", "timeout", "api_error"
+    provider: Optional[str] = None       # e.g. "OpenAI", "Gemini"
+    model: Optional[str] = None          # e.g. "gpt-3.5-turbo"
+    fatal: bool = False                  # True → stop processing all remaining assets
 
 
 class AINewsService:
@@ -87,10 +99,25 @@ class AINewsService:
         "You are a knowledgeable financial analyst specializing in "
         "Indian markets and investments. You ALWAYS provide useful, "
         "specific insights about any asset or investment topic. "
-        "Never say there is nothing to report — every investment "
-        "has risks, opportunities, or considerations worth highlighting. "
         "Respond with valid JSON only, no markdown formatting."
     )
+
+    # Only market-driven asset types get per-asset alerts.
+    # Fixed-value assets (PPF, FD, land, etc.) are covered by generic sector alerts.
+    ALERTABLE_ASSET_TYPES = [
+        AssetType.STOCK,
+        AssetType.US_STOCK,
+        AssetType.EQUITY_MUTUAL_FUND,
+        AssetType.HYBRID_MUTUAL_FUND,
+        AssetType.DEBT_MUTUAL_FUND,
+        AssetType.COMMODITY,
+        AssetType.CRYPTO,
+        AssetType.SOVEREIGN_GOLD_BOND,
+        AssetType.REIT,
+        AssetType.INVIT,
+        AssetType.ESOP,
+        AssetType.RSU,
+    ]
 
     def __init__(self):
         # Request tuning (operational params, not provider-specific)
@@ -105,27 +132,97 @@ class AINewsService:
     # Public interface
     # ------------------------------------------------------------------
 
+    def get_provider_config(self) -> dict:
+        """
+        Resolve the active provider's API key, endpoint, and model.
+        Priority: DB setting > env var > None.
+
+        Returns:
+            {"provider": str, "api_key": str, "endpoint": str,
+             "model": str, "api_format": str, "display_name": str}
+        """
+        from app.core.database import SessionLocal
+        from app.models.app_settings import AppSettings
+
+        db = SessionLocal()
+        try:
+            ai_rows = db.query(AppSettings).filter(AppSettings.category == "ai").all()
+            db_settings = {row.key: row.value for row in ai_rows}
+        finally:
+            db.close()
+
+        provider = (db_settings.get("ai_news_provider") or settings.AI_NEWS_PROVIDER).lower()
+
+        if provider not in self.PROVIDERS:
+            logger.warning(f"Unknown AI provider '{provider}', falling back to openai.")
+            provider = "openai"
+
+        prov_conf = self.PROVIDERS[provider]
+
+        # Resolve: DB value > env var fallback
+        api_key = (
+            db_settings.get(prov_conf["key_setting"])
+            or getattr(settings, prov_conf["key_env"], None)
+        )
+        endpoint = (
+            db_settings.get(prov_conf["endpoint_setting"])
+            or getattr(settings, prov_conf["endpoint_env"], "")
+        )
+        model = (
+            db_settings.get(prov_conf["model_setting"])
+            or getattr(settings, prov_conf["model_env"], "")
+        )
+
+        return {
+            "provider": provider,
+            "api_key": api_key,
+            "endpoint": endpoint,
+            "model": model,
+            "api_format": prov_conf["api_format"],
+            "display_name": prov_conf["display_name"],
+        }
+
     async def fetch_asset_news(
         self,
         db: Session,
         user_id: int,
         asset: Asset,
-    ) -> Optional[Dict]:
+    ) -> Tuple[Optional[Dict], Optional[AIResult]]:
         """
         Fetch relevant news and insights for a specific asset using AI.
 
-        Returns a structured dictionary with news data, or None if there is
-        no significant news or the AI call fails.
+        Returns:
+            (news_data, None) on success
+            (None, AIResult) on error — AIResult carries error details
         """
         try:
             prompt = self._build_news_prompt(asset)
-            response = await self._query_ai(prompt)
-            if not response:
-                return None
-            return self._parse_ai_response(response, asset)
+            result = await self._query_ai(prompt)
+
+            if not result.success:
+                return None, result
+
+            parsed = self._parse_ai_response(result.content, asset)
+            if parsed is None:
+                # JSON parse failed but AI call succeeded — not fatal
+                return None, AIResult(
+                    success=False,
+                    error="Failed to parse AI response as valid JSON",
+                    error_type="parse_error",
+                    provider=result.provider,
+                    model=result.model,
+                    fatal=False,
+                )
+            return parsed, None
+
         except Exception as exc:
             logger.error(f"Error fetching news for asset '{asset.name}': {exc}")
-            return None
+            return None, AIResult(
+                success=False,
+                error=str(exc),
+                error_type="api_error",
+                fatal=False,
+            )
 
     async def create_alert_from_news(
         self,
@@ -141,6 +238,9 @@ class AINewsService:
                 "earnings_report": AlertType.EARNINGS_REPORT,
                 "dividend_announcement": AlertType.DIVIDEND_ANNOUNCEMENT,
                 "market_volatility": AlertType.MARKET_VOLATILITY,
+                "price_change": AlertType.PRICE_CHANGE,
+                "rebalance_suggestion": AlertType.REBALANCE_SUGGESTION,
+                "maturity_reminder": AlertType.MATURITY_REMINDER,
             }
             severity_map = {
                 "info": AlertSeverity.INFO,
@@ -195,8 +295,8 @@ class AINewsService:
         session_id: Optional[str] = None,
     ) -> Tuple[int, int, str]:
         """
-        Process all eligible assets in a user's portfolio and create alerts
-        for significant news findings.
+        Process all eligible market-driven assets in a user's portfolio
+        and create alerts for AI-generated insights.
 
         Returns:
             Tuple of (assets_processed, alerts_created, session_id)
@@ -207,34 +307,7 @@ class AINewsService:
                 .filter(
                     Asset.user_id == user_id,
                     Asset.is_active == True,
-                    Asset.asset_type.in_([
-                        AssetType.STOCK,
-                        AssetType.US_STOCK,
-                        AssetType.CRYPTO,
-                        AssetType.EQUITY_MUTUAL_FUND,
-                        AssetType.DEBT_MUTUAL_FUND,
-                        AssetType.COMMODITY,
-                        AssetType.SOVEREIGN_GOLD_BOND,
-                        AssetType.REIT,
-                        AssetType.INVIT,
-                        AssetType.CORPORATE_BOND,
-                        AssetType.RBI_BOND,
-                        AssetType.TAX_SAVING_BOND,
-                        AssetType.PPF,
-                        AssetType.PF,
-                        AssetType.NPS,
-                        AssetType.SSY,
-                        AssetType.NSC,
-                        AssetType.KVP,
-                        AssetType.SCSS,
-                        AssetType.MIS,
-                        AssetType.FIXED_DEPOSIT,
-                        AssetType.RECURRING_DEPOSIT,
-                        AssetType.INSURANCE_POLICY,
-                        AssetType.LAND,
-                        AssetType.FARM_LAND,
-                        AssetType.HOUSE,
-                    ]),
+                    Asset.asset_type.in_(self.ALERTABLE_ASSET_TYPES),
                 )
                 .order_by(Asset.current_value.desc())
             )
@@ -242,7 +315,12 @@ class AINewsService:
             assets = query.all()
 
             if not session_id:
-                session_id = progress_tracker.create_session(user_id, assets)
+                config = self.get_provider_config()
+                session_id = progress_tracker.create_session(
+                    user_id, assets,
+                    provider=config.get("display_name"),
+                    model=config.get("model"),
+                )
 
             assets_processed = 0
             alerts_created = 0
@@ -261,7 +339,40 @@ class AINewsService:
                         )
                         await asyncio.sleep(self.request_delay)
 
-                    news_data = await self.fetch_asset_news(db, user_id, asset)
+                    news_data, error_result = await self.fetch_asset_news(db, user_id, asset)
+
+                    if error_result:
+                        if error_result.fatal:
+                            # Fatal error — stop processing all remaining assets
+                            error_msg = (
+                                f"{error_result.provider or 'AI'}"
+                                f" ({error_result.model or 'unknown'})"
+                                f" — {error_result.error}"
+                            )
+                            logger.error(
+                                f"Fatal AI error for session {session_id}: {error_msg}"
+                            )
+                            progress_tracker.update_asset_status(
+                                session_id, asset.id, "error",
+                                error_message=error_result.error,
+                            )
+                            assets_processed += 1
+                            progress_tracker.fail_session(session_id, error_detail=error_msg)
+                            return assets_processed, alerts_created, session_id
+
+                        # Non-fatal error — mark asset as error, continue
+                        progress_tracker.update_asset_status(
+                            session_id, asset.id, "error",
+                            error_message=error_result.error,
+                        )
+                        assets_processed += 1
+
+                        # After rate limit, add extra cooldown before next request
+                        if error_result.error_type == "rate_limit":
+                            logger.info("Rate-limited — cooling down 30s before next asset.")
+                            await asyncio.sleep(30.0)
+
+                        continue
 
                     if news_data:
                         alert = await self.create_alert_from_news(db, user_id, news_data)
@@ -301,7 +412,7 @@ class AINewsService:
         except Exception as exc:
             logger.error(f"Fatal error processing portfolio for user {user_id}: {exc}")
             if session_id:
-                progress_tracker.fail_session(session_id)
+                progress_tracker.fail_session(session_id, error_detail=str(exc))
             return 0, 0, session_id or ""
 
     async def fetch_generic_india_news(
@@ -311,21 +422,24 @@ class AINewsService:
     ) -> List[Dict]:
         """
         Fetch generic news for broad Indian investment categories
-        (PPF, EPF, Gold, Silver, Crypto regulations).
+        covering sectors not handled by per-asset alerts
+        (government schemes, fixed income, real estate, policy changes).
 
-        Returns a list of news data dictionaries for items with significant news.
+        Returns a list of news data dictionaries.
         """
         topics = [
-            "Indian stock market outlook — Nifty 50 and Sensex trends",
-            "RBI monetary policy and interest rate outlook for Indian investors",
-            "Indian mutual fund industry — SIP trends and regulatory changes",
-            "Gold and Silver investment outlook for Indian investors",
-            "Indian real estate market — RERA updates and price trends",
-            "NPS (National Pension System) India — returns and regulatory updates",
-            "Indian government bonds and small savings schemes rate changes",
-            "Cryptocurrency regulations and taxation in India",
-            "Indian insurance sector — IRDAI regulatory changes",
-            "Income tax changes affecting Indian investors — capital gains and deductions",
+            "Indian stock market outlook — Nifty 50 and Sensex trends, FII/DII flows",
+            "RBI monetary policy and repo rate outlook for Indian investors",
+            "Indian mutual fund industry — SIP trends, SEBI regulatory changes, NFO launches",
+            "Gold and Silver investment outlook for Indian investors — prices, duties, demand",
+            "EPF and PPF interest rate changes — government announcements, contribution limits",
+            "NPS (National Pension System) India — fund performance, tier changes, tax benefits",
+            "Fixed deposit and recurring deposit rate changes across major Indian banks",
+            "Small savings schemes (NSC, KVP, SCSS, MIS, SSY) — quarterly rate revisions and policy updates",
+            "Indian real estate market — RERA updates, stamp duty changes, home loan rate trends",
+            "Cryptocurrency regulations and taxation in India — RBI, SEBI, and Finance Ministry updates",
+            "Indian insurance sector — IRDAI regulatory changes, claim settlement updates",
+            "Union Budget and fiscal policy changes affecting Indian investors — capital gains, deductions, surcharges",
         ]
 
         news_results: List[Dict] = []
@@ -333,14 +447,20 @@ class AINewsService:
         for topic in topics:
             try:
                 prompt = self._build_generic_topic_prompt(topic)
-                response = await self._query_ai(prompt)
+                result = await self._query_ai(prompt)
 
-                if response:
-                    data = self._strip_markdown_json(response)
-                    if data and data.get("has_significant_news", False):
+                if result.success and result.content:
+                    data = self._strip_markdown_json(result.content)
+                    if data and data.get("title") and data.get("summary"):
                         data["topic"] = topic
                         data["asset_name"] = topic
                         news_results.append(data)
+                elif result.fatal:
+                    logger.error(
+                        f"Fatal AI error during generic news: "
+                        f"{result.provider} ({result.model}) — {result.error}"
+                    )
+                    break
 
                 await asyncio.sleep(self.request_delay)
 
@@ -379,73 +499,23 @@ class AINewsService:
             return 0
 
     # ------------------------------------------------------------------
-    # Provider configuration
-    # ------------------------------------------------------------------
-
-    def _get_provider_config(self) -> dict:
-        """
-        Resolve the active provider's API key, endpoint, and model.
-        Priority: DB setting > env var > None.
-
-        Returns:
-            {"provider": str, "api_key": str, "endpoint": str,
-             "model": str, "api_format": str, "display_name": str}
-        """
-        from app.core.database import SessionLocal
-        from app.models.app_settings import AppSettings
-
-        db = SessionLocal()
-        try:
-            ai_rows = db.query(AppSettings).filter(AppSettings.category == "ai").all()
-            db_settings = {row.key: row.value for row in ai_rows}
-        finally:
-            db.close()
-
-        provider = (db_settings.get("ai_news_provider") or settings.AI_NEWS_PROVIDER).lower()
-
-        if provider not in self.PROVIDERS:
-            logger.warning(f"Unknown AI provider '{provider}', falling back to openai.")
-            provider = "openai"
-
-        prov_conf = self.PROVIDERS[provider]
-
-        # Resolve: DB value > env var fallback
-        api_key = (
-            db_settings.get(prov_conf["key_setting"])
-            or getattr(settings, prov_conf["key_env"], None)
-        )
-        endpoint = (
-            db_settings.get(prov_conf["endpoint_setting"])
-            or getattr(settings, prov_conf["endpoint_env"], "")
-        )
-        model = (
-            db_settings.get(prov_conf["model_setting"])
-            or getattr(settings, prov_conf["model_env"], "")
-        )
-
-        return {
-            "provider": provider,
-            "api_key": api_key,
-            "endpoint": endpoint,
-            "model": model,
-            "api_format": prov_conf["api_format"],
-            "display_name": prov_conf["display_name"],
-        }
-
-    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _query_ai(self, prompt: str) -> Optional[str]:
+    async def _query_ai(self, prompt: str) -> AIResult:
         """Route the prompt to the currently configured AI provider."""
-        config = self._get_provider_config()
+        config = self.get_provider_config()
 
         if not config["api_key"]:
-            logger.warning(
-                f"No API key configured for provider '{config['display_name']}'. "
-                "Cannot fetch news."
+            return AIResult(
+                success=False,
+                error=f"No API key configured for {config['display_name']}. "
+                      f"Set it in Settings → AI Configuration.",
+                error_type="no_api_key",
+                provider=config["display_name"],
+                model=config["model"],
+                fatal=True,
             )
-            return None
 
         if config["api_format"] == "anthropic":
             return await self._query_anthropic(
@@ -453,6 +523,7 @@ class AINewsService:
                 api_key=config["api_key"],
                 model=config["model"],
                 prompt=prompt,
+                provider_name=config["display_name"],
             )
         else:
             return await self._query_provider(
@@ -471,7 +542,7 @@ class AINewsService:
         model: str,
         prompt: str,
         provider_name: str,
-    ) -> Optional[str]:
+    ) -> AIResult:
         """Generic OpenAI-compatible API caller with retry logic."""
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -496,38 +567,77 @@ class AINewsService:
                     response = await client.post(endpoint, headers=headers, json=payload)
 
                 if response.status_code == 200:
-                    return response.json()["choices"][0]["message"]["content"]
+                    return AIResult(
+                        success=True,
+                        content=response.json()["choices"][0]["message"]["content"],
+                        provider=provider_name,
+                        model=model,
+                    )
+
+                if response.status_code == 401:
+                    return AIResult(
+                        success=False,
+                        error=f"Invalid API key for {provider_name}. Check your key in Settings → AI Configuration.",
+                        error_type="api_error",
+                        provider=provider_name,
+                        model=model,
+                        fatal=True,
+                    )
 
                 if response.status_code == 429:
                     # Check if this is a permanent quota issue vs temporary rate limit
                     try:
                         error_body = response.json()
                         error_code = error_body.get("error", {}).get("code", "")
+                        error_msg = error_body.get("error", {}).get("message", "")
                     except Exception:
                         error_code = ""
+                        error_msg = ""
 
                     if error_code == "insufficient_quota":
-                        logger.error(
-                            f"{provider_name} API quota exhausted. "
-                            f"Please add billing credits or switch AI provider."
+                        return AIResult(
+                            success=False,
+                            error=f"{provider_name} API quota exhausted. "
+                                  f"Add billing credits or switch AI provider in Settings.",
+                            error_type="quota_exhausted",
+                            provider=provider_name,
+                            model=model,
+                            fatal=True,
                         )
-                        return None
 
+                    # Temporary rate limit — use longer waits (20s, 40s, 60s)
+                    rate_limit_wait = 20.0 * attempt
                     if attempt < self.max_retries:
-                        wait = self.retry_delay * attempt
                         logger.warning(
                             f"{provider_name} rate-limited. "
-                            f"Retrying in {wait}s (attempt {attempt}/{self.max_retries})."
+                            f"Retrying in {rate_limit_wait}s (attempt {attempt}/{self.max_retries})."
                         )
-                        await asyncio.sleep(wait)
+                        await asyncio.sleep(rate_limit_wait)
                         continue
-                    logger.error(f"{provider_name} rate limit exceeded after all retries.")
-                    return None
 
+                    # After all retries: non-fatal — skip this asset, continue to next
+                    return AIResult(
+                        success=False,
+                        error=f"{provider_name} rate-limited. Skipping this asset. "
+                              f"{error_msg or 'Will retry on next asset with longer delay.'}",
+                        error_type="rate_limit",
+                        provider=provider_name,
+                        model=model,
+                        fatal=False,
+                    )
+
+                # Other HTTP errors
                 logger.error(
                     f"{provider_name} API error {response.status_code}: {response.text}"
                 )
-                return None
+                return AIResult(
+                    success=False,
+                    error=f"{provider_name} API returned HTTP {response.status_code}.",
+                    error_type="api_error",
+                    provider=provider_name,
+                    model=model,
+                    fatal=response.status_code in (401, 403),
+                )
 
             except httpx.TimeoutException:
                 logger.warning(
@@ -537,7 +647,14 @@ class AINewsService:
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay * attempt)
                     continue
-                return None
+                return AIResult(
+                    success=False,
+                    error=f"{provider_name} request timed out after {self.max_retries} attempts.",
+                    error_type="timeout",
+                    provider=provider_name,
+                    model=model,
+                    fatal=False,
+                )
 
             except Exception as exc:
                 logger.error(
@@ -547,9 +664,23 @@ class AINewsService:
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay * attempt)
                     continue
-                return None
+                return AIResult(
+                    success=False,
+                    error=f"{provider_name} unexpected error: {exc}",
+                    error_type="api_error",
+                    provider=provider_name,
+                    model=model,
+                    fatal=False,
+                )
 
-        return None
+        return AIResult(
+            success=False,
+            error=f"{provider_name} failed after all retries.",
+            error_type="api_error",
+            provider=provider_name,
+            model=model,
+            fatal=False,
+        )
 
     async def _query_anthropic(
         self,
@@ -558,7 +689,8 @@ class AINewsService:
         api_key: str,
         model: str,
         prompt: str,
-    ) -> Optional[str]:
+        provider_name: str,
+    ) -> AIResult:
         """Anthropic Messages API caller with retry logic."""
         headers = {
             "x-api-key": api_key,
@@ -584,46 +716,96 @@ class AINewsService:
                     resp_data = response.json()
                     content_blocks = resp_data.get("content", [])
                     text_parts = [b["text"] for b in content_blocks if b.get("type") == "text"]
-                    return "".join(text_parts)
+                    return AIResult(
+                        success=True,
+                        content="".join(text_parts),
+                        provider=provider_name,
+                        model=model,
+                    )
+
+                if response.status_code == 401:
+                    return AIResult(
+                        success=False,
+                        error=f"Invalid API key for {provider_name}. Check your key in Settings → AI Configuration.",
+                        error_type="api_error",
+                        provider=provider_name,
+                        model=model,
+                        fatal=True,
+                    )
 
                 if response.status_code == 429:
+                    rate_limit_wait = 20.0 * attempt
                     if attempt < self.max_retries:
-                        wait = self.retry_delay * attempt
                         logger.warning(
-                            f"Anthropic rate-limited. "
-                            f"Retrying in {wait}s (attempt {attempt}/{self.max_retries})."
+                            f"{provider_name} rate-limited. "
+                            f"Retrying in {rate_limit_wait}s (attempt {attempt}/{self.max_retries})."
                         )
-                        await asyncio.sleep(wait)
+                        await asyncio.sleep(rate_limit_wait)
                         continue
-                    logger.error("Anthropic rate limit exceeded after all retries.")
-                    return None
+
+                    return AIResult(
+                        success=False,
+                        error=f"{provider_name} rate-limited. Skipping this asset.",
+                        error_type="rate_limit",
+                        provider=provider_name,
+                        model=model,
+                        fatal=False,
+                    )
 
                 logger.error(
-                    f"Anthropic API error {response.status_code}: {response.text}"
+                    f"{provider_name} API error {response.status_code}: {response.text}"
                 )
-                return None
+                return AIResult(
+                    success=False,
+                    error=f"{provider_name} API returned HTTP {response.status_code}.",
+                    error_type="api_error",
+                    provider=provider_name,
+                    model=model,
+                    fatal=response.status_code in (401, 403),
+                )
 
             except httpx.TimeoutException:
                 logger.warning(
-                    f"Anthropic request timed out "
+                    f"{provider_name} request timed out "
                     f"(attempt {attempt}/{self.max_retries})."
                 )
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay * attempt)
                     continue
-                return None
+                return AIResult(
+                    success=False,
+                    error=f"{provider_name} request timed out after {self.max_retries} attempts.",
+                    error_type="timeout",
+                    provider=provider_name,
+                    model=model,
+                    fatal=False,
+                )
 
             except Exception as exc:
                 logger.error(
-                    f"Anthropic unexpected error "
+                    f"{provider_name} unexpected error "
                     f"(attempt {attempt}/{self.max_retries}): {exc}"
                 )
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay * attempt)
                     continue
-                return None
+                return AIResult(
+                    success=False,
+                    error=f"{provider_name} unexpected error: {exc}",
+                    error_type="api_error",
+                    provider=provider_name,
+                    model=model,
+                    fatal=False,
+                )
 
-        return None
+        return AIResult(
+            success=False,
+            error=f"{provider_name} failed after all retries.",
+            error_type="api_error",
+            provider=provider_name,
+            model=model,
+            fatal=False,
+        )
 
     def _strip_markdown_json(self, raw: str) -> Optional[Dict]:
         """Strip markdown fences and parse JSON. Returns None on failure."""
@@ -649,7 +831,10 @@ class AINewsService:
         data = self._strip_markdown_json(response)
         if data is None:
             return None
-        if not data.get("has_significant_news", False):
+
+        # Always create an alert if we got valid JSON with a title and summary.
+        # No has_significant_news gate — the LLM is instructed to always provide insights.
+        if not data.get("title") or not data.get("summary"):
             return None
 
         data["asset_id"] = asset.id
@@ -663,69 +848,70 @@ class AINewsService:
         if asset.symbol:
             asset_info += f" ({asset.symbol})"
 
-        current_price = f"₹{asset.current_price}" if asset.current_price else "N/A"
+        current_price = f"₹{asset.current_price:,.2f}" if asset.current_price else "N/A"
+        purchase_price = f"₹{asset.purchase_price:,.2f}" if asset.purchase_price else "N/A"
+        current_value = f"₹{asset.current_value:,.2f}" if asset.current_value else "N/A"
         asset_type = asset.asset_type  # enum instance for comparisons
         asset_type_value = asset_type.value  # string for prompt
 
+        # Build holding context for personalized insights
+        holding_context = f"Current Price: {current_price}"
+        if asset.purchase_price:
+            holding_context += f"\nPurchase Price: {purchase_price}"
+        if asset.quantity:
+            holding_context += f"\nQuantity: {asset.quantity}"
+        if asset.current_value:
+            holding_context += f"\nCurrent Value: {current_value}"
+
         # Market-traded assets get a different focus than fixed-income / govt schemes
-        if asset_type in (AssetType.STOCK, AssetType.US_STOCK, AssetType.EQUITY_MUTUAL_FUND, AssetType.HYBRID_MUTUAL_FUND, AssetType.REIT, AssetType.INVIT, AssetType.ESOP, AssetType.RSU):
+        if asset_type in (AssetType.STOCK, AssetType.US_STOCK, AssetType.ESOP, AssetType.RSU):
             focus = """Focus areas:
-1. Key risks, red flags, or concerns investors should be aware of for this specific asset
-2. Known corporate governance issues, debt levels, or sector headwinds
-3. Competitive landscape and market position analysis
-4. Upcoming catalysts: earnings seasons, regulatory decisions, or sector trends
-5. Dividend history and payout sustainability
-6. Any well-known analyst consensus or outlook (bullish/bearish)"""
+1. Key risks, red flags, or concerns — corporate governance issues, debt problems, sector headwinds
+2. Recent or upcoming catalysts — earnings results, regulatory decisions, management changes
+3. Competitive landscape, market share trends, and sector outlook
+4. Dividend history, buyback announcements, or payout sustainability
+5. Analyst consensus and price target direction (bullish/bearish)
+6. Any recent news that directly impacts this stock"""
+        elif asset_type in (AssetType.EQUITY_MUTUAL_FUND, AssetType.HYBRID_MUTUAL_FUND):
+            focus = """Focus areas:
+1. Fund performance vs benchmark and category peers — recent returns
+2. Portfolio concentration risks — top holdings, sector overweight
+3. Fund manager changes or AMC-level concerns
+4. NAV trends, AUM changes, or redemption pressure
+5. SEBI regulatory changes affecting this fund category
+6. Exit load, expense ratio changes, or tax implications"""
+        elif asset_type == AssetType.DEBT_MUTUAL_FUND:
+            focus = """Focus areas:
+1. Interest rate outlook and its impact on debt fund NAV — RBI repo rate direction
+2. Credit risk — any holdings with rating downgrades or default concerns
+3. Duration risk — how sensitive is this fund to rate changes
+4. Category comparison — liquid vs short-term vs corporate bond vs gilt
+5. Tax efficiency changes (LTCG rules for debt funds)
+6. Liquidity and exit load considerations"""
         elif asset_type == AssetType.CRYPTO:
             focus = """Focus areas:
-1. Regulatory landscape for this cryptocurrency in India and globally
-2. Technology risks, network upgrades, or protocol changes
-3. Market sentiment and adoption trends
-4. Security concerns, exchange risks, or known vulnerabilities
-5. Tax implications for Indian crypto investors"""
+1. Regulatory landscape in India and globally — RBI, SEBI, or government actions
+2. Technology risks — network upgrades, forks, protocol vulnerabilities
+3. Market sentiment — whale movements, exchange flows, funding rates
+4. Security concerns — recent hacks, exchange issues, or scam alerts
+5. Tax implications — 30% tax + 1% TDS for Indian crypto investors
+6. Price action context — support/resistance levels, trend direction"""
         elif asset_type in (AssetType.COMMODITY, AssetType.SOVEREIGN_GOLD_BOND):
             focus = """Focus areas:
 1. Supply-demand dynamics and global price drivers
-2. Indian government policies affecting this commodity (import duties, taxes)
-3. Inflation hedge value and historical performance patterns
-4. Seasonal trends and cyclical factors
-5. Currency impact (USD/INR) on commodity prices in India"""
-        elif asset_type in (AssetType.DEBT_MUTUAL_FUND, AssetType.CORPORATE_BOND, AssetType.RBI_BOND, AssetType.TAX_SAVING_BOND):
+2. Indian government policies — import duties, taxes, SGB issuance calendar
+3. Inflation hedge value — CPI trends and real returns
+4. Seasonal trends and cyclical factors affecting prices
+5. Currency impact — USD/INR movement and its effect on domestic prices
+6. Central bank buying/selling patterns (gold) or industrial demand shifts"""
+        elif asset_type in (AssetType.REIT, AssetType.INVIT):
             focus = """Focus areas:
-1. Interest rate outlook and its impact on bond/debt fund returns
-2. Credit risk assessment and rating agency concerns
-3. RBI monetary policy direction and yield curve analysis
-4. Liquidity risk and exit load considerations
-5. Tax efficiency compared to alternatives (FD, govt schemes)"""
-        elif asset_type in (AssetType.PPF, AssetType.PF, AssetType.NPS, AssetType.SSY, AssetType.NSC, AssetType.KVP, AssetType.SCSS, AssetType.MIS):
-            focus = """Focus areas:
-1. Current and recent interest rate changes for this scheme
-2. Government policy changes or proposed reforms
-3. Tax benefit analysis under current tax regime (old vs new)
-4. Contribution limits, lock-in periods, and withdrawal rules
-5. Comparison with alternative investment options
-6. Any maturity or renewal considerations"""
-        elif asset_type in (AssetType.FIXED_DEPOSIT, AssetType.RECURRING_DEPOSIT):
-            focus = """Focus areas:
-1. Current interest rate environment and RBI rate outlook
-2. Comparison of rates across major banks
-3. Tax implications and TDS rules
-4. Premature withdrawal penalties and liquidity options
-5. Senior citizen rate benefits and special FD schemes"""
-        elif asset_type == AssetType.INSURANCE_POLICY:
-            focus = """Focus areas:
-1. Policy type analysis (term, endowment, ULIP) and adequacy
-2. Claim settlement ratio of the insurer
-3. IRDAI regulatory changes affecting policyholders
-4. Tax benefits under Section 80C and 10(10D)
-5. Surrender value considerations and policy review recommendations"""
-        elif asset_type in (AssetType.LAND, AssetType.FARM_LAND, AssetType.HOUSE):
-            focus = """Focus areas:
-1. Real estate market trends in India — residential and commercial
-2. RERA regulations and buyer protection updates
-3. Home loan interest rate trends
-4. Capital gains tax rules and indexation benefits
-5. Rental yield analysis and vacancy trends"""
+1. Distribution yield trends and payout consistency
+2. Occupancy rates, lease renewals, and rental escalation outlook
+3. NAV discount/premium and market price vs intrinsic value
+4. Interest rate sensitivity — impact of rate changes on REIT/InvIT valuations
+5. Regulatory changes affecting REITs/InvITs in India (SEBI rules)
+6. Sponsor quality and asset quality of underlying portfolio"""
         else:
             focus = """Focus areas:
 1. Key risks and opportunities for this investment
@@ -734,58 +920,47 @@ class AINewsService:
 4. Tax implications for Indian investors
 5. Actionable recommendations"""
 
-        return f"""You are a financial analyst providing investment insights for an Indian investor's portfolio.
-
-Analyse the following asset and provide ONE important insight, risk alert, or actionable recommendation.
+        return f"""Analyse the following asset from an Indian investor's portfolio and provide ONE important insight, risk alert, or actionable recommendation.
 
 Asset: {asset_info}
 Type: {asset_type_value}
-Current Price: {current_price}
+{holding_context}
 
 {focus}
 
-IMPORTANT RULES:
-- You MUST always provide an insight. Every asset has something worth knowing.
-- Provide analysis based on your knowledge of this asset, its sector, and market conditions.
-- Focus on actionable, practical advice the investor can use.
-- Be specific to THIS asset, not generic platitudes.
-- Set has_significant_news to true.
+RULES:
+- Provide a specific, actionable insight about THIS asset — not generic advice.
+- Use concrete data points where possible (earnings dates, rate changes, regulatory deadlines).
+- Severity guide: "critical" = immediate action needed (crash, fraud, delisting risk), "warning" = attention needed (earnings miss, sector headwind, rating downgrade), "info" = useful update (analyst upgrade, sector trend, upcoming event).
 
-Response format (strict JSON, no markdown):
+Respond with ONLY this JSON (no markdown, no extra text):
 {{
-    "has_significant_news": true,
     "severity": "info|warning|critical",
     "title": "<concise headline, max 100 chars>",
     "summary": "<detailed insight with specific data points, max 500 chars>",
-    "impact": "<how this affects the investor's portfolio>",
+    "impact": "<how this affects the investor's holding>",
     "suggested_action": "<specific action the investor should consider>",
-    "category": "news_event|regulatory_change|earnings_report|dividend_announcement|market_volatility"
+    "category": "price_change|news_event|regulatory_change|earnings_report|dividend_announcement|market_volatility|rebalance_suggestion"
 }}"""
 
     def _build_generic_topic_prompt(self, topic: str) -> str:
-        return f"""You are a financial analyst providing investment insights for Indian investors.
+        return f"""Provide ONE important and recent insight or update about: '{topic}'
 
-Provide ONE important insight or update about: '{topic}'
+This is for an Indian investor's portfolio alert system. Focus on:
+1. Recent developments, announcements, or policy changes (last 30 days if possible)
+2. Specific numbers, dates, or rates where applicable
+3. Direct impact on Indian investors and their portfolios
+4. Actionable recommendations
 
-Focus areas:
-1. Current market conditions, trends, and outlook
-2. Policy or regulatory changes with direct investor impact
-3. Interest rate environment and its implications
-4. Key risks investors should be aware of
-5. Actionable recommendations for portfolio management
+RULES:
+- Be specific and data-driven — cite rates, percentages, dates, or policy names.
+- Severity guide: "critical" = immediate action needed, "warning" = important change to note, "info" = useful update.
 
-IMPORTANT RULES:
-- You MUST provide an insight. This topic is always relevant to Indian investors.
-- Be specific and data-driven where possible.
-- Focus on practical, actionable advice.
-- Set has_significant_news to true.
-
-Response format (strict JSON, no markdown):
+Respond with ONLY this JSON (no markdown, no extra text):
 {{
-    "has_significant_news": true,
     "severity": "info|warning|critical",
     "title": "<concise headline, max 100 chars>",
-    "summary": "<detailed insight, max 500 chars>",
+    "summary": "<detailed insight with specific data, max 500 chars>",
     "impact": "<how this affects Indian investors>",
     "suggested_action": "<specific action investors should consider>",
     "category": "regulatory_change|news_event|market_volatility"

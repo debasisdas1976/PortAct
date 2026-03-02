@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import func
 
 from app.api.dependencies import get_current_active_user, get_db, get_default_portfolio_id
@@ -303,12 +304,13 @@ async def update_ssy_account(
         asset.details['financial_year'] = update_data['financial_year']
     if 'notes' in update_data:
         asset.notes = update_data['notes']
-    
+
     asset.last_updated = datetime.utcnow()
-    
+    flag_modified(asset, 'details')
+
     db.commit()
     db.refresh(asset)
-    
+
     return SSYAccountResponse(
         id=asset.id,
         user_id=asset.user_id,

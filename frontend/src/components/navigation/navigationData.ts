@@ -228,6 +228,16 @@ export const railSections: RailSection[] = [
     path: '/assets',
   },
   {
+    key: 'assets',
+    label: 'Assets',
+    icon: React.createElement(WalletIcon),
+    assetGroups: assetGroups,
+    bottomItems: [
+      { text: 'Cash In Hand', icon: React.createElement(WalletIcon), path: '/cash-in-hand' },
+    ],
+    dataTour: 'sidebar-assets',
+  },
+  {
     key: 'statements',
     label: 'Statements',
     icon: React.createElement(DescriptionIcon),
@@ -239,16 +249,6 @@ export const railSections: RailSection[] = [
     label: 'Insights',
     icon: React.createElement(InsightsIcon),
     items: insightsItems,
-  },
-  {
-    key: 'assets',
-    label: 'Assets',
-    icon: React.createElement(WalletIcon),
-    assetGroups: assetGroups,
-    bottomItems: [
-      { text: 'Cash In Hand', icon: React.createElement(WalletIcon), path: '/cash-in-hand' },
-    ],
-    dataTour: 'sidebar-assets',
   },
   {
     key: 'expenses',

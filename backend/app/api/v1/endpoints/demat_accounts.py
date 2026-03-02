@@ -1,4 +1,5 @@
 from typing import List, Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -11,7 +12,7 @@ from app.models.asset import Asset, AssetType
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import AssetSnapshot
 from app.models.mutual_fund_holding import MutualFundHolding
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionType
 from app.schemas.demat_account import (
     DematAccount as DematAccountSchema,
     DematAccountCreate,
@@ -19,6 +20,7 @@ from app.schemas.demat_account import (
     DematAccountWithAssets,
     DematAccountSummary
 )
+from app.schemas.transaction import TransactionWithAsset
 
 router = APIRouter()
 
@@ -358,5 +360,57 @@ async def delete_demat_account(
     db.commit()
 
     return None
+
+
+@router.get("/{account_id}/transactions", response_model=List[TransactionWithAsset])
+async def get_demat_account_transactions(
+    account_id: int,
+    transaction_type: Optional[TransactionType] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=1000),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all transactions for assets in a demat account (tradebook)
+    """
+    # Verify account ownership
+    account = db.query(DematAccount).filter(
+        DematAccount.id == account_id,
+        DematAccount.user_id == current_user.id
+    ).first()
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demat account not found"
+        )
+
+    query = db.query(Transaction).join(Asset).filter(
+        Asset.demat_account_id == account_id,
+        Asset.user_id == current_user.id
+    )
+
+    if transaction_type:
+        query = query.filter(Transaction.transaction_type == transaction_type)
+    if start_date:
+        query = query.filter(Transaction.transaction_date >= start_date)
+    if end_date:
+        query = query.filter(Transaction.transaction_date <= end_date)
+
+    transactions = query.order_by(
+        Transaction.transaction_date.desc()
+    ).offset(skip).limit(limit).all()
+
+    result = []
+    for txn in transactions:
+        txn_dict = {c.name: getattr(txn, c.name) for c in txn.__table__.columns}
+        asset = txn.asset
+        txn_dict["asset_name"] = asset.name
+        txn_dict["asset_type"] = asset.asset_type.value if hasattr(asset.asset_type, 'value') else asset.asset_type
+        result.append(TransactionWithAsset(**txn_dict))
+
+    return result
 
 # Made with Bob

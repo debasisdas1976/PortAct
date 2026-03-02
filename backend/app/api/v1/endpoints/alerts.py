@@ -190,25 +190,44 @@ async def fetch_portfolio_news(
     db: Session = Depends(get_db),
 ):
     """
-    Trigger AI-powered news fetching for ALL assets in the user's portfolio.
+    Trigger AI-powered news fetching for market-driven assets in the user's portfolio.
 
-    Processes all active asset types ordered by descending value.
-    Optionally appends generic India investment news.
+    Only processes asset types whose values change in the market
+    (stocks, mutual funds, crypto, etc.). Fixed-value assets are covered
+    by generic sector alerts.
 
     The job runs in the background. Poll ``/alerts/progress/{session_id}`` to
     track progress.
     """
+    # Validate API key upfront so we can fail fast with a clear message
+    provider_config = ai_news_service.get_provider_config()
+    if not provider_config.get("api_key"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"No API key configured for {provider_config['display_name']}. "
+                f"Set it in Settings → AI Configuration."
+            ),
+        )
+
+    # Only fetch market-driven assets for per-asset alerts
     assets = (
         db.query(Asset)
         .filter(
             Asset.user_id == current_user.id,
             Asset.is_active == True,
+            Asset.asset_type.in_(ai_news_service.ALERTABLE_ASSET_TYPES),
         )
         .order_by(Asset.current_value.desc())
         .all()
     )
 
-    session_id = progress_tracker.create_session(current_user.id, assets)
+    session_id = progress_tracker.create_session(
+        current_user.id,
+        assets,
+        provider=provider_config.get("display_name"),
+        model=provider_config.get("model"),
+    )
 
     async def _process_news():
         try:
@@ -232,7 +251,10 @@ async def fetch_portfolio_news(
             )
         except Exception as exc:
             logger.error(f"Error in background news fetch for user {current_user.id}: {exc}")
-            progress_tracker.fail_session(session_id)
+            progress_tracker.fail_session(
+                session_id,
+                error_detail=f"{provider_config['display_name']} ({provider_config['model']}) — {exc}",
+            )
 
     background_tasks.add_task(_process_news)
 
@@ -242,6 +264,8 @@ async def fetch_portfolio_news(
         "total_assets": len(assets),
         "include_generic": include_generic,
         "session_id": session_id,
+        "provider": provider_config.get("display_name"),
+        "model": provider_config.get("model"),
     }
 
 

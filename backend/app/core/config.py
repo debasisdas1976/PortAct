@@ -110,7 +110,7 @@ class Settings(BaseSettings):
     MISTRAL_MODEL: str = "mistral-small-latest"
 
     # AI request tuning
-    AI_REQUEST_DELAY: float = 2.0       # seconds between successive AI requests
+    AI_REQUEST_DELAY: float = 5.0       # seconds between successive AI requests
     AI_REQUEST_TIMEOUT: int = 30        # HTTP timeout for each AI call
     AI_MAX_RETRIES: int = 3
     AI_RETRY_DELAY: float = 5.0         # base delay before retry (multiplied by attempt)

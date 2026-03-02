@@ -310,60 +310,37 @@ async def recategorize_expenses(
     db: Session = Depends(get_db)
 ):
     """
-    Re-categorize all uncategorized or existing expenses based on category keywords
+    Re-categorize all expenses using the full categorizer (exact + fuzzy + learned patterns).
     """
-    # Get all active categories with keywords
-    categories = db.query(ExpenseCategory).filter(
-        or_(
-            ExpenseCategory.is_system == True,
-            ExpenseCategory.user_id == current_user.id
-        ),
-        ExpenseCategory.is_active == True,
-        ExpenseCategory.keywords.isnot(None)
-    ).all()
-    
+    from app.services.expense_categorizer import ExpenseCategorizer
+
+    categorizer = ExpenseCategorizer(db, user_id=current_user.id)
+
     # Get all expenses for the user
     expenses = db.query(Expense).filter(
         Expense.user_id == current_user.id
     ).all()
-    
+
     categorized_count = 0
     updated_count = 0
-    
+
     for expense in expenses:
-        description_lower = expense.description.lower() if expense.description else ""
-        merchant_lower = expense.merchant_name.lower() if expense.merchant_name else ""
-        combined_text = f"{description_lower} {merchant_lower}"
-        
-        # Try to match with categories
-        matched_category = None
-        for category in categories:
-            if not category.keywords:
-                continue
-                
-            keywords = [k.strip().lower() for k in category.keywords.split(',') if k.strip()]
-            
-            # Check if any keyword matches
-            for keyword in keywords:
-                if keyword in combined_text:
-                    matched_category = category
-                    break
-            
-            if matched_category:
-                break
-        
-        # Update expense if a match is found
-        if matched_category:
-            if expense.category_id != matched_category.id:
-                expense.category_id = matched_category.id
+        category_id = categorizer.categorize(
+            expense.description or "",
+            expense.merchant_name
+        )
+
+        if category_id:
+            if expense.category_id != category_id:
+                expense.category_id = category_id
                 expense.is_categorized = True
                 updated_count += 1
             elif not expense.is_categorized:
                 expense.is_categorized = True
                 categorized_count += 1
-    
+
     db.commit()
-    
+
     return {
         "message": "Re-categorization complete",
         "total_expenses": len(expenses),

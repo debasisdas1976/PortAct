@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import func
 from datetime import datetime, date
 import os
@@ -347,15 +348,23 @@ async def update_ppf_account(
     if not asset.details:
         asset.details = {}
     
+    details_changed = False
     if 'maturity_date' in update_data:
         asset.details['maturity_date'] = update_data['maturity_date'].isoformat() if update_data['maturity_date'] else None
+        details_changed = True
     if 'interest_rate' in update_data:
         asset.details['interest_rate'] = update_data['interest_rate']
+        details_changed = True
     if 'total_interest_earned' in update_data:
         asset.details['total_interest_earned'] = update_data['total_interest_earned']
+        details_changed = True
     if 'financial_year' in update_data:
         asset.details['financial_year'] = update_data['financial_year']
-    
+        details_changed = True
+
+    if details_changed:
+        flag_modified(asset, 'details')
+
     asset.calculate_metrics()
     
     db.commit()
@@ -489,6 +498,7 @@ async def upload_ppf_statement_auto(
                 if not asset.details:
                     asset.details = {}
                 asset.details['total_interest_earned'] = account_details['total_interest_earned']
+            flag_modified(asset, 'details')
         else:
             # Create new PPF asset
             opening_date_str = account_details.get('opening_date', date.today().strftime('%Y-%m-%d'))
@@ -730,7 +740,9 @@ async def upload_ppf_statement(
                 if not asset.details:
                     asset.details = {}
                 asset.details['total_interest_earned'] = account_details['total_interest_earned']
-            
+            if account_details.get('interest_rate') or account_details.get('total_interest_earned'):
+                flag_modified(asset, 'details')
+
             # Link statement to asset
             statement.assets_found = 1
             
@@ -858,18 +870,14 @@ async def add_ppf_transaction(
     
     # Create transaction
     transaction = Transaction(
-        user_id=current_user.id,
         asset_id=asset.id,
         transaction_type=transaction_type,
         transaction_date=datetime.combine(transaction_data.transaction_date, datetime.min.time()),
         quantity=1.0,
-        price=transaction_data.amount,
-        amount=transaction_data.amount,
-        balance_after=transaction_data.balance_after_transaction,
+        price_per_unit=transaction_data.amount,
+        total_amount=transaction_data.amount,
         description=transaction_data.description or trans_type.title(),
-        details={
-            'financial_year': transaction_data.financial_year
-        }
+        reference_number=transaction_data.financial_year,
     )
     
     db.add(transaction)
@@ -882,7 +890,8 @@ async def add_ppf_transaction(
             asset.details = {}
         current_interest = asset.details.get('total_interest_earned', 0)
         asset.details['total_interest_earned'] = current_interest + transaction_data.amount
-    
+        flag_modified(asset, 'details')
+
     asset.current_value = transaction_data.balance_after_transaction
     asset.current_price = transaction_data.balance_after_transaction
     asset.calculate_metrics()
