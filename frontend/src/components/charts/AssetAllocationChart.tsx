@@ -47,7 +47,21 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   const theme = useTheme();
   const isLarge = useMediaQuery(theme.breakpoints.up('lg'));
   const isMedium = useMediaQuery(theme.breakpoints.up('md'));
-  const legendFontSize = isLarge ? '16px' : isMedium ? '14px' : '12px';
+  const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
+
+  // Adaptive sizing based on viewport
+  const containerHeight = isSmall ? 500 : 400;
+  const legendFontSize = isLarge ? '14px' : isMedium ? '13px' : '12px';
+  // On small screens, stack legend below the pie; otherwise legend on the right
+  const legendLayout = isSmall ? 'horizontal' as const : 'vertical' as const;
+  const legendAlign = isSmall ? 'center' as const : 'right' as const;
+  const legendVerticalAlign = isSmall ? 'bottom' as const : 'middle' as const;
+  // Percentage-based radius scales with actual container size
+  const outerRadius = isSmall ? '35%' : '60%';
+  const pieCx = isSmall ? '50%' : '35%';
+  const chartMargin = isSmall
+    ? { left: 0, right: 0, top: 0, bottom: 0 }
+    : { left: 0, right: 0, top: 0, bottom: 0 };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -73,7 +87,7 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   };
 
   return (
-    <Box sx={{ height: 440 }}>
+    <Box sx={{ height: isSmall ? 540 : 440 }}>
       {selectedCategory && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
           <IconButton size="small" onClick={onBack} title="Back to categories">
@@ -82,15 +96,15 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
           <Chip label={selectedCategory} size="small" color="primary" variant="outlined" />
         </Box>
       )}
-      <ResponsiveContainer width="100%" height={400}>
-        <PieChart margin={{ left: 40, right: 20 }}>
+      <ResponsiveContainer width="100%" height={containerHeight}>
+        <PieChart margin={chartMargin}>
           <Pie
             data={data}
-            cx="40%"
-            cy="50%"
+            cx={pieCx}
+            cy={isSmall ? '40%' : '50%'}
             labelLine={false}
             label={false}
-            outerRadius={140}
+            outerRadius={outerRadius}
             fill="#8884d8"
             dataKey="value"
             style={{ cursor: 'pointer' }}
@@ -118,11 +132,12 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
             }}
           />
           <Legend
-            layout="vertical"
-            verticalAlign="middle"
-            align="right"
+            layout={legendLayout}
+            verticalAlign={legendVerticalAlign}
+            align={legendAlign}
             wrapperStyle={{
-              paddingLeft: '20px',
+              paddingLeft: isSmall ? '0' : '20px',
+              paddingTop: isSmall ? '10px' : '0',
               fontSize: legendFontSize,
               cursor: 'pointer',
             }}
