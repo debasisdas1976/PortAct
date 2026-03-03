@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -9,10 +9,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   Grid,
   IconButton,
   MenuItem,
   Paper,
+  Radio,
+  RadioGroup,
   Table,
   TableBody,
   TableCell,
@@ -34,7 +37,10 @@ import {
   KeyboardArrowDown,
   KeyboardArrowRight,
 } from '@mui/icons-material';
-import api from '../services/api';
+import { Link as RouterLink } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
+import api, { brokersAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
@@ -76,6 +82,9 @@ interface DematAccount {
   account_id: string;
   account_holder_name?: string;
   nickname?: string;
+  currency?: string;
+  account_market?: string;
+  portfolio_id?: number;
 }
 
 const formatINR = (value: number) =>
@@ -97,6 +106,8 @@ const ESOPs: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
+  const [brokerNames, setBrokerNames] = useState<{ value: string; label: string }[]>([]);
 
   const [openDialog, setOpenDialog] = useState(false);
   const [editingAsset, setEditingAsset] = useState<ESOPAsset | null>(null);
@@ -113,9 +124,12 @@ const ESOPs: React.FC = () => {
     shares_vested: 0,
     cliff_period: '',
     xirr: null as number | null,
-    demat_broker_name: '',
-    demat_account_id_input: '',
-    demat_account_holder: '',
+    demat_account_id: '' as number | '',
+    useNewAccount: false,
+    new_broker_name: '',
+    new_account_id: '',
+    new_account_holder: '',
+    new_portfolio_id: '' as number | '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
@@ -130,12 +144,22 @@ const ESOPs: React.FC = () => {
     });
   };
 
+  const filteredDematAccounts = useMemo(() => {
+    return dematAccounts.filter((da) => {
+      if (formData.currency === 'USD') {
+        return da.currency === 'USD' || da.account_market === 'international';
+      }
+      return da.currency === 'INR' || da.account_market === 'domestic' || (!da.currency && !da.account_market);
+    });
+  }, [dematAccounts, formData.currency]);
+
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [assetsRes, dematRes] = await Promise.all([
+      const [assetsRes, dematRes, brokersData] = await Promise.all([
         api.get('/assets/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} }),
         api.get('/demat-accounts/'),
+        brokersAPI.getAll({ is_active: true }),
       ]);
       const filtered = (assetsRes.data as ESOPAsset[]).filter(
         (a) => a.asset_type?.toLowerCase() === 'esop'
@@ -149,6 +173,12 @@ const ESOPs: React.FC = () => {
         labelMap[da.id] = buildDematLabel(da);
       }
       setDematLabelMap(labelMap);
+
+      setBrokerNames(
+        Array.isArray(brokersData)
+          ? brokersData.map((b: any) => ({ value: b.name, label: b.display_label }))
+          : []
+      );
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load data'));
     } finally {
@@ -161,9 +191,7 @@ const ESOPs: React.FC = () => {
   const handleOpenDialog = (asset?: ESOPAsset) => {
     if (asset) {
       setEditingAsset(asset);
-      const linkedDemat = asset.demat_account_id
-        ? dematAccounts.find((da) => da.id === asset.demat_account_id)
-        : null;
+      const hasLinkedDemat = asset.demat_account_id != null;
       setFormData({
         name: asset.name,
         symbol: asset.symbol || '',
@@ -177,9 +205,12 @@ const ESOPs: React.FC = () => {
         shares_vested: asset.details?.shares_vested || asset.quantity || 0,
         cliff_period: asset.details?.cliff_period || '',
         xirr: asset.xirr ?? null,
-        demat_broker_name: linkedDemat?.broker_name || asset.broker_name || '',
-        demat_account_id_input: linkedDemat?.account_id || asset.account_id || '',
-        demat_account_holder: linkedDemat?.account_holder_name || asset.account_holder_name || '',
+        demat_account_id: hasLinkedDemat ? asset.demat_account_id! : '',
+        useNewAccount: !hasLinkedDemat,
+        new_broker_name: '',
+        new_account_id: '',
+        new_account_holder: '',
+        new_portfolio_id: '',
       });
     } else {
       setEditingAsset(null);
@@ -188,7 +219,9 @@ const ESOPs: React.FC = () => {
         grant_date: '', vesting_date: '', exercise_price: 0, current_price: 0,
         shares_granted: 0, shares_vested: 0, cliff_period: '',
         xirr: null,
-        demat_broker_name: '', demat_account_id_input: '', demat_account_holder: '',
+        demat_account_id: '', useNewAccount: false,
+        new_broker_name: '', new_account_id: '', new_account_holder: '',
+        new_portfolio_id: '',
       });
     }
     setOpenDialog(true);
@@ -196,23 +229,18 @@ const ESOPs: React.FC = () => {
 
   const handleCloseDialog = () => { setOpenDialog(false); setEditingAsset(null); };
 
-  const findOrCreateDematAccount = async (): Promise<number> => {
-    const brokerName = formData.demat_broker_name.trim();
-    const accountId = formData.demat_account_id_input.trim();
-
-    // Check if a matching demat account already exists
-    const existing = dematAccounts.find(
-      (da) => da.broker_name.toLowerCase() === brokerName.toLowerCase() && da.account_id === accountId
-    );
-    if (existing) return existing.id;
-
+  const getDematAccountId = async (): Promise<number> => {
+    if (!formData.useNewAccount) {
+      return formData.demat_account_id as number;
+    }
     // Create a new demat account
     const dematPayload: Record<string, unknown> = {
-      broker_name: brokerName,
-      account_id: accountId,
-      account_holder_name: formData.demat_account_holder.trim() || undefined,
+      broker_name: formData.new_broker_name.trim(),
+      account_id: formData.new_account_id.trim(),
+      account_holder_name: formData.new_account_holder.trim() || undefined,
       account_market: formData.currency === 'USD' ? 'international' : 'domestic',
       currency: formData.currency,
+      portfolio_id: formData.new_portfolio_id || undefined,
     };
     const res = await api.post('/demat-accounts/', dematPayload);
     return res.data.id;
@@ -220,13 +248,14 @@ const ESOPs: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) { notify.error('Stock name is required'); return; }
-    if (!formData.demat_broker_name.trim()) { notify.error('Broker name is required'); return; }
-    if (!formData.demat_account_id_input.trim()) { notify.error('Account ID is required'); return; }
+    if (!formData.useNewAccount && !formData.demat_account_id) { notify.error('Please select a demat account'); return; }
+    if (formData.useNewAccount && !formData.new_broker_name.trim()) { notify.error('Broker name is required'); return; }
+    if (formData.useNewAccount && !formData.new_account_id.trim()) { notify.error('Account ID is required'); return; }
     try {
       setSubmitting(true);
 
-      // Step 1: find or create the demat account
-      const dematAccountId = await findOrCreateDematAccount();
+      // Step 1: get or create the demat account
+      const dematAccountId = await getDematAccountId();
 
       // Step 2: create/update the ESOP asset
       const payload: Record<string, unknown> = {
@@ -553,18 +582,76 @@ const ESOPs: React.FC = () => {
 
             {/* ── Demat Account Information ─────────────────────────────────── */}
             <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1, mb: -1 }}>
-              Demat Account Information
+              Demat / Trading Account
             </Typography>
-            <TextField label="Broker Name" value={formData.demat_broker_name} onChange={(e) => setFormData({ ...formData, demat_broker_name: e.target.value })} fullWidth required helperText="e.g. Zerodha, Vested, INDmoney" />
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField label="Account ID / Client ID" value={formData.demat_account_id_input} onChange={(e) => setFormData({ ...formData, demat_account_id_input: e.target.value })} fullWidth required />
-              <TextField label="Account Holder Name" value={formData.demat_account_holder} onChange={(e) => setFormData({ ...formData, demat_account_holder: e.target.value })} fullWidth />
-            </Box>
+            <RadioGroup
+              row
+              value={formData.useNewAccount ? 'new' : 'existing'}
+              onChange={(e) => setFormData({ ...formData, useNewAccount: e.target.value === 'new', demat_account_id: '', new_broker_name: '', new_account_id: '', new_account_holder: '', new_portfolio_id: '' })}
+            >
+              <FormControlLabel value="existing" control={<Radio size="small" />} label="Use Existing Account" />
+              <FormControlLabel value="new" control={<Radio size="small" />} label="Create New Account" />
+            </RadioGroup>
+
+            {!formData.useNewAccount ? (
+              <TextField
+                select
+                label="Demat / Trading Account"
+                value={formData.demat_account_id}
+                onChange={(e) => setFormData({ ...formData, demat_account_id: e.target.value ? Number(e.target.value) : '' })}
+                fullWidth
+                required
+                helperText={
+                  filteredDematAccounts.length === 0
+                    ? <>No {formData.currency} accounts found. <RouterLink to="/demat-accounts">Create one</RouterLink> or select "Create New Account" above.</>
+                    : <>Showing {formData.currency} accounts. <RouterLink to="/demat-accounts">Manage accounts</RouterLink></>
+                }
+              >
+                {filteredDematAccounts.map((da) => (
+                  <MenuItem key={da.id} value={da.id}>{buildDematLabel(da)}</MenuItem>
+                ))}
+              </TextField>
+            ) : (
+              <>
+                <TextField
+                  select
+                  label="Portfolio"
+                  value={formData.new_portfolio_id}
+                  onChange={(e) => setFormData({ ...formData, new_portfolio_id: e.target.value ? Number(e.target.value) : '' })}
+                  fullWidth
+                  helperText="Portfolio for the new demat account"
+                >
+                  {portfolios.map((p: any) => (
+                    <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  label="Broker Name"
+                  value={formData.new_broker_name}
+                  onChange={(e) => setFormData({ ...formData, new_broker_name: e.target.value })}
+                  fullWidth
+                  required
+                >
+                  {brokerNames.map((broker) => (
+                    <MenuItem key={broker.value} value={broker.value}>{broker.label}</MenuItem>
+                  ))}
+                </TextField>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField label="Account ID / Client ID" value={formData.new_account_id} onChange={(e) => setFormData({ ...formData, new_account_id: e.target.value })} fullWidth required />
+                  <TextField label="Account Holder Name" value={formData.new_account_holder} onChange={(e) => setFormData({ ...formData, new_account_holder: e.target.value })} fullWidth />
+                </Box>
+              </>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={submitting || !formData.name.trim() || !formData.demat_broker_name.trim() || !formData.demat_account_id_input.trim()}
+          <Button onClick={handleSubmit} variant="contained" disabled={
+              submitting || !formData.name.trim() ||
+              (!formData.useNewAccount && !formData.demat_account_id) ||
+              (formData.useNewAccount && (!formData.new_broker_name.trim() || !formData.new_account_id.trim()))
+            }
             startIcon={submitting ? <CircularProgress size={18} /> : editingAsset ? <EditIcon /> : <AddIcon />}>
             {submitting ? 'Saving…' : editingAsset ? 'Update' : 'Add ESOP'}
           </Button>

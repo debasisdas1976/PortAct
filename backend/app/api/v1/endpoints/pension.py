@@ -141,10 +141,10 @@ async def create_pension_account(
             account_id=data.account_number,
             account_holder_name=data.account_holder_name,
             quantity=1.0,
-            purchase_price=data.monthly_pension,
-            current_price=data.monthly_pension,
+            purchase_price=data.total_corpus,
+            current_price=data.total_corpus,
             total_invested=data.total_corpus,
-            current_value=data.monthly_pension,
+            current_value=data.total_corpus,
             purchase_date=datetime.combine(data.start_date, datetime.min.time()),
             portfolio_id=resolved_portfolio_id,
             is_active=data.is_active,
@@ -199,10 +199,11 @@ async def update_pension_account(
         details["pension_type"] = data.pension_type
     if data.monthly_pension is not None:
         details["monthly_pension"] = data.monthly_pension
-        asset.current_price = data.monthly_pension
-        asset.current_value = data.monthly_pension
     if data.total_corpus is not None:
         asset.total_invested = data.total_corpus
+        asset.purchase_price = data.total_corpus
+        asset.current_price = data.total_corpus
+        asset.current_value = data.total_corpus
     if data.start_date is not None:
         details["start_date"] = data.start_date.isoformat()
         asset.purchase_date = datetime.combine(data.start_date, datetime.min.time())
