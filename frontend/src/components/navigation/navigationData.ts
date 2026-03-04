@@ -56,6 +56,7 @@ import {
   Factory as FactoryIcon,
   CurrencyExchange as CurrencyExchangeIcon,
   Token as TokenIcon,
+  Build as BuildIcon,
 } from '@mui/icons-material';
 
 // ── Constants ──
@@ -187,6 +188,10 @@ const insightsItems: NavItem[] = [
   { text: 'MF Holdings', icon: React.createElement(InsightsIcon), path: '/mutual-fund-holdings' },
 ];
 
+const utilitiesItems: NavItem[] = [
+  { text: 'SIP Creator', icon: React.createElement(MISIcon), path: '/sip-creator' },
+];
+
 const assetOverviewItem: NavItem = {
   text: 'Asset Overview',
   icon: React.createElement(PaidIcon),
@@ -258,6 +263,12 @@ export const railSections: RailSection[] = [
     items: expenseItems,
   },
   {
+    key: 'utilities',
+    label: 'Utilities',
+    icon: React.createElement(BuildIcon),
+    items: utilitiesItems,
+  },
+  {
     key: 'admin',
     label: 'Administration',
     icon: React.createElement(AdminIcon),
@@ -291,6 +302,7 @@ export const allNavItems: NavItem[] = [
   ...assetGroups.flatMap((g) => g.items),
   { text: 'Cash In Hand', icon: React.createElement(WalletIcon), path: '/cash-in-hand' },
   ...expenseItems,
+  ...utilitiesItems,
   ...adminItems,
   ...masterDataItems,
   { text: 'Help', icon: React.createElement(HelpIcon), path: '/help' },

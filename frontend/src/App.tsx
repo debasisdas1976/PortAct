@@ -70,6 +70,7 @@ const Help = React.lazy(() => import('./pages/Help'));
 const Portfolios = React.lazy(() => import('./pages/Portfolios'));
 const AssetTypesMaster = React.lazy(() => import('./pages/AssetTypesMaster'));
 const AssetInsight = React.lazy(() => import('./pages/AssetInsight'));
+const SIPCreator = React.lazy(() => import('./pages/SIPCreator'));
 const SuperAdmin = React.lazy(() => import('./pages/SuperAdmin'));
 
 // Protected Route Component
@@ -135,6 +136,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="statements" element={<Statements />} />
             <Route path="alerts" element={<AlertsWithProgress />} />
             <Route path="asset-insight" element={<AssetInsight />} />
+            <Route path="sip-creator" element={<SIPCreator />} />
             <Route path="bank-accounts" element={<BankAccounts />} />
             <Route path="demat-accounts" element={<DematAccounts />} />
             <Route path="demat-accounts/:id" element={<DematAccountDetail />} />

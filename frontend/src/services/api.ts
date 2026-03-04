@@ -312,6 +312,18 @@ export const transactionsAPI = {
   },
 };
 
+// SIP Creator API
+export const sipCreatorAPI = {
+  preview: async (data: any) => {
+    const response = await api.post('/sip-creator/preview', data);
+    return response.data;
+  },
+  create: async (data: any) => {
+    const response = await api.post('/sip-creator/create', data);
+    return response.data;
+  },
+};
+
 // Alerts API
 export const alertsAPI = {
   getAll: async (params?: any) => {
