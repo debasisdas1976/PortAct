@@ -539,6 +539,31 @@ export const systemAPI = {
   },
 };
 
+// Insights API
+export const insightsAPI = {
+  getCategoryAllocationXirr: async (portfolioId?: number | null) => {
+    const params: any = {};
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/insights/category-allocation-xirr', { params });
+    return response.data;
+  },
+
+  getCategoryPerformanceHistory: async (days: number = 90, portfolioId?: number | null, category?: string | null) => {
+    const params: any = { days };
+    if (portfolioId) params.portfolio_id = portfolioId;
+    if (category) params.category = category;
+    const response = await api.get('/insights/category-performance-history', { params });
+    return response.data;
+  },
+
+  getCategoryXirrTrend: async (days: number = 90, portfolioId?: number | null) => {
+    const params: any = { days };
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/insights/category-xirr-trend', { params });
+    return response.data;
+  },
+};
+
 export default api;
 
 // Made with Bob

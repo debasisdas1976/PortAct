@@ -182,6 +182,7 @@ export const assetGroups: AssetGroup[] = [
 // ── Section Item Lists ──
 
 const insightsItems: NavItem[] = [
+  { text: 'Asset Insight', icon: React.createElement(BarChartIcon), path: '/asset-insight' },
   { text: 'Alerts', icon: React.createElement(NotificationsIcon), path: '/alerts' },
   { text: 'MF Holdings', icon: React.createElement(InsightsIcon), path: '/mutual-fund-holdings' },
 ];

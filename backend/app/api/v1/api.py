@@ -3,7 +3,7 @@ from app.api.v1.endpoints import (
     auth, users, assets, transactions, statements, alerts, dashboard, prices,
     bank_accounts, demat_accounts, crypto_accounts, crypto_exchanges, banks, brokers, expense_categories, expenses, bank_statements, ppf, pf, mutual_fund_holdings, ssy, nps,
     gratuity, insurance, pension, fixed_deposit, recurring_deposit, portfolio_admin, settings, real_estate, portfolios, asset_categories, asset_types, institutions,
-    system
+    system, insights
 )
 
 api_router = APIRouter()
@@ -44,5 +44,6 @@ api_router.include_router(asset_categories.router, prefix="/asset-categories", t
 api_router.include_router(asset_types.router, prefix="/asset-types", tags=["Asset Types"])
 api_router.include_router(institutions.router, prefix="/institutions", tags=["Institutions"])
 api_router.include_router(system.router, prefix="/system", tags=["System"])
+api_router.include_router(insights.router, prefix="/insights", tags=["Insights"])
 
 # Made with Bob
