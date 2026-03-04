@@ -31,6 +31,7 @@ import {
 import { Add, Edit, Delete, Shield as InsuranceIcon } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
 import { RootState } from '../store';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
@@ -78,6 +79,8 @@ interface InsurancePolicy {
   is_active: boolean;
   notes?: string;
   annual_premium: number;
+  xirr?: number | null;
+  xirr_manual?: boolean;
   created_at: string;
   updated_at?: string;
 }
@@ -110,6 +113,7 @@ const emptyForm = {
   nominee: '',
   is_active: true,
   notes: '',
+  xirr: '' as string,
 };
 
 const getPolicyTypeLabel = (value: string) =>
@@ -188,6 +192,7 @@ const Insurance: React.FC = () => {
       nominee: policy.nominee || '',
       is_active: policy.is_active,
       notes: policy.notes || '',
+      xirr: policy.xirr != null ? String(policy.xirr) : '',
     });
     setDialogOpen(true);
   };
@@ -221,6 +226,7 @@ const Insurance: React.FC = () => {
       nominee: form.nominee || null,
       is_active: form.is_active,
       notes: form.notes || null,
+      xirr: form.xirr ? parseFloat(form.xirr) : undefined,
     };
     try {
       setSaving(true);
@@ -285,7 +291,7 @@ const Insurance: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={2} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Policies</Typography>
@@ -294,7 +300,7 @@ const Insurance: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Sum Assured</Typography>
@@ -302,7 +308,7 @@ const Insurance: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Current Fund Value</Typography>
@@ -313,7 +319,7 @@ const Insurance: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={2} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Annual Premium</Typography>
@@ -321,13 +327,16 @@ const Insurance: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={2} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Premium Paid</Typography>
               <Typography variant="h5">{formatCurrency(summary?.total_premium_paid ?? 0)}</Typography>
             </CardContent>
           </Card>
+        </Grid>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
+          <XirrCard assetType="insurance_policy" portfolioId={selectedPortfolioId} />
         </Grid>
       </Grid>
 
@@ -347,13 +356,14 @@ const Insurance: React.FC = () => {
                 <TableCell align="right">Fund Value</TableCell>
                 <TableCell>Expiry</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell align="right">XIRR</TableCell>
                 <TableCell align="center">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {policies.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} align="center">
+                  <TableCell colSpan={12} align="center">
                     <Typography color="text.secondary">
                       No insurance policies found. Add one to start tracking.
                     </Typography>
@@ -403,6 +413,15 @@ const Insurance: React.FC = () => {
                         color={policy.is_active ? 'success' : 'default'}
                         size="small"
                       />
+                    </TableCell>
+                    <TableCell align="right">
+                      {policy.xirr != null ? (
+                        <Typography variant="body2" color={policy.xirr >= 0 ? 'success.main' : 'error.main'}>
+                          {policy.xirr >= 0 ? '+' : ''}{policy.xirr.toFixed(2)}%
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">N/A</Typography>
+                      )}
                     </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
@@ -595,6 +614,17 @@ const Insurance: React.FC = () => {
                 }
                 label="Policy Active"
                 sx={{ mt: 1 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="XIRR (%)"
+                type="number"
+                value={form.xirr}
+                onChange={(e) => setForm({ ...form, xirr: e.target.value })}
+                fullWidth
+                inputProps={{ step: 0.01 }}
+                helperText="Annualized return rate"
               />
             </Grid>
             <Grid item xs={12}>

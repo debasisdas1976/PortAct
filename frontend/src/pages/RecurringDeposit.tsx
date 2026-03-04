@@ -47,6 +47,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
 import { RootState } from '../store';
 
 interface RDAccount {
@@ -380,7 +381,7 @@ const RecurringDeposit: React.FC = () => {
           { label: 'Current Value', value: fmt(totalValue) },
           { label: 'Total Interest Earned', value: fmt(totalInterest) },
         ].map(({ label, value }) => (
-          <Grid item xs={12} sm={6} md={3} key={label} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md key={label} sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="text.secondary" variant="body2">
@@ -391,6 +392,9 @@ const RecurringDeposit: React.FC = () => {
             </Card>
           </Grid>
         ))}
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <XirrCard assetType="recurring_deposit" portfolioId={selectedPortfolioId} />
+        </Grid>
       </Grid>
 
       <TableContainer component={Paper}>

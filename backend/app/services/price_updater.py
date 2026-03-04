@@ -10,6 +10,8 @@ from app.core.database import SessionLocal
 from datetime import datetime, timezone
 import logging
 from app.services.currency_converter import get_usd_to_inr_rate, convert_usd_to_inr, get_rate_to_inr
+from app.models.transaction import Transaction, TransactionType
+from app.services.xirr_service import calculate_asset_xirr
 from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -472,7 +474,20 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
             asset.current_price = new_price
             asset.current_value = asset.quantity * new_price
             asset.calculate_metrics()
-            
+
+            # Recalculate XIRR if asset has transactions that tally (skip if manually set)
+            if not asset.xirr_manual:
+                transactions = db.query(Transaction).filter(
+                    Transaction.asset_id == asset.id
+                ).order_by(Transaction.transaction_date).all()
+                if transactions:
+                    buy_qty = sum(t.quantity or 0 for t in transactions if t.transaction_type == TransactionType.BUY)
+                    sell_qty = sum(t.quantity or 0 for t in transactions if t.transaction_type == TransactionType.SELL)
+                    if abs((buy_qty - sell_qty) - (asset.quantity or 0)) < 0.0001:
+                        asset.xirr = calculate_asset_xirr(transactions, asset.current_value or 0)
+                    else:
+                        asset.xirr = None
+
             # Mark price update as successful
             asset.price_update_failed = False
             asset.last_price_update = datetime.now(timezone.utc)

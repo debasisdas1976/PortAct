@@ -33,6 +33,7 @@ import { Add, Edit, Delete } from '@mui/icons-material';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import XirrCard from '../components/XirrCard';
 
 const AREA_UNITS = [
   { value: 'sqft', label: 'Sq. Ft.' },
@@ -263,7 +264,7 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
           },
           { label: 'Monthly Rental Income', value: formatCurrency(summary?.total_rental_income_monthly || 0) },
         ].map(({ label, value, color }) => (
-          <Grid item xs={12} sm={6} md={2.4} key={label}>
+          <Grid item xs={12} sm={6} md key={label}>
             <Card>
               <CardContent>
                 <Typography color="text.secondary" variant="body2">{label}</Typography>
@@ -272,6 +273,9 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
             </Card>
           </Grid>
         ))}
+        <Grid item xs={12} sm={6} md>
+          <XirrCard assetType={propertyType} />
+        </Grid>
       </Grid>
 
       {/* Properties Table */}

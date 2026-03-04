@@ -47,21 +47,27 @@ async def get_all_pf_accounts(
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
 
+    # Lazily compute XIRR for assets that don't have it yet (skip manually set)
+    for asset in assets:
+        if asset.xirr is None and not asset.xirr_manual:
+            asset.xirr = asset.fallback_xirr()
+    db.commit()
+
     pf_accounts = []
     for asset in assets:
         # Ensure required fields have valid values
         uan = asset.details.get('uan_number', '').strip()
         if not uan or len(uan) < 12:
             uan = '000000000000'
-        
+
         holder_name = (asset.account_holder_name or '').strip()
         if not holder_name:
             holder_name = 'Unknown'
-        
+
         employer = (asset.broker_name or '').strip()
         if not employer:
             employer = 'Unknown Employer'
-        
+
         pf_account = PFAccountResponse(
             id=asset.id,
             user_id=asset.user_id,
@@ -81,11 +87,13 @@ async def get_all_pf_accounts(
             interest_rate=asset.details.get('interest_rate', 8.25),
             is_active=asset.details.get('is_active', True),
             notes=asset.notes,
+            xirr=asset.xirr,
+            xirr_manual=asset.xirr_manual,
             created_at=asset.created_at,
             updated_at=asset.last_updated
         )
         pf_accounts.append(pf_account)
-    
+
     return pf_accounts
 
 
@@ -198,12 +206,14 @@ async def get_pf_account(
         interest_rate=asset.details.get('interest_rate', 8.25),
         is_active=asset.details.get('is_active', True),
         notes=asset.notes,
+        xirr=asset.xirr,
+        xirr_manual=asset.xirr_manual,
         created_at=asset.created_at,
         updated_at=asset.last_updated,
         transactions=pf_transactions,
         transaction_count=len(pf_transactions)
     )
-    
+
     return pf_account
 
 
@@ -249,6 +259,11 @@ async def create_pf_account(
     db.commit()
     db.refresh(asset)
     
+    # Set fallback XIRR for newly created account
+    asset.xirr = asset.fallback_xirr()
+    db.commit()
+    db.refresh(asset)
+
     return PFAccountResponse(
         id=asset.id,
         user_id=asset.user_id,
@@ -268,6 +283,8 @@ async def create_pf_account(
         interest_rate=pf_data.interest_rate,
         is_active=pf_data.is_active,
         notes=asset.notes,
+        xirr=asset.xirr,
+        xirr_manual=asset.xirr_manual,
         created_at=asset.created_at,
         updated_at=asset.last_updated
     )
@@ -317,9 +334,16 @@ async def update_pf_account(
         asset.details['is_active'] = update_data['is_active']
     if 'notes' in update_data:
         asset.notes = update_data['notes']
-    
+    if 'xirr' in update_data:
+        if update_data['xirr'] is not None:
+            asset.xirr = update_data['xirr']
+            asset.xirr_manual = True
+        else:
+            asset.xirr_manual = False
+            asset.xirr = asset.fallback_xirr()
+
     asset.last_updated = datetime.utcnow()
-    
+
     db.commit()
     db.refresh(asset)
     
@@ -355,6 +379,8 @@ async def update_pf_account(
         interest_rate=asset.details.get('interest_rate', 8.25),
         is_active=asset.details.get('is_active', True),
         notes=asset.notes,
+        xirr=asset.xirr,
+        xirr_manual=asset.xirr_manual,
         created_at=asset.created_at,
         updated_at=asset.last_updated
     )
@@ -641,6 +667,12 @@ async def upload_pf_statement(
         if not employer:
             employer = 'Unknown Employer'
         
+        # Set fallback XIRR if not already set
+        if asset.xirr is None and not asset.xirr_manual:
+            asset.xirr = asset.fallback_xirr()
+            db.commit()
+            db.refresh(asset)
+
         return PFAccountResponse(
             id=asset.id,
             user_id=asset.user_id,
@@ -660,10 +692,12 @@ async def upload_pf_statement(
             interest_rate=asset.details.get('interest_rate', 8.25),
             is_active=asset.details.get('is_active', True),
             notes=asset.notes,
+            xirr=asset.xirr,
+            xirr_manual=asset.xirr_manual,
             created_at=asset.created_at,
             updated_at=asset.last_updated
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=400, detail="Could not process the PF statement. Please check the file format.")
 

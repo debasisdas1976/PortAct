@@ -38,6 +38,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
 import { RootState } from '../store';
 
 interface PPFAccount {
@@ -55,6 +56,8 @@ interface PPFAccount {
   total_interest_earned: number;
   financial_year?: string;
   notes?: string;
+  xirr?: number | null;
+  xirr_manual?: boolean;
 }
 
 interface PPFTransaction {
@@ -98,7 +101,8 @@ const PPF: React.FC = () => {
     total_deposits: 0,
     total_interest_earned: 0,
     financial_year: '',
-    notes: ''
+    notes: '',
+    xirr: '' as string
   });
   const [transactionFormData, setTransactionFormData] = useState({
     transaction_date: new Date().toISOString().split('T')[0],
@@ -187,7 +191,8 @@ const PPF: React.FC = () => {
         total_deposits: account.total_deposits,
         total_interest_earned: account.total_interest_earned,
         financial_year: account.financial_year || '',
-        notes: account.notes || ''
+        notes: account.notes || '',
+        xirr: account.xirr != null ? String(account.xirr) : ''
       });
     } else {
       setEditingAccount(null);
@@ -204,7 +209,8 @@ const PPF: React.FC = () => {
         total_deposits: 0,
         total_interest_earned: 0,
         financial_year: '',
-        notes: ''
+        notes: '',
+        xirr: ''
       });
     }
     setOpenDialog(true);
@@ -219,11 +225,12 @@ const PPF: React.FC = () => {
     try {
       setLoading(true);
 
+      const payload = {...formData, portfolio_id: formData.portfolio_id || undefined, xirr: formData.xirr ? parseFloat(formData.xirr) : undefined};
       if (editingAccount) {
-        await api.put(`/ppf/${editingAccount.id}`, {...formData, portfolio_id: formData.portfolio_id || undefined});
+        await api.put(`/ppf/${editingAccount.id}`, payload);
         notify.success('Account updated successfully');
       } else {
-        await api.post('/ppf/', {...formData, portfolio_id: formData.portfolio_id || undefined});
+        await api.post('/ppf/', payload);
         notify.success('Account added successfully');
       }
 
@@ -400,7 +407,7 @@ const PPF: React.FC = () => {
       {/* Summary Cards */}
       {summary && (
         <Grid container spacing={3} mb={3}>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -410,7 +417,7 @@ const PPF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -420,7 +427,7 @@ const PPF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -430,7 +437,7 @@ const PPF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -441,6 +448,9 @@ const PPF: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+            <XirrCard assetType="ppf" portfolioId={selectedPortfolioId} />
           </Grid>
         </Grid>
       )}
@@ -468,6 +478,7 @@ const PPF: React.FC = () => {
                 <TableCell align="right">Current Balance</TableCell>
                 <TableCell align="right">Total Deposits</TableCell>
                 <TableCell align="right">Interest Earned</TableCell>
+                <TableCell align="right">XIRR</TableCell>
                 <TableCell align="center">Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -484,6 +495,15 @@ const PPF: React.FC = () => {
                   <TableCell align="right">{formatCurrency(account.total_deposits)}</TableCell>
                   <TableCell align="right" sx={{ color: 'success.main' }}>
                     {formatCurrency(account.total_interest_earned)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {account.xirr != null ? (
+                      <Typography variant="body2" color={account.xirr >= 0 ? 'success.main' : 'error.main'}>
+                        {account.xirr >= 0 ? '+' : ''}{account.xirr.toFixed(2)}%
+                      </Typography>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">N/A</Typography>
+                    )}
                   </TableCell>
                   <TableCell align="center">
                     <IconButton
@@ -513,7 +533,7 @@ const PPF: React.FC = () => {
               ))}
               {accounts.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} align="center">
+                  <TableCell colSpan={11} align="center">
                     No PPF accounts found. Add one to get started.
                   </TableCell>
                 </TableRow>
@@ -722,6 +742,17 @@ const PPF: React.FC = () => {
                 value={formData.financial_year}
                 onChange={(e) => setFormData({ ...formData, financial_year: e.target.value })}
                 placeholder="e.g., 2025-26"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label="XIRR (%)"
+                value={formData.xirr}
+                onChange={(e) => setFormData({ ...formData, xirr: e.target.value })}
+                inputProps={{ step: 0.01 }}
+                helperText="Annualized return rate"
               />
             </Grid>
             <Grid item xs={12}>

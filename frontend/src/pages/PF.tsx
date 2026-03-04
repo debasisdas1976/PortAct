@@ -40,6 +40,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
 import { RootState } from '../store';
 
 // Helper function to get user-friendly transaction type label
@@ -75,6 +76,8 @@ interface PFAccount {
   interest_rate: number;
   is_active: boolean;
   notes?: string;
+  xirr?: number | null;
+  xirr_manual?: boolean;
 }
 
 interface PFTransaction {
@@ -125,7 +128,8 @@ const PF: React.FC = () => {
     pension_contribution: 0,
     total_interest_earned: 0,
     is_active: true,
-    notes: ''
+    notes: '',
+    xirr: '' as string
   });
   const [transactionFormData, setTransactionFormData] = useState({
     transaction_date: new Date().toISOString().split('T')[0],
@@ -203,7 +207,8 @@ const PF: React.FC = () => {
         pension_contribution: account.pension_contribution,
         total_interest_earned: account.total_interest_earned,
         is_active: account.is_active,
-        notes: account.notes || ''
+        notes: account.notes || '',
+        xirr: account.xirr != null ? String(account.xirr) : ''
       });
     } else {
       setEditingAccount(null);
@@ -223,7 +228,8 @@ const PF: React.FC = () => {
         pension_contribution: 0,
         total_interest_earned: 0,
         is_active: true,
-        notes: ''
+        notes: '',
+        xirr: ''
       });
     }
     setOpenDialog(true);
@@ -238,11 +244,12 @@ const PF: React.FC = () => {
     try {
       setLoading(true);
 
+      const payload = {...formData, portfolio_id: formData.portfolio_id || undefined, xirr: formData.xirr ? parseFloat(formData.xirr) : undefined};
       if (editingAccount) {
-        await api.put(`/pf/${editingAccount.id}`, {...formData, portfolio_id: formData.portfolio_id || undefined});
+        await api.put(`/pf/${editingAccount.id}`, payload);
         notify.success('Account updated successfully');
       } else {
-        await api.post('/pf/', {...formData, portfolio_id: formData.portfolio_id || undefined});
+        await api.post('/pf/', payload);
         notify.success('Account added successfully');
       }
 
@@ -413,7 +420,7 @@ const PF: React.FC = () => {
       {/* Summary Cards */}
       {summary && (
         <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -426,7 +433,7 @@ const PF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -436,7 +443,7 @@ const PF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -446,7 +453,7 @@ const PF: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -457,6 +464,9 @@ const PF: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+            <XirrCard assetType="pf" portfolioId={selectedPortfolioId} />
           </Grid>
         </Grid>
       )}
@@ -486,6 +496,7 @@ const PF: React.FC = () => {
                 <TableCell align="right">Pension</TableCell>
                 <TableCell align="right">Interest</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell align="right">XIRR</TableCell>
                 <TableCell align="center">Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -510,6 +521,15 @@ const PF: React.FC = () => {
                       color={account.is_active ? 'success' : 'default'}
                       size="small"
                     />
+                  </TableCell>
+                  <TableCell align="right">
+                    {account.xirr != null ? (
+                      <Typography variant="body2" color={account.xirr >= 0 ? 'success.main' : 'error.main'}>
+                        {account.xirr >= 0 ? '+' : ''}{account.xirr.toFixed(2)}%
+                      </Typography>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">N/A</Typography>
+                    )}
                   </TableCell>
                   <TableCell align="center">
                     <IconButton
@@ -539,7 +559,7 @@ const PF: React.FC = () => {
               ))}
               {accounts.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={12} align="center">
+                  <TableCell colSpan={13} align="center">
                     No PF accounts found. Add one to get started.
                   </TableCell>
                 </TableRow>
@@ -760,7 +780,7 @@ const PF: React.FC = () => {
                 inputProps={{ step: 0.01, min: 0 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 type="number"
@@ -770,7 +790,18 @@ const PF: React.FC = () => {
                 inputProps={{ step: 0.01, min: 0 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                type="number"
+                label="XIRR (%)"
+                value={formData.xirr}
+                onChange={(e) => setFormData({ ...formData, xirr: e.target.value })}
+                inputProps={{ step: 0.01 }}
+                helperText="Annualized return rate"
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
               <FormControlLabel
                 control={
                   <Switch

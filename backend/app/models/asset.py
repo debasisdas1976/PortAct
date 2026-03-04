@@ -77,6 +77,7 @@ class Asset(Base):
     profit_loss = Column(Float, default=0.0)  # Absolute profit/loss
     profit_loss_percentage = Column(Float, default=0.0)  # Percentage profit/loss
     xirr = Column(Float, nullable=True)  # Annualized return % (XIRR)
+    xirr_manual = Column(Boolean, default=False, server_default='false')  # True if user set XIRR manually
     
     # Asset-specific details (stored as JSON for flexibility)
     details = Column(JSON, default={})
@@ -117,5 +118,19 @@ class Asset(Base):
         else:
             self.profit_loss = 0.0
             self.profit_loss_percentage = 0.0
+
+    def fallback_xirr(self):
+        """Return interest_rate from details or profit_loss_percentage as XIRR fallback
+        when transaction data is not available."""
+        if self.details and isinstance(self.details, dict):
+            interest_rate = self.details.get('interest_rate')
+            if interest_rate is not None:
+                try:
+                    return round(float(interest_rate), 2)
+                except (ValueError, TypeError):
+                    pass
+        if self.profit_loss_percentage and self.profit_loss_percentage != 0:
+            return round(self.profit_loss_percentage, 2)
+        return None
 
 # Made with Bob

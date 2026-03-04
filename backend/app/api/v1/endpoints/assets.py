@@ -21,7 +21,8 @@ from app.models.asset_type_master import AssetTypeMaster
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import AssetSnapshot
 from app.models.mutual_fund_holding import MutualFundHolding
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionType
+from app.services.xirr_service import calculate_asset_xirr
 
 router = APIRouter()
 
@@ -59,9 +60,41 @@ async def get_assets(
     # Calculate current metrics for each asset
     for asset in assets:
         asset.calculate_metrics()
-    
+
+    # Known default interest rates for fixed-rate asset types
+    _DEFAULT_RATES = {
+        AssetType.SSY: 8.2,
+        AssetType.PF: 8.25,
+        AssetType.PPF: 7.1,
+    }
+
+    # Lazily compute XIRR for assets that have transactions but null XIRR (skip manually set)
+    null_xirr_assets = [a for a in assets if a.xirr is None and not a.xirr_manual]
+    if null_xirr_assets:
+        null_xirr_ids = [a.id for a in null_xirr_assets]
+        all_txns = db.query(Transaction).filter(
+            Transaction.asset_id.in_(null_xirr_ids)
+        ).order_by(Transaction.transaction_date).all()
+        txn_by_asset: dict[int, list] = {}
+        for txn in all_txns:
+            txn_by_asset.setdefault(txn.asset_id, []).append(txn)
+        for asset in null_xirr_assets:
+            asset_txns = txn_by_asset.get(asset.id, [])
+            if asset_txns:
+                buy_qty = sum(t.quantity or 0 for t in asset_txns if t.transaction_type == TransactionType.BUY)
+                sell_qty = sum(t.quantity or 0 for t in asset_txns if t.transaction_type == TransactionType.SELL)
+                if abs((buy_qty - sell_qty) - (asset.quantity or 0)) < 0.0001:
+                    asset.xirr = calculate_asset_xirr(asset_txns, asset.current_value or 0)
+                else:
+                    asset.xirr = asset.fallback_xirr()
+            else:
+                asset.xirr = asset.fallback_xirr()
+            # For fixed-rate asset types, fall back to default rate
+            if asset.xirr is None and asset.asset_type in _DEFAULT_RATES:
+                asset.xirr = _DEFAULT_RATES[asset.asset_type]
+
     db.commit()
-    
+
     return assets
 
 
@@ -290,6 +323,12 @@ async def update_asset(
                 update_data['current_price'] = convert_usd_to_inr(update_data['current_price'])
             if 'total_invested' in update_data and update_data['total_invested']:
                 update_data['total_invested'] = convert_usd_to_inr(update_data['total_invested'])
+
+    # If user explicitly sets XIRR, mark it as manual
+    if 'xirr' in update_data and update_data['xirr'] is not None:
+        update_data['xirr_manual'] = True
+    elif 'xirr' in update_data and update_data['xirr'] is None and 'xirr_manual' not in update_data:
+        update_data['xirr_manual'] = False
 
     for field, value in update_data.items():
         setattr(asset, field, value)

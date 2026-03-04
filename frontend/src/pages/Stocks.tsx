@@ -6,6 +6,7 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -23,6 +24,7 @@ import {
   TextField,
   Typography,
   Chip,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -33,11 +35,17 @@ import {
   TrendingDown,
   KeyboardArrowDown,
   KeyboardArrowRight,
+  KeyboardArrowUp,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
-import api from '../services/api';
+import api, { transactionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
+import StockTransactionDialog from '../components/StockTransactionDialog';
 
 interface StockAsset {
   id: number;
@@ -101,6 +109,10 @@ const Stocks: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [txDialogOpen, setTxDialogOpen] = useState(false);
+  const [txDialogStock, setTxDialogStock] = useState<StockAsset | null>(null);
+  const [stockTransactions, setStockTransactions] = useState<Record<number, any[]>>({});
+  const [expandedStocks, setExpandedStocks] = useState<Set<number>>(new Set());
 
   const toggleGroup = (key: string) => {
     setCollapsedGroups(prev => {
@@ -122,6 +134,19 @@ const Stocks: React.FC = () => {
         (a) => a.asset_type?.toLowerCase() === 'stock'
       );
       setStocks(filtered);
+
+      // Fetch transactions for all stocks in parallel
+      const txMap: Record<number, any[]> = {};
+      const txPromises = filtered.map(async (stock) => {
+        try {
+          const txns = await transactionsAPI.getAll({ asset_id: stock.id, limit: 500 });
+          txMap[stock.id] = txns;
+        } catch {
+          txMap[stock.id] = [];
+        }
+      });
+      await Promise.all(txPromises);
+      setStockTransactions(txMap);
 
       const dematList = dematRes.data as DematAccount[];
       setDematAccounts(dematList);
@@ -225,6 +250,34 @@ const Stocks: React.FC = () => {
     }
   };
 
+  const getTransactionStatus = (stock: StockAsset) => {
+    const txns = stockTransactions[stock.id];
+    if (!txns || txns.length === 0) {
+      return { status: 'none' as const, icon: <InfoIcon fontSize="small" color="info" />, tooltip: 'No transactions. Click to add.' };
+    }
+    const buyQty = txns.filter((t: any) => t.transaction_type === 'buy').reduce((s: number, t: any) => s + (t.quantity || 0), 0);
+    const sellQty = txns.filter((t: any) => t.transaction_type === 'sell').reduce((s: number, t: any) => s + (t.quantity || 0), 0);
+    const netQty = buyQty - sellQty;
+    if (Math.abs(netQty - stock.quantity) < 0.0001) {
+      return { status: 'match' as const, icon: <CheckCircleIcon fontSize="small" color="success" />, tooltip: 'Transactions match quantity' };
+    }
+    return { status: 'mismatch' as const, icon: <WarningIcon fontSize="small" color="warning" />, tooltip: `Mismatch: stock ${stock.quantity}, txns ${netQty.toFixed(4)}` };
+  };
+
+  const toggleStockExpand = (stockId: number) => {
+    setExpandedStocks(prev => {
+      const next = new Set(prev);
+      if (next.has(stockId)) next.delete(stockId);
+      else next.add(stockId);
+      return next;
+    });
+  };
+
+  const txnTypeColor = (type: string): 'success' | 'error' | 'info' | 'default' => {
+    const colors: Record<string, 'success' | 'error' | 'info' | 'default'> = { buy: 'success', sell: 'error', dividend: 'info' };
+    return colors[type] || 'default';
+  };
+
   const totalInvested = stocks.reduce((s, a) => s + (a.total_invested || 0), 0);
   const totalValue = stocks.reduce((s, a) => s + (a.current_value || 0), 0);
   const totalPnL = totalValue - totalInvested;
@@ -270,31 +323,34 @@ const Stocks: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3, alignItems: 'stretch' }}>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ flex: 1 }}><CardContent>
             <Typography color="text.secondary" variant="body2">Holdings</Typography>
             <Typography variant="h4">{stocks.length}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ flex: 1 }}><CardContent>
             <Typography color="text.secondary" variant="body2">Current Value</Typography>
             <Typography variant="h5">{formatCurrency(totalValue)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ flex: 1 }}><CardContent>
             <Typography color="text.secondary" variant="body2">Total Invested</Typography>
             <Typography variant="h5">{formatCurrency(totalInvested)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ flex: 1 }}><CardContent>
             <Typography color="text.secondary" variant="body2">Total P&L</Typography>
             <Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
               {formatCurrency(totalPnL)} ({totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%)
             </Typography>
           </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <XirrCard assetType="stock" portfolioId={selectedPortfolioId} />
         </Grid>
       </Grid>
 
@@ -356,53 +412,126 @@ const Stocks: React.FC = () => {
                       </TableCell>
                       <TableCell />
                     </TableRow>
-                    {!collapsedGroups.has(key) && groupStocks.map((stock) => (
-                      <TableRow key={stock.id} hover>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight="medium">{stock.symbol}</Typography>
-                          <Typography variant="caption" color="text.secondary">{stock.name}</Typography>
-                        </TableCell>
-                        <TableCell align="right">{stock.quantity?.toFixed(4)}</TableCell>
-                        <TableCell align="right">{formatCurrency(stock.purchase_price)}</TableCell>
-                        <TableCell align="right">{formatCurrency(stock.current_price)}</TableCell>
-                        <TableCell align="right">{formatCurrency(stock.total_invested)}</TableCell>
-                        <TableCell align="right">{formatCurrency(stock.current_value)}</TableCell>
-                        <TableCell align="right" sx={{ color: stock.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>
-                          {formatCurrency(stock.profit_loss)}
-                        </TableCell>
-                        <TableCell align="right">
-                          <Chip
-                            label={`${stock.profit_loss_percentage >= 0 ? '+' : ''}${stock.profit_loss_percentage?.toFixed(2)}%`}
-                            color={stock.profit_loss_percentage >= 0 ? 'success' : 'error'}
-                            size="small"
-                            icon={stock.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          {stock.xirr != null ? (
-                            <Chip
-                              label={`${stock.xirr >= 0 ? '+' : ''}${stock.xirr.toFixed(2)}%`}
-                              color={stock.xirr >= 0 ? 'success' : 'error'}
-                              size="small"
-                              variant="outlined"
-                            />
-                          ) : (
-                            <Typography variant="caption" color="text.secondary">N/A</Typography>
+                    {!collapsedGroups.has(key) && groupStocks.map((stock) => {
+                      const trades = stockTransactions[stock.id] || [];
+                      const hasTrades = trades.length > 0;
+                      const isExpanded = expandedStocks.has(stock.id);
+                      return (
+                        <React.Fragment key={stock.id}>
+                          <TableRow
+                            hover
+                            sx={{ cursor: hasTrades ? 'pointer' : 'default', '& > *': { borderBottom: isExpanded ? 'unset' : undefined } }}
+                            onClick={() => hasTrades && toggleStockExpand(stock.id)}
+                          >
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                {hasTrades && (
+                                  isExpanded ? <KeyboardArrowUp fontSize="small" color="action" /> : <KeyboardArrowDown fontSize="small" color="action" />
+                                )}
+                                <Box>
+                                  <Typography variant="body2" fontWeight="medium">{stock.symbol}</Typography>
+                                  <Typography variant="caption" color="text.secondary">{stock.name}</Typography>
+                                </Box>
+                              </Box>
+                            </TableCell>
+                            <TableCell align="right">{stock.quantity?.toFixed(4)}</TableCell>
+                            <TableCell align="right">{formatCurrency(stock.purchase_price)}</TableCell>
+                            <TableCell align="right">{formatCurrency(stock.current_price)}</TableCell>
+                            <TableCell align="right">{formatCurrency(stock.total_invested)}</TableCell>
+                            <TableCell align="right">{formatCurrency(stock.current_value)}</TableCell>
+                            <TableCell align="right" sx={{ color: stock.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>
+                              {formatCurrency(stock.profit_loss)}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Chip
+                                label={`${stock.profit_loss_percentage >= 0 ? '+' : ''}${stock.profit_loss_percentage?.toFixed(2)}%`}
+                                color={stock.profit_loss_percentage >= 0 ? 'success' : 'error'}
+                                size="small"
+                                icon={stock.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                {stock.xirr != null ? (
+                                  <Chip
+                                    label={`${stock.xirr >= 0 ? '+' : ''}${stock.xirr.toFixed(2)}%`}
+                                    color={stock.xirr >= 0 ? 'success' : 'error'}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary">N/A</Typography>
+                                )}
+                                <Tooltip title={getTransactionStatus(stock).tooltip}>
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTxDialogStock(stock);
+                                      setTxDialogOpen(true);
+                                    }}
+                                  >
+                                    {getTransactionStatus(stock).icon}
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
+                            </TableCell>
+                            <TableCell align="center">
+                              <IconButton size="small" color="info" title="Refresh Price" onClick={(e) => { e.stopPropagation(); handlePriceUpdate(stock.id, stock.symbol || stock.name); }} disabled={updatingAssetId === stock.id}>
+                                {updatingAssetId === stock.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+                              </IconButton>
+                              <IconButton size="small" color="primary" title="Edit" onClick={(e) => { e.stopPropagation(); handleOpenDialog(stock); }}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton size="small" color="error" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(stock); }}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                          {hasTrades && (
+                            <TableRow>
+                              <TableCell colSpan={10} sx={{ py: 0, px: 0 }}>
+                                <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                                  <Box sx={{ mx: 4, my: 1 }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow>
+                                          <TableCell>Date</TableCell>
+                                          <TableCell>Action</TableCell>
+                                          <TableCell align="right">Qty</TableCell>
+                                          <TableCell align="right">Price/Unit</TableCell>
+                                          <TableCell align="right">Amount</TableCell>
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {trades
+                                          .slice()
+                                          .sort((a: any, b: any) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
+                                          .map((txn: any) => (
+                                            <TableRow key={txn.id}>
+                                              <TableCell>{new Date(txn.transaction_date).toLocaleDateString('en-IN')}</TableCell>
+                                              <TableCell>
+                                                <Chip
+                                                  label={txn.transaction_type.replace(/_/g, ' ').toUpperCase()}
+                                                  color={txnTypeColor(txn.transaction_type)}
+                                                  size="small"
+                                                />
+                                              </TableCell>
+                                              <TableCell align="right">{txn.quantity}</TableCell>
+                                              <TableCell align="right">{formatCurrency(txn.price_per_unit)}</TableCell>
+                                              <TableCell align="right">{formatCurrency(txn.total_amount)}</TableCell>
+                                            </TableRow>
+                                          ))}
+                                      </TableBody>
+                                    </Table>
+                                  </Box>
+                                </Collapse>
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </TableCell>
-                        <TableCell align="center">
-                          <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(stock.id, stock.symbol || stock.name)} disabled={updatingAssetId === stock.id}>
-                            {updatingAssetId === stock.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
-                          </IconButton>
-                          <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(stock)}>
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(stock)}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </React.Fragment>
                 );
               })
@@ -447,6 +576,14 @@ const Stocks: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ── Transaction Dialog ─────────────────────────────────────────────── */}
+      <StockTransactionDialog
+        open={txDialogOpen}
+        onClose={() => { setTxDialogOpen(false); setTxDialogStock(null); }}
+        onTransactionsChanged={fetchData}
+        stock={txDialogStock}
+      />
     </Box>
   );
 };

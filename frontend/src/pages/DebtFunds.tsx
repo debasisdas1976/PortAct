@@ -6,6 +6,7 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -23,6 +24,7 @@ import {
   TextField,
   Typography,
   Chip,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -33,11 +35,17 @@ import {
   TrendingDown,
   KeyboardArrowDown,
   KeyboardArrowRight,
+  KeyboardArrowUp,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
-import api from '../services/api';
+import api, { transactionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
+import StockTransactionDialog from '../components/StockTransactionDialog';
 
 interface MFAsset {
   id: number;
@@ -104,6 +112,10 @@ const DebtFunds: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [txDialogOpen, setTxDialogOpen] = useState(false);
+  const [txDialogAsset, setTxDialogAsset] = useState<MFAsset | null>(null);
+  const [assetTransactions, setAssetTransactions] = useState<Record<number, any[]>>({});
+  const [expandedAssets, setExpandedAssets] = useState<Set<number>>(new Set());
 
   const toggleGroup = (key: string) => {
     setCollapsedGroups(prev => {
@@ -125,6 +137,19 @@ const DebtFunds: React.FC = () => {
         (a) => a.asset_type?.toLowerCase() === 'debt_mutual_fund'
       );
       setFunds(filtered);
+
+      // Fetch transactions for all funds in parallel
+      const txMap: Record<number, any[]> = {};
+      const txPromises = filtered.map(async (fund) => {
+        try {
+          const txns = await transactionsAPI.getAll({ asset_id: fund.id, limit: 500 });
+          txMap[fund.id] = txns;
+        } catch {
+          txMap[fund.id] = [];
+        }
+      });
+      await Promise.all(txPromises);
+      setAssetTransactions(txMap);
 
       const dematList = dematRes.data as DematAccount[];
       setDematAccounts(dematList);
@@ -228,6 +253,34 @@ const DebtFunds: React.FC = () => {
     }
   };
 
+  const getTransactionStatus = (asset: MFAsset) => {
+    const txns = assetTransactions[asset.id];
+    if (!txns || txns.length === 0) {
+      return { status: 'none' as const, icon: <InfoIcon fontSize="small" color="info" />, tooltip: 'No transactions. Click to add.' };
+    }
+    const buyQty = txns.filter((t: any) => t.transaction_type === 'buy').reduce((s: number, t: any) => s + (t.quantity || 0), 0);
+    const sellQty = txns.filter((t: any) => t.transaction_type === 'sell').reduce((s: number, t: any) => s + (t.quantity || 0), 0);
+    const netQty = buyQty - sellQty;
+    if (Math.abs(netQty - asset.quantity) < 0.0001) {
+      return { status: 'match' as const, icon: <CheckCircleIcon fontSize="small" color="success" />, tooltip: 'Transactions match quantity' };
+    }
+    return { status: 'mismatch' as const, icon: <WarningIcon fontSize="small" color="warning" />, tooltip: `Mismatch: asset ${asset.quantity}, txns ${netQty.toFixed(4)}` };
+  };
+
+  const toggleAssetExpand = (assetId: number) => {
+    setExpandedAssets(prev => {
+      const next = new Set(prev);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  };
+
+  const txnTypeColor = (type: string): 'success' | 'error' | 'info' | 'default' => {
+    const colors: Record<string, 'success' | 'error' | 'info' | 'default'> = { buy: 'success', sell: 'error', dividend: 'info' };
+    return colors[type] || 'default';
+  };
+
   const totalInvested = funds.reduce((s, a) => s + (a.total_invested || 0), 0);
   const totalValue = funds.reduce((s, a) => s + (a.current_value || 0), 0);
   const totalPnL = totalValue - totalInvested;
@@ -272,25 +325,25 @@ const DebtFunds: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Funds</Typography>
             <Typography variant="h4">{funds.length}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Current Value</Typography>
             <Typography variant="h5">{formatCurrency(totalValue)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Total Invested</Typography>
             <Typography variant="h5">{formatCurrency(totalInvested)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Total P&L</Typography>
             <Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
@@ -300,6 +353,9 @@ const DebtFunds: React.FC = () => {
               {totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%
             </Typography>
           </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <XirrCard assetType="debt_mutual_fund" portfolioId={selectedPortfolioId} />
         </Grid>
       </Grid>
 
@@ -361,53 +417,126 @@ const DebtFunds: React.FC = () => {
                       </TableCell>
                       <TableCell />
                     </TableRow>
-                    {!collapsedGroups.has(key) && groupFunds.map((fund) => (
-                      <TableRow key={fund.id} hover>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight="medium">{fund.name}</Typography>
-                          {fund.symbol && <Typography variant="caption" color="text.secondary">{fund.symbol}</Typography>}
-                        </TableCell>
-                        <TableCell align="right">{fund.quantity?.toFixed(4)}</TableCell>
-                        <TableCell align="right">{formatNav(fund.purchase_price)}</TableCell>
-                        <TableCell align="right">{formatNav(fund.current_price)}</TableCell>
-                        <TableCell align="right">{formatCurrency(fund.total_invested)}</TableCell>
-                        <TableCell align="right">{formatCurrency(fund.current_value)}</TableCell>
-                        <TableCell align="right" sx={{ color: fund.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>
-                          {formatCurrency(fund.profit_loss)}
-                        </TableCell>
-                        <TableCell align="right">
-                          <Chip
-                            label={`${fund.profit_loss_percentage >= 0 ? '+' : ''}${fund.profit_loss_percentage?.toFixed(2)}%`}
-                            color={fund.profit_loss_percentage >= 0 ? 'success' : 'error'}
-                            size="small"
-                            icon={fund.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          {fund.xirr != null ? (
-                            <Chip
-                              label={`${fund.xirr >= 0 ? '+' : ''}${fund.xirr.toFixed(2)}%`}
-                              color={fund.xirr >= 0 ? 'success' : 'error'}
-                              size="small"
-                              variant="outlined"
-                            />
-                          ) : (
-                            <Typography variant="caption" color="text.secondary">N/A</Typography>
+                    {!collapsedGroups.has(key) && groupFunds.map((fund) => {
+                      const trades = assetTransactions[fund.id] || [];
+                      const hasTrades = trades.length > 0;
+                      const isExpanded = expandedAssets.has(fund.id);
+                      return (
+                        <React.Fragment key={fund.id}>
+                          <TableRow
+                            hover
+                            sx={{ cursor: hasTrades ? 'pointer' : 'default', '& > *': { borderBottom: isExpanded ? 'unset' : undefined } }}
+                            onClick={() => hasTrades && toggleAssetExpand(fund.id)}
+                          >
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                {hasTrades && (
+                                  isExpanded ? <KeyboardArrowUp fontSize="small" color="action" /> : <KeyboardArrowDown fontSize="small" color="action" />
+                                )}
+                                <Box>
+                                  <Typography variant="body2" fontWeight="medium">{fund.name}</Typography>
+                                  {fund.symbol && <Typography variant="caption" color="text.secondary">{fund.symbol}</Typography>}
+                                </Box>
+                              </Box>
+                            </TableCell>
+                            <TableCell align="right">{fund.quantity?.toFixed(4)}</TableCell>
+                            <TableCell align="right">{formatNav(fund.purchase_price)}</TableCell>
+                            <TableCell align="right">{formatNav(fund.current_price)}</TableCell>
+                            <TableCell align="right">{formatCurrency(fund.total_invested)}</TableCell>
+                            <TableCell align="right">{formatCurrency(fund.current_value)}</TableCell>
+                            <TableCell align="right" sx={{ color: fund.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>
+                              {formatCurrency(fund.profit_loss)}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Chip
+                                label={`${fund.profit_loss_percentage >= 0 ? '+' : ''}${fund.profit_loss_percentage?.toFixed(2)}%`}
+                                color={fund.profit_loss_percentage >= 0 ? 'success' : 'error'}
+                                size="small"
+                                icon={fund.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                {fund.xirr != null ? (
+                                  <Chip
+                                    label={`${fund.xirr >= 0 ? '+' : ''}${fund.xirr.toFixed(2)}%`}
+                                    color={fund.xirr >= 0 ? 'success' : 'error'}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary">N/A</Typography>
+                                )}
+                                <Tooltip title={getTransactionStatus(fund).tooltip}>
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTxDialogAsset(fund);
+                                      setTxDialogOpen(true);
+                                    }}
+                                  >
+                                    {getTransactionStatus(fund).icon}
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
+                            </TableCell>
+                            <TableCell align="center">
+                              <IconButton size="small" color="info" title="Refresh Price" onClick={(e) => { e.stopPropagation(); handlePriceUpdate(fund.id, fund.name); }} disabled={updatingAssetId === fund.id}>
+                                {updatingAssetId === fund.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+                              </IconButton>
+                              <IconButton size="small" color="primary" title="Edit" onClick={(e) => { e.stopPropagation(); handleOpenDialog(fund); }}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton size="small" color="error" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(fund); }}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                          {hasTrades && (
+                            <TableRow>
+                              <TableCell colSpan={10} sx={{ py: 0, px: 0 }}>
+                                <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                                  <Box sx={{ mx: 4, my: 1 }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow>
+                                          <TableCell>Date</TableCell>
+                                          <TableCell>Action</TableCell>
+                                          <TableCell align="right">Qty</TableCell>
+                                          <TableCell align="right">Price/Unit</TableCell>
+                                          <TableCell align="right">Amount</TableCell>
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {trades
+                                          .slice()
+                                          .sort((a: any, b: any) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
+                                          .map((txn: any) => (
+                                            <TableRow key={txn.id}>
+                                              <TableCell>{new Date(txn.transaction_date).toLocaleDateString('en-IN')}</TableCell>
+                                              <TableCell>
+                                                <Chip
+                                                  label={txn.transaction_type.replace(/_/g, ' ').toUpperCase()}
+                                                  color={txnTypeColor(txn.transaction_type)}
+                                                  size="small"
+                                                />
+                                              </TableCell>
+                                              <TableCell align="right">{txn.quantity}</TableCell>
+                                              <TableCell align="right">{formatCurrency(txn.price_per_unit)}</TableCell>
+                                              <TableCell align="right">{formatCurrency(txn.total_amount)}</TableCell>
+                                            </TableRow>
+                                          ))}
+                                      </TableBody>
+                                    </Table>
+                                  </Box>
+                                </Collapse>
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </TableCell>
-                        <TableCell align="center">
-                          <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(fund.id, fund.name)} disabled={updatingAssetId === fund.id}>
-                            {updatingAssetId === fund.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
-                          </IconButton>
-                          <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(fund)}>
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(fund)}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </React.Fragment>
                 );
               })
@@ -452,6 +581,14 @@ const DebtFunds: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ── Transaction Dialog ─────────────────────────────────────────────── */}
+      <StockTransactionDialog
+        open={txDialogOpen}
+        onClose={() => { setTxDialogOpen(false); setTxDialogAsset(null); }}
+        onTransactionsChanged={fetchData}
+        stock={txDialogAsset}
+      />
     </Box>
   );
 };

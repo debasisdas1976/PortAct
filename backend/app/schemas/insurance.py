@@ -47,6 +47,7 @@ class InsurancePolicyUpdate(BaseModel):
     nominee: Optional[str] = None
     is_active: Optional[bool] = None
     notes: Optional[str] = None
+    xirr: Optional[float] = Field(None, description="Manual XIRR override (%)")
 
 
 class InsurancePolicyResponse(InsurancePolicyBase):
@@ -60,6 +61,8 @@ class InsurancePolicyResponse(InsurancePolicyBase):
     policy_type: str = ""
     insured_name: str = ""
     annual_premium: float   # Normalised to annual regardless of frequency
+    xirr: Optional[float] = None
+    xirr_manual: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
 

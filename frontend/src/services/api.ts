@@ -250,6 +250,13 @@ export const dashboardAPI = {
     return response.data;
   },
 
+  getAssetTypeXirr: async (assetType: string, portfolioId?: number | null) => {
+    const params: any = { asset_type: assetType };
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/dashboard/asset-type-xirr', { params });
+    return response.data;
+  },
+
   takeSnapshot: async () => {
     const response = await api.post('/dashboard/take-snapshot');
     return response.data;
@@ -298,6 +305,10 @@ export const transactionsAPI = {
   create: async (data: any) => {
     const response = await api.post('/transactions', data);
     return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/transactions/${id}`);
   },
 };
 

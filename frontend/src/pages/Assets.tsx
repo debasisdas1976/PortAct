@@ -93,6 +93,7 @@ interface Asset {
   price_update_error?: string;
   api_symbol?: string;
   isin?: string;
+  xirr?: number | null;
   details?: Record<string, any>;
 }
 
@@ -128,6 +129,7 @@ interface GroupedAsset {
   totalQuantity: number;
   totalInvested: number;
   totalCurrentValue: number;
+  xirr: number | null;
   instances: Asset[];
 }
 
@@ -340,6 +342,7 @@ const Assets: React.FC = () => {
           totalQuantity: 0,
           totalInvested: 0,
           totalCurrentValue: 0,
+          xirr: null,
           instances: [],
         });
       }
@@ -349,6 +352,25 @@ const Assets: React.FC = () => {
       group.totalInvested += asset.total_invested || 0;
       group.totalCurrentValue += asset.current_value || 0;
       group.instances.push(asset);
+    });
+
+    // Compute investment-weighted average XIRR per group
+    // Falls back to current_value as weight when total_invested is 0
+    groups.forEach((group) => {
+      let xirrWeightedSum = 0;
+      let xirrWeightTotal = 0;
+      group.instances.forEach((inst) => {
+        if (inst.xirr != null) {
+          const weight = (inst.total_invested || 0) > 0
+            ? inst.total_invested!
+            : (inst.current_value || 0) > 0 ? inst.current_value! : 0;
+          if (weight > 0) {
+            xirrWeightedSum += inst.xirr * weight;
+            xirrWeightTotal += weight;
+          }
+        }
+      });
+      group.xirr = xirrWeightTotal > 0 ? xirrWeightedSum / xirrWeightTotal : null;
     });
 
     return Array.from(groups.values());
@@ -443,6 +465,27 @@ const Assets: React.FC = () => {
   
   const totalGainLoss = totalValue - totalInvested;
   const totalReturnPercentage = totalInvested > 0 ? (totalGainLoss / totalInvested) * 100 : 0;
+
+  // Investment-weighted average XIRR for current tab
+  // Falls back to current_value as weight when total_invested is 0
+  const aggregateXirr = React.useMemo(() => {
+    let xirrWeightedSum = 0;
+    let xirrWeightTotal = 0;
+    currentTabAssets.forEach((group) => {
+      group.instances.forEach((inst) => {
+        if (inst.xirr != null) {
+          const weight = (inst.total_invested || 0) > 0
+            ? inst.total_invested!
+            : (inst.current_value || 0) > 0 ? inst.current_value! : 0;
+          if (weight > 0) {
+            xirrWeightedSum += inst.xirr * weight;
+            xirrWeightTotal += weight;
+          }
+        }
+      });
+    });
+    return xirrWeightTotal > 0 ? xirrWeightedSum / xirrWeightTotal : null;
+  }, [currentTabAssets]);
 
   const toggleRow = (symbol: string) => {
     setExpandedRows((prev) => {
@@ -731,13 +774,14 @@ const Assets: React.FC = () => {
               </TableSortLabel>
             </TableCell>
             <TableCell align="right">P&L</TableCell>
+            <TableCell align="right">XIRR</TableCell>
             <TableCell align="center">Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {assetsToRender.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={9} align="center">
+              <TableCell colSpan={10} align="center">
                 <Typography color="text.secondary">
                   No assets found in this category. Upload a statement to add assets.
                 </Typography>
@@ -847,6 +891,18 @@ const Assets: React.FC = () => {
                         {formatPercentage(returnPercentage)}
                       </Typography>
                     </TableCell>
+                    <TableCell align="right">
+                      {group.xirr != null ? (
+                        <Typography
+                          variant="body2"
+                          sx={{ color: group.xirr >= 0 ? 'success.main' : 'error.main' }}
+                        >
+                          {formatPercentage(group.xirr)}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">—</Typography>
+                      )}
+                    </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                         {!hasMultipleInstances && !hideRefreshPrice && (
@@ -874,7 +930,7 @@ const Assets: React.FC = () => {
                   {/* Expanded Rows - Show individual instances */}
                   {hasMultipleInstances && (
                     <TableRow>
-                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={9}>
+                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
                         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                           <Box sx={{ margin: 2 }}>
                             <Typography variant="h6" gutterBottom component="div">
@@ -1031,7 +1087,7 @@ const Assets: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} md={2.4}>
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom variant="body2">
@@ -1041,7 +1097,7 @@ const Assets: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} md={2.4}>
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom variant="body2">
@@ -1051,7 +1107,7 @@ const Assets: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} md={2.4}>
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom variant="body2">
@@ -1073,7 +1129,7 @@ const Assets: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid item xs={6} md={2.4}>
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom variant="body2">
@@ -1084,6 +1140,21 @@ const Assets: React.FC = () => {
                 sx={{ color: totalReturnPercentage >= 0 ? 'success.main' : 'error.main' }}
               >
                 {formatPercentage(totalReturnPercentage)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} md={2.4}>
+          <Card>
+            <CardContent>
+              <Typography color="text.secondary" gutterBottom variant="body2">
+                XIRR
+              </Typography>
+              <Typography
+                variant="h5"
+                sx={{ color: aggregateXirr != null ? (aggregateXirr >= 0 ? 'success.main' : 'error.main') : 'text.secondary' }}
+              >
+                {aggregateXirr != null ? formatPercentage(aggregateXirr) : '—'}
               </Typography>
             </CardContent>
           </Card>

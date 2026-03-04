@@ -12,6 +12,7 @@ import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
 
 interface AssetItem {
   id: number;
@@ -133,23 +134,26 @@ const NSC: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid item xs={12} sm={6} md>
           <Card><CardContent>
             <Typography color="text.secondary" variant="body2">Certificates</Typography>
             <Typography variant="h4">{assets.length}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid item xs={12} sm={6} md>
           <Card><CardContent>
             <Typography color="text.secondary" variant="body2">Total Invested</Typography>
             <Typography variant="h5">{formatCurrency(totalInvested)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid item xs={12} sm={6} md>
           <Card><CardContent>
             <Typography color="text.secondary" variant="body2">Current Value</Typography>
             <Typography variant="h5">{formatCurrency(totalValue)}</Typography>
           </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md>
+          <XirrCard assetType={ASSET_TYPE} portfolioId={selectedPortfolioId} />
         </Grid>
       </Grid>
 

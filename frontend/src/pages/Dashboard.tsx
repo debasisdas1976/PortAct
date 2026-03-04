@@ -37,6 +37,7 @@ import {
   SelectAll,
   RocketLaunch as GettingStartedIcon,
   Close as CloseIcon,
+  ShowChart,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchPortfolioSummary, fetchPortfolios, setSelectedPortfolioId } from '../store/slices/portfolioSlice';
@@ -90,10 +91,10 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, subtitle, ico
   const isPositive = change !== undefined && change >= 0;
   
   return (
-    <Card sx={{ height: '100%' }}>
+    <Card sx={{ height: '100%', width: '100%', border: '1px solid', borderColor: 'divider' }}>
       <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flex: 1 }}>
-          <Box>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flex: 1, gap: 1 }}>
+          <Box sx={{ minWidth: 0 }}>
             <Typography color="text.secondary" gutterBottom variant="body2">
               {title}
             </Typography>
@@ -125,10 +126,11 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, subtitle, ico
             sx={{
               backgroundColor: color,
               borderRadius: 2,
-              p: 1.5,
+              p: 1,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
             {icon}
@@ -316,56 +318,59 @@ const Dashboard: React.FC = () => {
   };
 
   // Build category-based allocation data
-  const assetsByCategory: Record<string, { value: number; count: number; invested: number }> = {};
-  const assetsByTypeInCategory: Record<string, Record<string, { value: number; count: number; invested: number }>> = {};
+  const assetsByCategory: Record<string, { value: number; count: number; invested: number; xirrWeightedSum: number; xirrInvested: number }> = {};
+  const assetsByTypeInCategory: Record<string, Record<string, { value: number; count: number; invested: number; xirrWeightedSum: number; xirrInvested: number }>> = {};
 
   (assets || []).forEach((asset: any) => {
     const type = (asset.asset_type || 'other').toLowerCase();
     const category = assetTypeMap[type]?.category || 'Other';
 
     if (!assetsByCategory[category]) {
-      assetsByCategory[category] = { value: 0, count: 0, invested: 0 };
+      assetsByCategory[category] = { value: 0, count: 0, invested: 0, xirrWeightedSum: 0, xirrInvested: 0 };
     }
     assetsByCategory[category].value += asset.current_value || 0;
     assetsByCategory[category].count += 1;
     assetsByCategory[category].invested += asset.total_invested || 0;
+    if (asset.xirr != null) {
+      const w = (asset.total_invested || 0) > 0 ? asset.total_invested : ((asset.current_value || 0) > 0 ? asset.current_value : 0);
+      if (w > 0) {
+        assetsByCategory[category].xirrWeightedSum += asset.xirr * w;
+        assetsByCategory[category].xirrInvested += w;
+      }
+    }
 
     if (!assetsByTypeInCategory[category]) {
       assetsByTypeInCategory[category] = {};
     }
     if (!assetsByTypeInCategory[category][type]) {
-      assetsByTypeInCategory[category][type] = { value: 0, count: 0, invested: 0 };
+      assetsByTypeInCategory[category][type] = { value: 0, count: 0, invested: 0, xirrWeightedSum: 0, xirrInvested: 0 };
     }
     assetsByTypeInCategory[category][type].value += asset.current_value || 0;
     assetsByTypeInCategory[category][type].count += 1;
     assetsByTypeInCategory[category][type].invested += asset.total_invested || 0;
+    if (asset.xirr != null) {
+      const w = (asset.total_invested || 0) > 0 ? asset.total_invested : ((asset.current_value || 0) > 0 ? asset.current_value : 0);
+      if (w > 0) {
+        assetsByTypeInCategory[category][type].xirrWeightedSum += asset.xirr * w;
+        assetsByTypeInCategory[category][type].xirrInvested += w;
+      }
+    }
   });
 
-  // Merge bank account balances into Fixed Income category
-  if (totalBankBalance > 0) {
-    if (!assetsByCategory['Fixed Income']) {
-      assetsByCategory['Fixed Income'] = { value: 0, count: 0, invested: 0 };
+  // Add bank, demat, and crypto cash as a separate "Cash" category
+  const totalCash = totalBankBalance + totalDematCash + totalCryptoCash;
+  if (totalCash > 0) {
+    assetsByCategory['Cash'] = { value: totalCash, count: 0, invested: totalCash, xirrWeightedSum: 0, xirrInvested: 0 };
+    assetsByTypeInCategory['Cash'] = {};
+    if (totalBankBalance > 0) {
+      assetsByTypeInCategory['Cash']['bank_balance'] = { value: totalBankBalance, count: bankAccounts.length, invested: totalBankBalance, xirrWeightedSum: 0, xirrInvested: 0 };
     }
-    assetsByCategory['Fixed Income'].value += totalBankBalance;
-    assetsByCategory['Fixed Income'].invested += totalBankBalance;
-  }
-
-  // Merge demat cash into Equity category
-  if (totalDematCash > 0) {
-    if (!assetsByCategory['Equity']) {
-      assetsByCategory['Equity'] = { value: 0, count: 0, invested: 0 };
+    if (totalDematCash > 0) {
+      assetsByTypeInCategory['Cash']['demat_cash'] = { value: totalDematCash, count: dematAccounts.length, invested: totalDematCash, xirrWeightedSum: 0, xirrInvested: 0 };
     }
-    assetsByCategory['Equity'].value += totalDematCash;
-    assetsByCategory['Equity'].invested += totalDematCash;
-  }
-
-  // Merge crypto cash into Crypto category
-  if (totalCryptoCash > 0) {
-    if (!assetsByCategory['Crypto']) {
-      assetsByCategory['Crypto'] = { value: 0, count: 0, invested: 0 };
+    if (totalCryptoCash > 0) {
+      assetsByTypeInCategory['Cash']['crypto_cash'] = { value: totalCryptoCash, count: cryptoAccounts.length, invested: totalCryptoCash, xirrWeightedSum: 0, xirrInvested: 0 };
     }
-    assetsByCategory['Crypto'].value += totalCryptoCash;
-    assetsByCategory['Crypto'].invested += totalCryptoCash;
   }
 
   // Get display name for an asset type key
@@ -400,6 +405,7 @@ const Dashboard: React.FC = () => {
       percentage: totalValue > 0 ? (data.value / totalValue) * 100 : 0,
       gainLoss: data.value - data.invested,
       gainLossPercentage: data.invested > 0 ? ((data.value - data.invested) / data.invested) * 100 : 0,
+      xirr: data.xirrInvested > 0 ? data.xirrWeightedSum / data.xirrInvested : null,
     }))
     .sort((a, b) => b.value - a.value);
 
@@ -441,8 +447,8 @@ const Dashboard: React.FC = () => {
       </Alert>
 
       {/* Summary Cards */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <StatCard
             title="Total Value"
             value={formatCurrency((summary?.portfolio_summary?.total_current_value || 0) + totalBankBalance + totalDematCash + totalCryptoCash)}
@@ -452,7 +458,7 @@ const Dashboard: React.FC = () => {
             hideNumbers={hideNumbers}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <StatCard
             title="Total Investment"
             value={formatCurrency((summary?.portfolio_summary?.total_invested || 0) + totalBankBalance + totalDematCash + totalCryptoCash)}
@@ -461,14 +467,11 @@ const Dashboard: React.FC = () => {
             hideNumbers={hideNumbers}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <StatCard
             title="Total Gain/Loss"
             value={formatCurrency(summary?.portfolio_summary?.total_profit_loss || 0)}
             change={summary?.portfolio_summary?.total_profit_loss_percentage}
-            subtitle={summary?.portfolio_summary?.portfolio_xirr != null
-              ? `XIRR: ${summary.portfolio_summary.portfolio_xirr >= 0 ? '+' : ''}${summary.portfolio_summary.portfolio_xirr.toFixed(2)}% p.a.`
-              : undefined}
             icon={
               (summary?.portfolio_summary?.total_profit_loss || 0) >= 0 ? (
                 <TrendingUp sx={{ color: 'white' }} />
@@ -480,7 +483,18 @@ const Dashboard: React.FC = () => {
             hideNumbers={hideNumbers}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <StatCard
+            title="Portfolio XIRR"
+            value={summary?.portfolio_summary?.portfolio_xirr != null
+              ? `${summary.portfolio_summary.portfolio_xirr >= 0 ? '+' : ''}${summary.portfolio_summary.portfolio_xirr.toFixed(2)}% p.a.`
+              : 'N/A'}
+            icon={<ShowChart sx={{ color: 'white' }} />}
+            color={(summary?.portfolio_summary?.portfolio_xirr || 0) >= 0 ? 'success.main' : 'warning.main'}
+            hideNumbers={hideNumbers}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <StatCard
             title="Total Assets"
             value={hideNumbers ? '•••' : ((summary?.portfolio_summary?.total_assets || 0) + bankAccounts.length + cryptoAccounts.length).toString()}
@@ -623,13 +637,14 @@ const Dashboard: React.FC = () => {
                     <TableCell align="right"><strong>Invested</strong></TableCell>
                     <TableCell align="right"><strong>Gain/Loss</strong></TableCell>
                     <TableCell align="right"><strong>Returns %</strong></TableCell>
+                    <TableCell align="right"><strong>XIRR</strong></TableCell>
                     <TableCell align="right"><strong>Allocation %</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {allocationData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} align="center">
+                      <TableCell colSpan={8} align="center">
                         <Typography color="text.secondary">
                           No assets found. Upload statements to get started.
                         </Typography>
@@ -672,6 +687,15 @@ const Dashboard: React.FC = () => {
                           >
                             {hideNumbers ? '••••' : `${row.gainLossPercentage >= 0 ? '+' : ''}${row.gainLossPercentage.toFixed(2)}%`}
                           </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{
+                              color: row.xirr != null ? (row.xirr >= 0 ? 'success.main' : 'error.main') : 'text.secondary',
+                              fontWeight: 'medium'
+                            }}
+                          >
+                            {hideNumbers ? '••••' : (row.xirr != null ? `${row.xirr >= 0 ? '+' : ''}${row.xirr.toFixed(2)}%` : '—')}
+                          </TableCell>
                           <TableCell align="right">{hideNumbers ? '••••' : `${row.percentage.toFixed(2)}%`}</TableCell>
                         </TableRow>
                       ))}
@@ -704,6 +728,18 @@ const Dashboard: React.FC = () => {
                                   allocationData.reduce((sum, row) => sum + row.invested, 0) * 100).toFixed(2)}%`
                               : '0.00%')}
                           </strong>
+                        </TableCell>
+                        <TableCell align="right">
+                          {(() => {
+                            const totalXirrInvested = Object.values(currentViewData).reduce((sum, d) => sum + d.xirrInvested, 0);
+                            const totalXirrWeighted = Object.values(currentViewData).reduce((sum, d) => sum + d.xirrWeightedSum, 0);
+                            const avgXirr = totalXirrInvested > 0 ? totalXirrWeighted / totalXirrInvested : null;
+                            return (
+                              <strong style={{ color: avgXirr != null ? (avgXirr >= 0 ? '#2e7d32' : '#d32f2f') : undefined }}>
+                                {hideNumbers ? '••••' : (avgXirr != null ? `${avgXirr >= 0 ? '+' : ''}${avgXirr.toFixed(2)}%` : '—')}
+                              </strong>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell align="right"><strong>{hideNumbers ? '••••' : '100.00%'}</strong></TableCell>
                       </TableRow>

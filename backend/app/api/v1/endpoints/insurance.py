@@ -73,6 +73,8 @@ def _asset_to_response(asset: Asset) -> InsurancePolicyResponse:
         is_active=asset.is_active,
         notes=asset.notes,
         annual_premium=_annual_premium(premium_amount, premium_frequency),
+        xirr=asset.xirr,
+        xirr_manual=asset.xirr_manual,
         created_at=asset.created_at,
         updated_at=asset.last_updated,
     )
@@ -92,6 +94,13 @@ async def get_insurance_policies(
     if portfolio_id is not None:
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
+
+    # Lazily compute XIRR for assets that don't have it yet (skip manually set)
+    for asset in assets:
+        if asset.xirr is None and not asset.xirr_manual:
+            asset.xirr = asset.fallback_xirr()
+    db.commit()
+
     return [_asset_to_response(a) for a in assets]
 
 
@@ -181,6 +190,10 @@ async def create_insurance_policy(
         db.add(asset)
         db.commit()
         db.refresh(asset)
+        # Set fallback XIRR for newly created policy
+        asset.xirr = asset.fallback_xirr()
+        db.commit()
+        db.refresh(asset)
         logger.info(f"Insurance policy created: id={asset.id} user={current_user.id}")
     except SQLAlchemyError as exc:
         db.rollback()
@@ -241,6 +254,16 @@ async def update_insurance_policy(
         asset.is_active = data.is_active
     if data.notes is not None:
         asset.notes = data.notes
+
+    # Handle manual XIRR
+    update_fields = data.model_dump(exclude_unset=True)
+    if 'xirr' in update_fields:
+        if update_fields['xirr'] is not None:
+            asset.xirr = update_fields['xirr']
+            asset.xirr_manual = True
+        else:
+            asset.xirr_manual = False
+            asset.xirr = asset.fallback_xirr()
 
     asset.details = details
 

@@ -28,6 +28,7 @@ import {
 import { Add, Edit, Delete, Savings as PensionIcon } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
 import { RootState } from '../store';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
@@ -234,7 +235,7 @@ const Pension: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Accounts</Typography>
@@ -242,7 +243,7 @@ const Pension: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Active Accounts</Typography>
@@ -250,7 +251,7 @@ const Pension: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Monthly Pension</Typography>
@@ -260,7 +261,7 @@ const Pension: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Corpus</Typography>
@@ -269,6 +270,9 @@ const Pension: React.FC = () => {
               </Typography>
             </CardContent>
           </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <XirrCard assetType="pension" portfolioId={selectedPortfolioId} />
         </Grid>
       </Grid>
 

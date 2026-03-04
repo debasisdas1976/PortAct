@@ -44,6 +44,7 @@ class PFAccountUpdate(BaseModel):
     interest_rate: Optional[float] = Field(None, ge=0, le=100)
     is_active: Optional[bool] = None
     notes: Optional[str] = None
+    xirr: Optional[float] = Field(None, description="Manual XIRR override (%)")
 
 
 class PFTransactionBase(BaseModel):
@@ -83,9 +84,11 @@ class PFAccountResponse(PFAccountBase):
     id: int
     user_id: int
     asset_id: int
+    xirr: Optional[float] = None
+    xirr_manual: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 

@@ -106,9 +106,8 @@ async def create_transaction(
     )
     
     db.add(new_transaction)
-    
-    # Update asset based on transaction
-    _update_asset_from_transaction(asset, new_transaction)
+
+    # Recalculate XIRR (don't modify asset quantity/invested — user manages those)
     _recalculate_asset_xirr(asset, db)
 
     db.commit()
@@ -204,13 +203,24 @@ def _update_asset_from_transaction(asset: Asset, transaction: Transaction):
     asset.calculate_metrics()
 
 
+def _transactions_tally(transactions, asset_quantity: float) -> bool:
+    """Check if net transaction quantity matches asset quantity."""
+    buy_qty = sum(t.quantity or 0 for t in transactions if t.transaction_type == TransactionType.BUY)
+    sell_qty = sum(t.quantity or 0 for t in transactions if t.transaction_type == TransactionType.SELL)
+    return abs((buy_qty - sell_qty) - asset_quantity) < 0.0001
+
+
 def _recalculate_asset_xirr(asset: Asset, db: Session):
-    """Recalculate XIRR for an asset from its transactions."""
+    """Recalculate XIRR for an asset from its transactions (only if quantities tally)."""
+    if asset.xirr_manual:
+        return
+
     transactions = db.query(Transaction).filter(
         Transaction.asset_id == asset.id
     ).order_by(Transaction.transaction_date).all()
 
-    if not transactions:
+    if not transactions or not _transactions_tally(transactions, asset.quantity or 0):
+        asset.xirr = asset.fallback_xirr()
         return
 
     asset.xirr = calculate_asset_xirr(transactions, asset.current_value or 0)
@@ -230,8 +240,11 @@ def _recalculate_asset_from_transactions(asset: Asset, db: Session):
 
     asset.calculate_metrics()
 
-    # Recalculate XIRR from the same transactions
-    if transactions:
-        asset.xirr = calculate_asset_xirr(transactions, asset.current_value or 0)
+    # Recalculate XIRR only if transactions tally with quantity (skip if manually set)
+    if not asset.xirr_manual:
+        if transactions and _transactions_tally(transactions, asset.quantity or 0):
+            asset.xirr = calculate_asset_xirr(transactions, asset.current_value or 0)
+        else:
+            asset.xirr = asset.fallback_xirr()
 
 # Made with Bob

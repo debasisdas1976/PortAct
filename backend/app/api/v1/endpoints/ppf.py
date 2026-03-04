@@ -49,9 +49,11 @@ async def get_ppf_accounts(
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
 
-    # Calculate current metrics
+    # Calculate current metrics and lazily compute XIRR
     for asset in assets:
         asset.calculate_metrics()
+        if asset.xirr is None and not asset.xirr_manual:
+            asset.xirr = asset.fallback_xirr()
     db.commit()
 
     # Convert to PPF account response format
@@ -74,6 +76,8 @@ async def get_ppf_accounts(
             total_interest_earned=details.get('total_interest_earned', 0.0),
             financial_year=details.get('financial_year'),
             notes=asset.notes,
+            xirr=asset.xirr,
+            xirr_manual=asset.xirr_manual,
             created_at=asset.created_at,
             updated_at=asset.last_updated
         )
@@ -133,11 +137,13 @@ async def get_ppf_summary(
             total_interest_earned=details.get('total_interest_earned', 0.0),
             financial_year=details.get('financial_year'),
             notes=asset.notes,
+            xirr=asset.xirr,
+            xirr_manual=asset.xirr_manual,
             created_at=asset.created_at,
             updated_at=asset.last_updated
         )
         ppf_accounts.append(ppf_account)
-    
+
     return PPFSummary(
         total_accounts=len(assets),
         total_balance=total_balance,
@@ -219,12 +225,14 @@ async def get_ppf_account(
         total_interest_earned=details.get('total_interest_earned', 0.0),
         financial_year=details.get('financial_year'),
         notes=asset.notes,
+        xirr=asset.xirr,
+        xirr_manual=asset.xirr_manual,
         created_at=asset.created_at,
         updated_at=asset.last_updated,
         transactions=ppf_transactions,
         transaction_count=len(ppf_transactions)
     )
-    
+
     return ppf_account
 
 
@@ -275,11 +283,16 @@ async def create_ppf_account(
     )
     
     new_asset.calculate_metrics()
-    
+
     db.add(new_asset)
     db.commit()
     db.refresh(new_asset)
-    
+
+    # Set fallback XIRR for newly created account
+    new_asset.xirr = new_asset.fallback_xirr()
+    db.commit()
+    db.refresh(new_asset)
+
     return PPFAccountResponse(
         id=new_asset.id,
         user_id=new_asset.user_id,
@@ -296,6 +309,8 @@ async def create_ppf_account(
         total_interest_earned=ppf_data.total_interest_earned,
         financial_year=ppf_data.financial_year,
         notes=ppf_data.notes,
+        xirr=new_asset.xirr,
+        xirr_manual=new_asset.xirr_manual,
         created_at=new_asset.created_at,
         updated_at=new_asset.last_updated
     )
@@ -365,11 +380,20 @@ async def update_ppf_account(
     if details_changed:
         flag_modified(asset, 'details')
 
+    # Handle manual XIRR
+    if 'xirr' in update_data:
+        if update_data['xirr'] is not None:
+            asset.xirr = update_data['xirr']
+            asset.xirr_manual = True
+        else:
+            asset.xirr_manual = False
+            asset.xirr = asset.fallback_xirr()
+
     asset.calculate_metrics()
-    
+
     db.commit()
     db.refresh(asset)
-    
+
     details = asset.details or {}
     return PPFAccountResponse(
         id=asset.id,
@@ -387,6 +411,8 @@ async def update_ppf_account(
         total_interest_earned=details.get('total_interest_earned', 0.0),
         financial_year=details.get('financial_year'),
         notes=asset.notes,
+        xirr=asset.xirr,
+        xirr_manual=asset.xirr_manual,
         created_at=asset.created_at,
         updated_at=asset.last_updated
     )
@@ -582,6 +608,12 @@ async def upload_ppf_statement_auto(
         db.commit()
         db.refresh(asset)
 
+        # Set fallback XIRR if not already set
+        if asset.xirr is None and not asset.xirr_manual:
+            asset.xirr = asset.fallback_xirr()
+            db.commit()
+            db.refresh(asset)
+
         details = asset.details or {}
         return PPFAccountResponse(
             id=asset.id,
@@ -599,6 +631,8 @@ async def upload_ppf_statement_auto(
             total_interest_earned=details.get('total_interest_earned', 0.0),
             financial_year=details.get('financial_year'),
             notes=asset.notes,
+            xirr=asset.xirr,
+            xirr_manual=asset.xirr_manual,
             created_at=asset.created_at,
             updated_at=asset.last_updated
         )

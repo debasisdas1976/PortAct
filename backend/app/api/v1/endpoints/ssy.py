@@ -47,6 +47,22 @@ async def get_all_ssy_accounts(
         query = query.filter(Asset.portfolio_id == portfolio_id)
     assets = query.all()
 
+    # Lazily compute XIRR for assets that don't have it yet (skip manually set)
+    for asset in assets:
+        if asset.xirr is None and not asset.xirr_manual:
+            asset.xirr = asset.fallback_xirr()
+            # SSY default: use 8.2% if interest_rate not stored in details
+            if asset.xirr is None:
+                rate = 8.2
+                asset.xirr = rate
+                # Persist the rate into details so fallback_xirr works next time
+                if asset.details is None:
+                    asset.details = {}
+                if 'interest_rate' not in asset.details:
+                    asset.details['interest_rate'] = rate
+                    flag_modified(asset, 'details')
+    db.commit()
+
     ssy_accounts = []
     for asset in assets:
         ssy_account = SSYAccountResponse(
@@ -68,11 +84,13 @@ async def get_all_ssy_accounts(
             total_interest_earned=asset.profit_loss,
             financial_year=asset.details.get('financial_year'),
             notes=asset.notes,
+            xirr=asset.xirr,
+            xirr_manual=asset.xirr_manual,
             created_at=asset.created_at,
             updated_at=asset.last_updated
         )
         ssy_accounts.append(ssy_account)
-    
+
     return ssy_accounts
 
 
@@ -178,6 +196,8 @@ async def get_ssy_account(
         total_interest_earned=asset.profit_loss,
         financial_year=asset.details.get('financial_year'),
         notes=asset.notes,
+        xirr=asset.xirr,
+        xirr_manual=asset.xirr_manual,
         created_at=asset.created_at,
         updated_at=asset.last_updated,
         transactions=ssy_transactions,
@@ -236,7 +256,12 @@ async def create_ssy_account(
     db.add(asset)
     db.commit()
     db.refresh(asset)
-    
+
+    # Set fallback XIRR for newly created account
+    asset.xirr = asset.fallback_xirr()
+    db.commit()
+    db.refresh(asset)
+
     return SSYAccountResponse(
         id=asset.id,
         user_id=asset.user_id,
@@ -256,6 +281,8 @@ async def create_ssy_account(
         total_interest_earned=asset.profit_loss,
         financial_year=ssy_data.financial_year,
         notes=asset.notes,
+        xirr=asset.xirr,
+        xirr_manual=asset.xirr_manual,
         created_at=asset.created_at,
         updated_at=asset.last_updated
     )
@@ -304,6 +331,13 @@ async def update_ssy_account(
         asset.details['financial_year'] = update_data['financial_year']
     if 'notes' in update_data:
         asset.notes = update_data['notes']
+    if 'xirr' in update_data:
+        if update_data['xirr'] is not None:
+            asset.xirr = update_data['xirr']
+            asset.xirr_manual = True
+        else:
+            asset.xirr_manual = False
+            asset.xirr = asset.fallback_xirr()
 
     asset.last_updated = datetime.utcnow()
     flag_modified(asset, 'details')
@@ -330,6 +364,8 @@ async def update_ssy_account(
         total_interest_earned=asset.profit_loss,
         financial_year=asset.details.get('financial_year'),
         notes=asset.notes,
+        xirr=asset.xirr,
+        xirr_manual=asset.xirr_manual,
         created_at=asset.created_at,
         updated_at=asset.last_updated
     )
@@ -561,7 +597,13 @@ async def upload_ssy_statement(
         
         db.commit()
         db.refresh(asset)
-        
+
+        # Set fallback XIRR if not already set
+        if asset.xirr is None and not asset.xirr_manual:
+            asset.xirr = asset.fallback_xirr()
+            db.commit()
+            db.refresh(asset)
+
         return SSYAccountResponse(
             id=asset.id,
             user_id=asset.user_id,
@@ -581,10 +623,12 @@ async def upload_ssy_statement(
             total_interest_earned=asset.profit_loss,
             financial_year=asset.details.get('financial_year'),
             notes=asset.notes,
+            xirr=asset.xirr,
+            xirr_manual=asset.xirr_manual,
             created_at=asset.created_at,
             updated_at=asset.last_updated
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=400, detail="Could not process the SSY statement. Please check the file format.")
 

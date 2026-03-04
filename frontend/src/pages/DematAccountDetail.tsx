@@ -25,6 +25,7 @@ import {
   TableRow,
   Tabs,
   TextField,
+  Tooltip,
   Typography
 } from '@mui/material';
 import {
@@ -35,12 +36,18 @@ import {
   KeyboardArrowDown as ExpandIcon,
   KeyboardArrowUp as CollapseIcon,
   Refresh as RefreshIcon,
+  TrendingUp,
+  TrendingDown,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
-import api, { brokersAPI, assetTypesAPI } from '../services/api';
+import api, { brokersAPI, assetTypesAPI, transactionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import CompanyIcon from '../components/CompanyIcon';
+import StockTransactionDialog from '../components/StockTransactionDialog';
 
 interface DematAccountInfo {
   id: number;
@@ -73,6 +80,7 @@ interface HoldingAsset {
   current_value: number;
   profit_loss: number;
   profit_loss_percentage: number;
+  xirr?: number | null;
   is_active: boolean;
 }
 
@@ -115,7 +123,7 @@ const ASSET_TAB_CONFIG: { label: string; types: string[] }[] = [
   { label: 'Others', types: ['reit', 'invit', 'corporate_bond'] },
 ];
 
-const COL_COUNT = 12; // number of columns in the holdings table
+const COL_COUNT = 13; // number of columns in the holdings table
 
 /** A single asset row with an expandable trades sub-table */
 const AssetRow: React.FC<{
@@ -124,11 +132,13 @@ const AssetRow: React.FC<{
   formatCurrency: (n: number) => string;
   updatingAssetId: number | null;
   assetTypes: { value: string; label: string; allowedConversions: string[] | null }[];
+  txnStatus: { status: string; icon: React.ReactNode; tooltip: string };
   onRefreshPrice: (asset: HoldingAsset) => void;
   onEdit: (asset: HoldingAsset) => void;
   onDelete: (asset: HoldingAsset) => void;
   onChangeType: (event: React.MouseEvent<HTMLElement>, asset: HoldingAsset) => void;
-}> = ({ asset, trades, formatCurrency, updatingAssetId, assetTypes, onRefreshPrice, onEdit, onDelete, onChangeType }) => {
+  onOpenTransactions: (asset: HoldingAsset) => void;
+}> = ({ asset, trades, formatCurrency, updatingAssetId, assetTypes, txnStatus, onRefreshPrice, onEdit, onDelete, onChangeType, onOpenTransactions }) => {
   const [open, setOpen] = useState(false);
   const hasTrades = trades.length > 0;
 
@@ -177,9 +187,34 @@ const AssetRow: React.FC<{
           </Typography>
         </TableCell>
         <TableCell align="right">
-          <Typography color={asset.profit_loss_percentage >= 0 ? 'success.main' : 'error.main'} variant="body2">
-            {asset.profit_loss_percentage.toFixed(2)}%
-          </Typography>
+          <Chip
+            label={`${asset.profit_loss_percentage >= 0 ? '+' : ''}${asset.profit_loss_percentage?.toFixed(2)}%`}
+            color={asset.profit_loss_percentage >= 0 ? 'success' : 'error'}
+            size="small"
+            icon={asset.profit_loss_percentage >= 0 ? <TrendingUp /> : <TrendingDown />}
+          />
+        </TableCell>
+        <TableCell align="right">
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+            {asset.xirr != null ? (
+              <Chip
+                label={`${asset.xirr >= 0 ? '+' : ''}${asset.xirr.toFixed(2)}%`}
+                color={asset.xirr >= 0 ? 'success' : 'error'}
+                size="small"
+                variant="outlined"
+              />
+            ) : (
+              <Typography variant="caption" color="text.secondary">N/A</Typography>
+            )}
+            <Tooltip title={txnStatus.tooltip}>
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); onOpenTransactions(asset); }}
+              >
+                {txnStatus.icon}
+              </IconButton>
+            </Tooltip>
+          </Box>
         </TableCell>
         <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
           <IconButton
@@ -284,6 +319,11 @@ const DematAccountDetail: React.FC = () => {
     name: '', symbol: '', isin: '', quantity: 0, purchase_price: 0, current_price: 0,
   });
 
+  // Transaction dialog state
+  const [txDialogOpen, setTxDialogOpen] = useState(false);
+  const [txDialogAsset, setTxDialogAsset] = useState<HoldingAsset | null>(null);
+  const [transactionCounts, setTransactionCounts] = useState<Record<number, { count: number; buyQty: number; sellQty: number }>>({});
+
   const isUSBroker = account?.account_market === 'INTERNATIONAL';
   const statementTypes = isUSBroker
     ? [
@@ -347,8 +387,28 @@ const DematAccountDetail: React.FC = () => {
       ]);
 
       setAccount(accountRes.data);
-      setHoldings(holdingsRes.data);
+      const holdingsData = holdingsRes.data as HoldingAsset[];
+      setHoldings(holdingsData);
       setTransactions(transactionsRes.data);
+
+      // Fetch transaction summaries for all holdings in parallel
+      const txSummary: Record<number, { count: number; buyQty: number; sellQty: number }> = {};
+      const txPromises = holdingsData.map(async (asset: HoldingAsset) => {
+        try {
+          const txns = await transactionsAPI.getAll({ asset_id: asset.id, limit: 500 });
+          const buyQty = txns
+            .filter((t: any) => t.transaction_type === 'buy')
+            .reduce((sum: number, t: any) => sum + (t.quantity || 0), 0);
+          const sellQty = txns
+            .filter((t: any) => t.transaction_type === 'sell')
+            .reduce((sum: number, t: any) => sum + (t.quantity || 0), 0);
+          txSummary[asset.id] = { count: txns.length, buyQty, sellQty };
+        } catch {
+          txSummary[asset.id] = { count: 0, buyQty: 0, sellQty: 0 };
+        }
+      });
+      await Promise.all(txPromises);
+      setTransactionCounts(txSummary);
       setAssetTypes(
         Array.isArray(assetTypesData)
           ? assetTypesData.map((t: any) => ({ value: t.name, label: t.display_label, allowedConversions: t.allowed_conversions ?? null }))
@@ -365,6 +425,23 @@ const DematAccountDetail: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getTransactionStatus = (asset: HoldingAsset) => {
+    const info = transactionCounts[asset.id];
+    if (!info || info.count === 0) {
+      return { status: 'none' as const, icon: <InfoIcon fontSize="small" color="info" />, tooltip: 'No transactions. Click to add.' };
+    }
+    const netQty = info.buyQty - info.sellQty;
+    if (Math.abs(netQty - asset.quantity) < 0.0001) {
+      return { status: 'match' as const, icon: <CheckCircleIcon fontSize="small" color="success" />, tooltip: 'Transactions match quantity' };
+    }
+    return { status: 'mismatch' as const, icon: <WarningIcon fontSize="small" color="warning" />, tooltip: `Mismatch: asset ${asset.quantity}, txns ${netQty.toFixed(4)}` };
+  };
+
+  const handleOpenTransactions = (asset: HoldingAsset) => {
+    setTxDialogAsset(asset);
+    setTxDialogOpen(true);
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -643,6 +720,7 @@ const DematAccountDetail: React.FC = () => {
                   <TableCell align="right">Current Value</TableCell>
                   <TableCell align="right">P&L</TableCell>
                   <TableCell align="right">P&L %</TableCell>
+                  <TableCell align="right">XIRR</TableCell>
                   <TableCell align="center">Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -655,10 +733,12 @@ const DematAccountDetail: React.FC = () => {
                     formatCurrency={formatCurrency}
                     updatingAssetId={updatingAssetId}
                     assetTypes={assetTypes}
+                    txnStatus={getTransactionStatus(asset)}
                     onRefreshPrice={handlePriceUpdate}
                     onEdit={handleOpenEditDialog}
                     onDelete={handleDeleteAsset}
                     onChangeType={handleAssetTypeClick}
+                    onOpenTransactions={handleOpenTransactions}
                   />
                 ))}
               </TableBody>
@@ -784,6 +864,22 @@ const DematAccountDetail: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Transaction Dialog */}
+      <StockTransactionDialog
+        open={txDialogOpen}
+        onClose={() => { setTxDialogOpen(false); setTxDialogAsset(null); }}
+        onTransactionsChanged={fetchAccountDetail}
+        stock={txDialogAsset ? {
+          id: txDialogAsset.id,
+          name: txDialogAsset.name,
+          symbol: txDialogAsset.symbol || txDialogAsset.name,
+          quantity: txDialogAsset.quantity,
+          current_price: txDialogAsset.current_price,
+          current_value: txDialogAsset.current_value,
+          xirr: txDialogAsset.xirr,
+        } : null}
+      />
 
       {/* Asset Type Change Menu */}
       <Menu

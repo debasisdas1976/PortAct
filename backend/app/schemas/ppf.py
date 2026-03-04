@@ -38,6 +38,7 @@ class PPFAccountUpdate(BaseModel):
     total_interest_earned: Optional[float] = Field(None, ge=0)
     financial_year: Optional[str] = None
     notes: Optional[str] = None
+    xirr: Optional[float] = Field(None, description="Manual XIRR override (%)")
 
 
 class PPFTransactionBase(BaseModel):
@@ -82,6 +83,8 @@ class PPFAccountResponse(PPFAccountBase):
     account_holder_name: str = ""
     # Override to remove ge=0 constraint; interest is stored explicitly, not derived
     total_interest_earned: float = 0.0
+    xirr: Optional[float] = None
+    xirr_manual: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
 

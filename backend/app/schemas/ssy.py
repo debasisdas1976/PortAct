@@ -42,6 +42,7 @@ class SSYAccountUpdate(BaseModel):
     total_interest_earned: Optional[float] = Field(None, ge=0)
     financial_year: Optional[str] = None
     notes: Optional[str] = None
+    xirr: Optional[float] = Field(None, description="Manual XIRR override (%)")
 
 
 class SSYTransactionBase(BaseModel):
@@ -85,6 +86,8 @@ class SSYAccountResponse(SSYAccountBase):
     bank_name: str = ""
     girl_name: str = ""
     guardian_name: str = ""
+    xirr: Optional[float] = None
+    xirr_manual: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
 

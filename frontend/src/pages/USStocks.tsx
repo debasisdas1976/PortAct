@@ -39,6 +39,7 @@ import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
 
 interface USStockAsset {
   id: number;
@@ -281,25 +282,25 @@ const USStocks: React.FC = () => {
       </Typography>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Holdings</Typography>
             <Typography variant="h4">{stocks.length}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Current Value (INR)</Typography>
             <Typography variant="h5">{formatINR(totalValue)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Total Invested (INR)</Typography>
             <Typography variant="h5">{formatINR(totalInvested)}</Typography>
           </CardContent></Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}><CardContent>
             <Typography color="text.secondary" variant="body2">Total P&L</Typography>
             <Typography variant="h5" color={totalPnL >= 0 ? 'success.main' : 'error.main'}>
@@ -309,6 +310,9 @@ const USStocks: React.FC = () => {
               {totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%
             </Typography>
           </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <XirrCard assetType="us_stock" portfolioId={selectedPortfolioId} />
         </Grid>
       </Grid>
 

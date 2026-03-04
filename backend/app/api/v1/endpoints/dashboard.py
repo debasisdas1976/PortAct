@@ -12,7 +12,7 @@ from app.models.crypto_account import CryptoAccount
 from app.models.transaction import Transaction, TransactionType
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
-from app.services.xirr_service import build_cash_flows_from_transactions, calculate_xirr
+from app.services.xirr_service import calculate_asset_xirr
 from datetime import datetime, timedelta, date
 
 router = APIRouter()
@@ -101,37 +101,48 @@ async def get_dashboard_overview(
         monthly_inv_query = monthly_inv_query.filter(Asset.portfolio_id == portfolio_id)
     monthly_investments = monthly_inv_query.group_by('month').order_by('month').all()
     
-    # Calculate portfolio-level XIRR
-    txn_query = db.query(Transaction).join(Asset).filter(
-        Asset.user_id == current_user.id,
-        Asset.is_active == True
-    )
-    if portfolio_id is not None:
-        txn_query = txn_query.filter(Asset.portfolio_id == portfolio_id)
-    all_transactions = txn_query.order_by(Transaction.transaction_date).all()
+    # Calculate portfolio XIRR as investment-weighted average of per-asset XIRRs
+    # (same approach as Assets Overview page)
+    _DEFAULT_RATES_SUMMARY = {
+        AssetType.SSY: 8.2,
+        AssetType.PF: 8.25,
+        AssetType.PPF: 7.1,
+    }
 
-    portfolio_cash_flows = build_cash_flows_from_transactions(
-        all_transactions, current_value=0  # terminal value added below
-    )
+    null_xirr_assets = [a for a in assets if a.xirr is None and not a.xirr_manual]
+    if null_xirr_assets:
+        null_xirr_ids = [a.id for a in null_xirr_assets]
+        all_txns = db.query(Transaction).filter(
+            Transaction.asset_id.in_(null_xirr_ids)
+        ).order_by(Transaction.transaction_date).all()
+        txn_by_asset: dict[int, list] = {}
+        for txn in all_txns:
+            txn_by_asset.setdefault(txn.asset_id, []).append(txn)
+        for asset in null_xirr_assets:
+            asset_txns = txn_by_asset.get(asset.id, [])
+            if asset_txns:
+                buy_qty = sum(t.quantity or 0 for t in asset_txns if t.transaction_type == TransactionType.BUY)
+                sell_qty = sum(t.quantity or 0 for t in asset_txns if t.transaction_type == TransactionType.SELL)
+                if abs((buy_qty - sell_qty) - (asset.quantity or 0)) < 0.0001:
+                    asset.xirr = calculate_asset_xirr(asset_txns, asset.current_value or 0)
+                else:
+                    asset.xirr = asset.fallback_xirr()
+            else:
+                asset.xirr = asset.fallback_xirr()
+            # For fixed-rate asset types, fall back to default rate
+            if asset.xirr is None and asset.asset_type in _DEFAULT_RATES_SUMMARY:
+                asset.xirr = _DEFAULT_RATES_SUMMARY[asset.asset_type]
 
-    # For assets without transactions, synthesize a BUY from purchase_date
-    asset_ids_with_txns = {t.asset_id for t in all_transactions}
+    xirr_weighted_sum = 0.0
+    xirr_weight_total = 0.0
     for asset in assets:
-        if (asset.id not in asset_ids_with_txns
-                and asset.purchase_date
-                and asset.total_invested > 0):
-            txn_date = (
-                asset.purchase_date.date()
-                if isinstance(asset.purchase_date, datetime)
-                else asset.purchase_date
-            )
-            portfolio_cash_flows.append((txn_date, -asset.total_invested))
-
-    # Add terminal value: total current portfolio value today
-    if total_current_value > 0:
-        portfolio_cash_flows.append((date.today(), total_current_value))
-
-    portfolio_xirr = calculate_xirr(portfolio_cash_flows) if portfolio_cash_flows else None
+        if asset.xirr is not None:
+            weight = (asset.total_invested if (asset.total_invested or 0) > 0
+                      else (asset.current_value if (asset.current_value or 0) > 0 else 0))
+            if weight > 0:
+                xirr_weighted_sum += asset.xirr * weight
+                xirr_weight_total += weight
+    portfolio_xirr = round(xirr_weighted_sum / xirr_weight_total, 2) if xirr_weight_total > 0 else None
 
     return {
         "portfolio_summary": {
@@ -400,6 +411,75 @@ async def get_assets_list(
             }
             for a in assets
         ]
+    }
+
+
+@router.get("/asset-type-xirr")
+async def get_asset_type_xirr(
+    asset_type: AssetType,
+    portfolio_id: Optional[int] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Calculate aggregate XIRR for all active assets of a specific asset type.
+    Uses investment-weighted average of per-asset XIRR values (stored in assets.xirr).
+    Only assets with a non-null xirr and positive total_invested are included.
+    """
+    query = db.query(Asset).filter(
+        Asset.user_id == current_user.id,
+        Asset.asset_type == asset_type,
+        Asset.is_active == True
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
+
+    if not assets:
+        return {"asset_type": asset_type.value, "xirr": None,
+                "asset_count": 0, "total_invested": 0, "total_current_value": 0}
+
+    # Known default interest rates for fixed-rate asset types
+    _DEFAULT_RATES = {
+        AssetType.SSY: 8.2,
+        AssetType.PF: 8.25,
+        AssetType.PPF: 7.1,
+    }
+
+    for asset in assets:
+        asset.calculate_metrics()
+        if asset.xirr is None and not asset.xirr_manual:
+            asset.xirr = asset.fallback_xirr()
+            # For fixed-rate asset types, fall back to default rate
+            if asset.xirr is None and asset_type in _DEFAULT_RATES:
+                asset.xirr = _DEFAULT_RATES[asset_type]
+    db.commit()
+
+    total_invested = sum(a.total_invested or 0 for a in assets)
+    total_current_value = sum(a.current_value or 0 for a in assets)
+
+    # Use per-asset XIRR values (investment-weighted average).
+    # Fall back to current_value as weight when total_invested is 0
+    # (common for SSY, insurance, and other non-market assets).
+    weighted_sum = 0.0
+    weight_total = 0.0
+    for asset in assets:
+        if asset.xirr is not None:
+            weight = (asset.total_invested if asset.total_invested and asset.total_invested > 0
+                      else (asset.current_value if asset.current_value and asset.current_value > 0
+                            else 0))
+            if weight > 0:
+                weighted_sum += asset.xirr * weight
+                weight_total += weight
+
+    xirr_value = round(weighted_sum / weight_total, 2) if weight_total > 0 else None
+
+    return {
+        "asset_type": asset_type.value,
+        "xirr": xirr_value,
+        "asset_count": len(assets),
+        "total_invested": round(total_invested, 2),
+        "total_current_value": round(total_current_value, 2),
     }
 
 

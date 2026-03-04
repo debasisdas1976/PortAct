@@ -29,6 +29,7 @@ import {
 import { Add, Edit, Delete, Work as GratuityIcon, InfoOutlined } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
 import { RootState } from '../store';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
@@ -208,7 +209,7 @@ const Gratuity: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Accounts</Typography>
@@ -216,7 +217,7 @@ const Gratuity: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Active Accounts</Typography>
@@ -224,7 +225,7 @@ const Gratuity: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography color="text.secondary" variant="body2" gutterBottom>Total Gratuity Accrued</Typography>
@@ -236,6 +237,9 @@ const Gratuity: React.FC = () => {
               </Typography>
             </CardContent>
           </Card>
+        </Grid>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
+          <XirrCard assetType="gratuity" portfolioId={selectedPortfolioId} />
         </Grid>
       </Grid>
 

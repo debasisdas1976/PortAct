@@ -38,6 +38,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import XirrCard from '../components/XirrCard';
 import { RootState } from '../store';
 
 interface NPSAccount {
@@ -419,7 +420,7 @@ const NPS: React.FC = () => {
       {/* Summary Cards */}
       {summary && (
         <Grid container spacing={3} mb={3}>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -429,7 +430,7 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -439,7 +440,7 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -449,7 +450,7 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -459,7 +460,7 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={4} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -469,7 +470,7 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={4} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -479,7 +480,7 @@ const NPS: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} sm={6} md={4} sx={{ display: 'flex' }}>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <Card sx={{ width: '100%' }}>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
@@ -490,6 +491,9 @@ const NPS: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+            <XirrCard assetType="nps" portfolioId={selectedPortfolioId} />
           </Grid>
         </Grid>
       )}

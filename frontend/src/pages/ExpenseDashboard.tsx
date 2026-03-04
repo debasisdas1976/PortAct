@@ -441,10 +441,10 @@ const ExpenseDashboard: React.FC = () => {
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Top Categories
+              All Categories
             </Typography>
             <Box sx={{ mt: 2 }}>
-              {data.category_totals.slice(0, 10).map((category, index) => (
+              {data.category_totals.map((category, index) => (
                 <Box
                   key={index}
                   sx={{
@@ -453,7 +453,7 @@ const ExpenseDashboard: React.FC = () => {
                     alignItems: 'center',
                     mb: 2,
                     pb: 2,
-                    borderBottom: index < 9 ? '1px solid #eee' : 'none'
+                    borderBottom: index < data.category_totals.length - 1 ? '1px solid #eee' : 'none'
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
