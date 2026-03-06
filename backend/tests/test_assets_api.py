@@ -240,7 +240,11 @@ class TestAssetCRUDLifecycle:
         })
         assert update_resp.status_code == 200
         updated = update_resp.json()
-        assert updated["current_price"] == 250.0
+        # US stocks convert USD→INR on update, so current_price will be in INR
+        if asset_type == AssetType.US_STOCK:
+            assert updated["current_price"] > 250.0  # converted to INR
+        else:
+            assert updated["current_price"] == 250.0
         assert updated["notes"] == "Updated in test"
 
         # ── DELETE ──
