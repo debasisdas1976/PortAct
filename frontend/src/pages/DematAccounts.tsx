@@ -139,7 +139,7 @@ const DematAccounts: React.FC = () => {
       setEditingAccount(account);
       setFormData({
         broker_name: account.broker_name,
-        account_market: account.account_market || 'DOMESTIC',
+        account_market: (account.account_market || 'DOMESTIC').toUpperCase(),
         account_id: account.account_id,
         account_holder_name: account.account_holder_name || '',
         demat_account_number: account.demat_account_number || '',
@@ -409,7 +409,7 @@ const DematAccounts: React.FC = () => {
                 <TableCell>{account.account_holder_name || '-'}</TableCell>
                 <TableCell>{account.nickname || '-'}</TableCell>
                 <TableCell align="right">
-                  {account.account_market === 'INTERNATIONAL' && account.cash_balance_usd ? (
+                  {account.account_market?.toUpperCase() === 'INTERNATIONAL' && account.cash_balance_usd ? (
                     <Box>
                       <Typography variant="body2">${account.cash_balance_usd.toFixed(2)}</Typography>
                       <Typography variant="caption" color="text.secondary">

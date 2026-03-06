@@ -27,19 +27,21 @@ import {
   Tooltip,
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Refresh as RefreshIcon,
-  TrendingUp,
-  TrendingDown,
-  KeyboardArrowDown,
-  KeyboardArrowRight,
-  KeyboardArrowUp,
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
-  Info as InfoIcon,
+ Add as AddIcon,
+ Edit as EditIcon,
+ Delete as DeleteIcon,
+ Refresh as RefreshIcon,
+ TrendingUp,
+ TrendingDown,
+ KeyboardArrowDown,
+ KeyboardArrowRight,
+ KeyboardArrowUp,
+ CheckCircle as CheckCircleIcon,
+ Warning as WarningIcon,
+ Info as InfoIcon,
+ Label as LabelIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api, { transactionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -89,6 +91,8 @@ const buildDematLabel = (da: DematAccount) => {
 
 const EquityMF: React.FC = () => {
   const [funds, setFunds] = useState<MFAsset[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
@@ -485,7 +489,10 @@ const EquityMF: React.FC = () => {
                               <IconButton size="small" color="info" title="Refresh Price" onClick={(e) => { e.stopPropagation(); handlePriceUpdate(fund.id, fund.name); }} disabled={updatingAssetId === fund.id}>
                                 {updatingAssetId === fund.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                               </IconButton>
-                              <IconButton size="small" color="primary" title="Edit" onClick={(e) => { e.stopPropagation(); handleOpenDialog(fund); }}>
+                                                            <IconButton size="small" color="secondary" title="Attributes" onClick={(e) => { e.stopPropagation(); setTagAssetId(fund.id); setTagAssetName(fund.name); }}>
+                                <LabelIcon fontSize="small" />
+                              </IconButton>
+<IconButton size="small" color="primary" title="Edit" onClick={(e) => { e.stopPropagation(); handleOpenDialog(fund); }}>
                                 <EditIcon fontSize="small" />
                               </IconButton>
                               <IconButton size="small" color="error" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(fund); }}>
@@ -588,6 +595,13 @@ const EquityMF: React.FC = () => {
         onClose={() => { setTxDialogOpen(false); setTxDialogAsset(null); }}
         onTransactionsChanged={fetchData}
         stock={txDialogAsset}
+      />
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
       />
     </Box>
   );

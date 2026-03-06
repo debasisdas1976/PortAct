@@ -386,6 +386,17 @@ async def update_pf_account(
     )
 
 
+@router.post("/run-missed-contributions")
+async def run_missed_contributions(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Trigger catch-up of missed PF contributions for the current user."""
+    from app.services.monthly_contribution_service import MonthlyContributionService
+    result = MonthlyContributionService.run_missed_contributions_for_user(db, current_user)
+    return result
+
+
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_pf_account(
     account_id: int,

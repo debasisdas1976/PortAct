@@ -26,7 +26,8 @@ import {
   Tabs,
   TextField,
   Tooltip,
-  Typography
+  Typography,
+  InputAdornment,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -82,6 +83,7 @@ interface HoldingAsset {
   profit_loss_percentage: number;
   xirr?: number | null;
   is_active: boolean;
+  details?: Record<string, any>;
 }
 
 interface TradeTransaction {
@@ -178,7 +180,8 @@ const AssetRow: React.FC<{
         </TableCell>
         <TableCell align="right">{asset.quantity}</TableCell>
         <TableCell align="right">{formatCurrency(asset.purchase_price)}</TableCell>
-        <TableCell align="right">{formatCurrency(asset.current_price)}</TableCell>
+        <TableCell align="right">{formatCurrency(asset.current_price)}
+        </TableCell>
         <TableCell align="right">{formatCurrency(asset.total_invested)}</TableCell>
         <TableCell align="right">{formatCurrency(asset.current_value)}</TableCell>
         <TableCell align="right">
@@ -319,12 +322,16 @@ const DematAccountDetail: React.FC = () => {
     name: '', symbol: '', isin: '', quantity: 0, purchase_price: 0, current_price: 0,
   });
 
+  // Cash balance edit state
+  const [cashEditOpen, setCashEditOpen] = useState(false);
+  const [cashEditValue, setCashEditValue] = useState(0);
+
   // Transaction dialog state
   const [txDialogOpen, setTxDialogOpen] = useState(false);
   const [txDialogAsset, setTxDialogAsset] = useState<HoldingAsset | null>(null);
   const [transactionCounts, setTransactionCounts] = useState<Record<number, { count: number; buyQty: number; sellQty: number }>>({});
 
-  const isUSBroker = account?.account_market === 'INTERNATIONAL';
+  const isUSBroker = account?.account_market?.toUpperCase() === 'INTERNATIONAL';
   const statementTypes = isUSBroker
     ? [
         { value: 'broker_statement', label: 'Broker Statement' },
@@ -363,12 +370,8 @@ const DematAccountDetail: React.FC = () => {
     [holdings]
   );
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR'
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 
   useEffect(() => {
     if (!id) return;
@@ -424,6 +427,27 @@ const DematAccountDetail: React.FC = () => {
       notify.error(getErrorMessage(err, 'Failed to load account details'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenCashEdit = () => {
+    if (!account) return;
+    setCashEditValue(isUSBroker ? (account.cash_balance_usd || 0) : account.cash_balance);
+    setCashEditOpen(true);
+  };
+
+  const handleSaveCashBalance = async () => {
+    if (!account) return;
+    try {
+      const payload = isUSBroker
+        ? { cash_balance_usd: cashEditValue, cash_balance: 0 }
+        : { cash_balance: cashEditValue };
+      await api.put(`/demat-accounts/${account.id}`, payload);
+      notify.success('Cash balance updated');
+      setCashEditOpen(false);
+      fetchAccountDetail();
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to update cash balance'));
     }
   };
 
@@ -499,13 +523,32 @@ const DematAccountDetail: React.FC = () => {
 
   const handleOpenEditDialog = (asset: HoldingAsset) => {
     setEditingAsset(asset);
+    const d = asset.details || {};
+    // Determine if this asset is USD-denominated
+    const isUsdAsset = asset.asset_type === 'us_stock'
+      || (['esop', 'rsu', 'crypto', 'commodity'].includes(asset.asset_type) && d.currency === 'USD');
+
+    let pp = asset.purchase_price;
+    let cp = asset.current_price;
+    if (isUsdAsset) {
+      // US stocks: imported data has avg_cost_usd; manually-added has USD in main columns
+      if (asset.asset_type === 'us_stock') {
+        pp = d.avg_cost_usd != null ? d.avg_cost_usd : asset.purchase_price;
+      } else {
+        // ESOP/RSU/Crypto: main columns are INR, divide by rate to get USD
+        const rate = d.usd_to_inr_rate;
+        if (rate && rate > 0) pp = asset.purchase_price / rate;
+      }
+      cp = d.price_usd ?? asset.current_price;
+    }
+
     setEditFormData({
       name: asset.name,
       symbol: asset.symbol || '',
       isin: asset.isin || '',
       quantity: asset.quantity,
-      purchase_price: asset.purchase_price,
-      current_price: asset.current_price,
+      purchase_price: pp,
+      current_price: cp,
     });
     setOpenEditDialog(true);
   };
@@ -593,6 +636,13 @@ const DematAccountDetail: React.FC = () => {
 
   const brokerDisplayName = brokerInfo?.label || account.broker_name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+  const editIsUsd = (() => {
+    if (!editingAsset) return false;
+    if (editingAsset.asset_type === 'us_stock') return true;
+    const d = editingAsset.details || {};
+    return ['esop', 'rsu', 'crypto', 'commodity'].includes(editingAsset.asset_type) && d.currency === 'USD';
+  })();
+
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
@@ -620,7 +670,7 @@ const DematAccountDetail: React.FC = () => {
             variant="outlined"
             startIcon={<UploadIcon />}
             onClick={() => {
-              setStatementType(account?.account_market === 'INTERNATIONAL' ? 'broker_statement' : 'tradebook_statement');
+              setStatementType(isUSBroker ? 'broker_statement' : 'tradebook_statement');
               setOpenUploadDialog(true);
             }}
             size="small"
@@ -677,12 +727,19 @@ const DematAccountDetail: React.FC = () => {
         <Grid item xs={12} sm={6} md>
           <Card>
             <CardContent>
-              <Typography color="textSecondary" gutterBottom>Cash Balance</Typography>
-              <Typography variant="h4">
-                {account.account_market === 'INTERNATIONAL' && account.cash_balance_usd
-                  ? `$${account.cash_balance_usd.toFixed(2)}`
-                  : formatCurrency(account.cash_balance)}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography color="textSecondary" gutterBottom>Cash Balance</Typography>
+                  <Typography variant="h4">
+                    {isUSBroker && account.cash_balance_usd
+                      ? `$${account.cash_balance_usd.toFixed(2)}`
+                      : formatCurrency(account.cash_balance)}
+                  </Typography>
+                </Box>
+                <IconButton size="small" onClick={handleOpenCashEdit}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
@@ -837,14 +894,14 @@ const DematAccountDetail: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="Purchase Price"
+              label={editIsUsd ? 'Purchase Price (USD)' : 'Purchase Price'}
               type="number"
               value={editFormData.purchase_price}
               onChange={(e) => setEditFormData({ ...editFormData, purchase_price: parseFloat(e.target.value) || 0 })}
               fullWidth
             />
             <TextField
-              label="Current Price"
+              label={editIsUsd ? 'Current Price (USD)' : 'Current Price'}
               type="number"
               value={editFormData.current_price}
               onChange={(e) => setEditFormData({ ...editFormData, current_price: parseFloat(e.target.value) || 0 })}
@@ -870,6 +927,7 @@ const DematAccountDetail: React.FC = () => {
         open={txDialogOpen}
         onClose={() => { setTxDialogOpen(false); setTxDialogAsset(null); }}
         onTransactionsChanged={fetchAccountDetail}
+        currency={txDialogAsset?.asset_type === 'us_stock' ? 'USD' : 'INR'}
         stock={txDialogAsset ? {
           id: txDialogAsset.id,
           name: txDialogAsset.name,
@@ -903,6 +961,34 @@ const DematAccountDetail: React.FC = () => {
             </MenuItem>
           ))}
       </Menu>
+
+      {/* Cash Balance Edit Dialog */}
+      <Dialog open={cashEditOpen} onClose={() => setCashEditOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Update Cash Balance</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label={isUSBroker ? 'Cash Balance (USD)' : 'Cash Balance (INR)'}
+            type="number"
+            fullWidth
+            value={cashEditValue}
+            onChange={(e) => setCashEditValue(parseFloat(e.target.value) || 0)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  {isUSBroker ? '$' : '₹'}
+                </InputAdornment>
+              ),
+            }}
+            helperText={isUSBroker ? 'Enter amount in USD (will be converted to INR automatically)' : undefined}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCashEditOpen(false)}>Cancel</Button>
+          <Button onClick={handleSaveCashBalance} variant="contained">Update</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

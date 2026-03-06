@@ -29,7 +29,8 @@ import {
   Switch,
   FormControlLabel,
 } from '@mui/material';
-import { Add, Edit, Delete } from '@mui/icons-material';
+import { Add, Edit, Delete, Label as LabelIcon, } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -114,6 +115,8 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
 
   const { notify } = useNotification();
   const [summary, setSummary] = useState<RealEstateSummary | null>(null);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -348,6 +351,9 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
                     />
                   </TableCell>
                   <TableCell align="center">
+                    <IconButton size="small" color="secondary" title="Attributes" onClick={() => { setTagAssetId(prop.id); setTagAssetName(prop.nickname); }}>
+                      <LabelIcon fontSize="small" />
+                    </IconButton>
                     <IconButton size="small" onClick={() => handleOpenEdit(prop)}>
                       <Edit fontSize="small" />
                     </IconButton>
@@ -534,6 +540,13 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
         </DialogActions>
       </Dialog>
 
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };

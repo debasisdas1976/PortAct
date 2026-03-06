@@ -25,16 +25,18 @@ import {
   Chip,
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Refresh as RefreshIcon,
-  TrendingUp,
-  TrendingDown,
-  Language,
-  KeyboardArrowDown,
-  KeyboardArrowRight,
+ Add as AddIcon,
+ Edit as EditIcon,
+ Delete as DeleteIcon,
+ Refresh as RefreshIcon,
+ TrendingUp,
+ TrendingDown,
+ Language,
+ KeyboardArrowDown,
+ KeyboardArrowRight,
+ Label as LabelIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -60,6 +62,7 @@ interface USStockAsset {
   broker_name?: string;
   account_id?: string;
   account_holder_name?: string;
+  details?: Record<string, any>;
 }
 
 interface DematAccount {
@@ -77,6 +80,26 @@ const formatINR = (value: number) =>
 const formatUSD = (value: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
 
+/**
+ * Get USD value for a US stock field.
+ * - Imported stocks have INR in main columns + USD in details (avg_cost_usd, price_usd).
+ * - Manually-added stocks have USD directly in main columns with no details USD field.
+ * If the details USD field exists, use it. If not AND avg_cost_usd is also absent
+ * (i.e. stock was manually added with USD values), return the raw value as-is.
+ * Only divide by rate when we know the main column is INR (avg_cost_usd exists).
+ */
+const toUSD = (value: number, details: Record<string, any> | undefined, usdField: string): number => {
+  const d = details || {};
+  if (d[usdField] != null) return d[usdField];
+  // If avg_cost_usd exists, the data was imported → main columns are INR → divide by rate
+  if (d.avg_cost_usd != null) {
+    const rate = d.usd_to_inr_rate;
+    if (rate && rate > 0) return value / rate;
+  }
+  // No avg_cost_usd means manually added → main columns are already USD
+  return value;
+};
+
 const buildDematLabel = (da: DematAccount) => {
   const parts: string[] = [String(da.broker_name), `(${da.account_id})`];
   if (da.account_holder_name) parts.push(`— ${da.account_holder_name}`);
@@ -85,6 +108,8 @@ const buildDematLabel = (da: DematAccount) => {
 
 const USStocks: React.FC = () => {
   const [stocks, setStocks] = useState<USStockAsset[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
@@ -150,14 +175,19 @@ const USStocks: React.FC = () => {
   const handleOpenDialog = (asset?: USStockAsset) => {
     if (asset) {
       setEditingAsset(asset);
+      // Show USD values — imported stocks have INR + details, manual stocks have USD directly
+      const avgCostUsd = toUSD(asset.purchase_price, asset.details, 'avg_cost_usd');
+      const totalInvestedUsd = asset.details?.avg_cost_usd
+        ? asset.details.avg_cost_usd * asset.quantity
+        : asset.total_invested; // manually-added stocks: total_invested is already USD
       setFormData({
         name: asset.name,
         symbol: asset.symbol || '',
         isin: asset.isin || '',
         quantity: asset.quantity,
-        purchase_price: asset.purchase_price,
-        total_invested: asset.total_invested,
-        current_price: asset.current_price,
+        purchase_price: avgCostUsd,
+        total_invested: totalInvestedUsd,
+        current_price: toUSD(asset.current_price, asset.details, 'price_usd'),
         xirr: asset.xirr ?? null,
         demat_account_id: asset.demat_account_id || '',
       });
@@ -381,8 +411,8 @@ const USStocks: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">{stock.name}</Typography>
                         </TableCell>
                         <TableCell align="right">{stock.quantity?.toFixed(6)}</TableCell>
-                        <TableCell align="right">{formatUSD(stock.purchase_price)}</TableCell>
-                        <TableCell align="right">{formatUSD(stock.current_price)}</TableCell>
+                        <TableCell align="right">{formatUSD(toUSD(stock.purchase_price, stock.details, 'avg_cost_usd'))}</TableCell>
+                        <TableCell align="right">{formatUSD(toUSD(stock.current_price, stock.details, 'price_usd'))}</TableCell>
                         <TableCell align="right">{formatINR(stock.total_invested)}</TableCell>
                         <TableCell align="right">{formatINR(stock.current_value)}</TableCell>
                         <TableCell align="right" sx={{ color: stock.profit_loss >= 0 ? 'success.main' : 'error.main', fontWeight: 'medium' }}>
@@ -412,7 +442,10 @@ const USStocks: React.FC = () => {
                           <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(stock.id, stock.symbol || stock.name)} disabled={updatingAssetId === stock.id}>
                             {updatingAssetId === stock.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                           </IconButton>
-                          <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(stock)}>
+                                                    <IconButton size="small" color="secondary" title="Attributes" onClick={(e) => { e.stopPropagation(); setTagAssetId(stock.id); setTagAssetName(stock.name); }}>
+                            <LabelIcon fontSize="small" />
+                          </IconButton>
+<IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(stock)}>
                             <EditIcon fontSize="small" />
                           </IconButton>
                           <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(stock)}>
@@ -467,6 +500,13 @@ const USStocks: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };

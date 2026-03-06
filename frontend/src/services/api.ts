@@ -307,6 +307,11 @@ export const transactionsAPI = {
     return response.data;
   },
 
+  update: async (id: number, data: any) => {
+    const response = await api.put(`/transactions/${id}`, data);
+    return response.data;
+  },
+
   delete: async (id: number) => {
     await api.delete(`/transactions/${id}`);
   },
@@ -573,6 +578,84 @@ export const insightsAPI = {
     if (portfolioId) params.portfolio_id = portfolioId;
     const response = await api.get('/insights/category-xirr-trend', { params });
     return response.data;
+  },
+
+  getAttributeAllocation: async (portfolioId?: number | null) => {
+    const params: any = {};
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/insights/attribute-allocation', { params });
+    return response.data;
+  },
+};
+
+// Asset Attributes API
+export const assetAttributesAPI = {
+  getAll: async (isActive?: boolean) => {
+    const params: any = {};
+    if (isActive !== undefined) params.is_active = isActive;
+    const response = await api.get('/asset-attributes/', { params });
+    return response.data;
+  },
+
+  getById: async (id: number) => {
+    const response = await api.get(`/asset-attributes/${id}`);
+    return response.data;
+  },
+
+  create: async (data: {
+    display_label: string;
+    name?: string;
+    description?: string;
+    icon?: string;
+    sort_order?: number;
+    values?: Array<{ label: string; color?: string; sort_order?: number }>;
+  }) => {
+    const response = await api.post('/asset-attributes/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: Record<string, any>) => {
+    const response = await api.put(`/asset-attributes/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/asset-attributes/${id}`);
+  },
+
+  addValue: async (attributeId: number, data: { label: string; color?: string; sort_order?: number }) => {
+    const response = await api.post(`/asset-attributes/${attributeId}/values`, data);
+    return response.data;
+  },
+
+  updateValue: async (attributeId: number, valueId: number, data: Record<string, any>) => {
+    const response = await api.put(`/asset-attributes/${attributeId}/values/${valueId}`, data);
+    return response.data;
+  },
+
+  deleteValue: async (attributeId: number, valueId: number) => {
+    await api.delete(`/asset-attributes/${attributeId}/values/${valueId}`);
+  },
+
+  getAssignments: async (assetId: number) => {
+    const response = await api.get(`/asset-attributes/assignments/${assetId}`);
+    return response.data;
+  },
+
+  getBulkAssignments: async (assetIds: number[]) => {
+    const response = await api.get('/asset-attributes/assignments/bulk/by-ids', {
+      params: { asset_ids: assetIds.join(',') },
+    });
+    return response.data;
+  },
+
+  setAssignments: async (assetId: number, assignments: Array<{ attribute_id: number; attribute_value_id: number }>) => {
+    const response = await api.put(`/asset-attributes/assignments/${assetId}`, { assignments });
+    return response.data;
+  },
+
+  removeAssignment: async (assetId: number, attributeId: number) => {
+    await api.delete(`/asset-attributes/assignments/${assetId}/${attributeId}`);
   },
 };
 

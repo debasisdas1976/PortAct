@@ -28,13 +28,16 @@ import {
   Switch
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  AccountBalance as PFIcon,
-  Upload as UploadIcon,
-  Visibility as ViewIcon
+ Add as AddIcon,
+ Edit as EditIcon,
+ Delete as DeleteIcon,
+ AccountBalance as PFIcon,
+ Upload as UploadIcon,
+ Visibility as ViewIcon,
+ Label as LabelIcon,
+ Sync as SyncIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -104,6 +107,8 @@ interface PFSummary {
 
 const PF: React.FC = () => {
   const [accounts, setAccounts] = useState<PFAccount[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [summary, setSummary] = useState<PFSummary | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [openUploadDialog, setOpenUploadDialog] = useState(false);
@@ -144,6 +149,7 @@ const PF: React.FC = () => {
   const [uploadPassword, setUploadPassword] = useState('');
   const [uploadPortfolioId, setUploadPortfolioId] = useState<number | ''>('' as number | '');
   const [loading, setLoading] = useState(false);
+  const [runningCatchUp, setRunningCatchUp] = useState(false);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
   const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
@@ -323,6 +329,29 @@ const PF: React.FC = () => {
     }
   };
 
+  const handleRunMissedContributions = async () => {
+    try {
+      setRunningCatchUp(true);
+      const response = await api.post('/pf/run-missed-contributions');
+      const { pf_months_added, pf_errors } = response.data;
+      if (pf_months_added > 0) {
+        notify.success(`Added PF contributions for ${pf_months_added} month(s)`);
+        fetchAccounts();
+        fetchSummary();
+        if (selectedAccount) fetchAccountTransactions(selectedAccount.id);
+      } else {
+        notify.info('No missed contributions found');
+      }
+      if (pf_errors > 0) {
+        notify.warning(`${pf_errors} month(s) had errors`);
+      }
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to run missed contributions'));
+    } finally {
+      setRunningCatchUp(false);
+    }
+  };
+
   const handleOpenUploadDialog = () => {
     setUploadFile(null);
     setUploadPassword('');
@@ -400,6 +429,14 @@ const PF: React.FC = () => {
           <Typography variant="h4">Provident Fund (PF/EPF)</Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={runningCatchUp ? <CircularProgress size={18} /> : <SyncIcon />}
+            onClick={handleRunMissedContributions}
+            disabled={runningCatchUp}
+          >
+            {runningCatchUp ? 'Processing...' : 'Catch Up Contributions'}
+          </Button>
           <Button
             variant="outlined"
             startIcon={<UploadIcon />}
@@ -538,6 +575,9 @@ const PF: React.FC = () => {
                       title="View Transactions"
                     >
                       <ViewIcon />
+                    </IconButton>
+                    <IconButton size="small" color="secondary" title="Attributes" onClick={() => { setTagAssetId(account.id); setTagAssetName(account.nickname); }}>
+                      <LabelIcon fontSize="small" />
                     </IconButton>
                     <IconButton
                       size="small"
@@ -989,6 +1029,13 @@ const PF: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };

@@ -1,8 +1,9 @@
+import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
 from app.models.asset import Asset, AssetType
@@ -13,8 +14,12 @@ from app.schemas.asset import (
     AssetWithTransactions,
     AssetSummary
 )
-from app.services.price_updater import update_asset_price
-from app.services.currency_converter import convert_usd_to_inr
+from app.services.price_updater import update_asset_price, PRICE_UPDATABLE_TYPES
+from app.services.price_refresh_tracker import price_refresh_tracker
+from app.schemas.price_refresh_progress import PriceRefreshProgress
+
+logger = logging.getLogger(__name__)
+from app.services.currency_converter import convert_usd_to_inr, get_usd_to_inr_rate
 from app.models.portfolio import Portfolio
 from app.models.demat_account import DematAccount
 from app.models.asset_type_master import AssetTypeMaster
@@ -144,6 +149,31 @@ async def get_portfolio_summary(
     )
 
 
+@router.get("/price-refresh-progress/{session_id}", response_model=PriceRefreshProgress)
+async def get_price_refresh_progress(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get the progress of a price refresh session."""
+    progress = price_refresh_tracker.get_progress(session_id)
+    if not progress:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if progress.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised")
+    return progress
+
+
+@router.get("/price-refresh-active")
+async def get_active_price_refresh(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get the currently active price refresh session for this user, if any."""
+    active = price_refresh_tracker.get_active_session(current_user.id)
+    if not active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active session")
+    return active
+
+
 @router.get("/{asset_id}", response_model=AssetSchema)
 async def get_asset(
     asset_id: int,
@@ -205,8 +235,24 @@ async def create_asset(
         if 'total_invested' in asset_dict and asset_dict['total_invested']:
             asset_dict['total_invested'] = convert_usd_to_inr(asset_dict['total_invested'])
 
-    # Convert USD to INR for ESOP/RSU assets if currency is USD
-    if asset_dict.get('asset_type') in [AssetType.ESOP, AssetType.RSU]:
+    # Convert USD to INR for US stock assets (user enters USD, store INR)
+    if asset_dict.get('asset_type') == AssetType.US_STOCK:
+        usd_rate = get_usd_to_inr_rate()
+        if 'details' not in asset_dict or not asset_dict['details']:
+            asset_dict['details'] = {}
+        asset_dict['details']['usd_to_inr_rate'] = usd_rate
+        if 'purchase_price' in asset_dict and asset_dict['purchase_price']:
+            asset_dict['details']['avg_cost_usd'] = asset_dict['purchase_price']
+            asset_dict['purchase_price'] = asset_dict['purchase_price'] * usd_rate
+        if 'current_price' in asset_dict and asset_dict['current_price']:
+            asset_dict['details']['price_usd'] = asset_dict['current_price']
+            asset_dict['current_price'] = asset_dict['current_price'] * usd_rate
+        if 'total_invested' in asset_dict and asset_dict['total_invested']:
+            asset_dict['details']['market_value_usd'] = asset_dict['total_invested']
+            asset_dict['total_invested'] = asset_dict['total_invested'] * usd_rate
+
+    # Convert USD to INR for ESOP/RSU/Commodity assets if currency is USD
+    if asset_dict.get('asset_type') in [AssetType.ESOP, AssetType.RSU, AssetType.COMMODITY]:
         esop_currency = None
         if 'details' in asset_dict and asset_dict['details']:
             esop_currency = asset_dict['details'].get('currency', 'INR')
@@ -312,9 +358,25 @@ async def update_asset(
             if 'total_invested' in update_data and update_data['total_invested']:
                 update_data['total_invested'] = convert_usd_to_inr(update_data['total_invested'])
 
-    # Convert USD to INR for ESOP/RSU assets if currency is USD
-    if asset.asset_type in [AssetType.ESOP, AssetType.RSU]:
-        details = update_data.get('details') or {}
+    # Convert USD to INR for US stock assets (user enters USD, store INR)
+    if asset.asset_type == AssetType.US_STOCK:
+        usd_rate = get_usd_to_inr_rate()
+        details = update_data.get('details') or dict(asset.details or {})
+        details['usd_to_inr_rate'] = usd_rate
+        if 'purchase_price' in update_data and update_data['purchase_price']:
+            details['avg_cost_usd'] = update_data['purchase_price']
+            update_data['purchase_price'] = update_data['purchase_price'] * usd_rate
+        if 'current_price' in update_data and update_data['current_price']:
+            details['price_usd'] = update_data['current_price']
+            update_data['current_price'] = update_data['current_price'] * usd_rate
+        if 'total_invested' in update_data and update_data['total_invested']:
+            details['market_value_usd'] = update_data['total_invested']
+            update_data['total_invested'] = update_data['total_invested'] * usd_rate
+        update_data['details'] = details
+
+    # Convert USD to INR for ESOP/RSU/Commodity assets if currency is USD
+    if asset.asset_type in [AssetType.ESOP, AssetType.RSU, AssetType.COMMODITY]:
+        details = update_data.get('details') or dict(asset.details or {})
         esop_currency = details.get('currency', 'INR') if details else None
         if esop_currency == 'USD':
             if 'purchase_price' in update_data and update_data['purchase_price']:
@@ -414,40 +476,68 @@ async def manually_update_asset_price(
     return asset
 
 
-@router.post("/update-all-prices")
+@router.post("/update-all-prices", status_code=status.HTTP_202_ACCEPTED)
 async def update_all_asset_prices(
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
-    Manually trigger price update for all active assets
+    Trigger async price update for all active price-updatable assets.
+    Returns immediately with a session_id. Poll /price-refresh-progress/{session_id}.
     """
+    # Prevent concurrent sessions for the same user
+    active = price_refresh_tracker.get_active_session(current_user.id)
+    if active:
+        return {
+            "message": "Price refresh already in progress",
+            "session_id": active.session_id,
+            "total_assets": active.total_assets,
+            "status": "already_running",
+        }
+
     assets = db.query(Asset).filter(
         Asset.user_id == current_user.id,
-        Asset.is_active == True
+        Asset.is_active == True,
+        Asset.asset_type.in_(PRICE_UPDATABLE_TYPES),
     ).all()
-    
-    updated_count = 0
-    failed_count = 0
-    failed_assets = []
-    
-    for asset in assets:
-        if update_asset_price(asset, db):
-            updated_count += 1
-        else:
-            failed_count += 1
-            failed_assets.append({
-                "id": asset.id,
-                "name": asset.name,
-                "symbol": asset.symbol,
-                "error": asset.price_update_error
-            })
-    
+
+    if not assets:
+        return {"message": "No price-updatable assets found", "total_assets": 0}
+
+    session_id = price_refresh_tracker.create_session(current_user.id, assets)
+    asset_ids = [a.id for a in assets]
+
+    def _update_prices():
+        bg_db = SessionLocal()
+        try:
+            bg_assets = bg_db.query(Asset).filter(Asset.id.in_(asset_ids)).all()
+            for asset in bg_assets:
+                price_refresh_tracker.set_asset_processing(session_id, asset.id)
+                success = update_asset_price(asset, bg_db)
+                if success:
+                    price_refresh_tracker.update_asset_status(
+                        session_id, asset.id, "completed"
+                    )
+                else:
+                    price_refresh_tracker.update_asset_status(
+                        session_id, asset.id, "error",
+                        error_message=asset.price_update_error,
+                    )
+            price_refresh_tracker.complete_session(session_id)
+        except Exception as exc:
+            logger.error(f"Error in background price refresh: {exc}")
+            price_refresh_tracker.fail_session(session_id, str(exc))
+        finally:
+            bg_db.close()
+
+    background_tasks.add_task(_update_prices)
+
     return {
-        "updated": updated_count,
-        "failed": failed_count,
-        "failed_assets": failed_assets,
-        "total": len(assets)
+        "message": "Price refresh started in background",
+        "session_id": session_id,
+        "total_assets": len(assets),
+        "status": "processing",
     }
 
 # Made with Bob

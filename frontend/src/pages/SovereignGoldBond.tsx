@@ -4,7 +4,8 @@ import {
   TableCell, TableContainer, TableHead, TableRow, Typography, Chip, Alert, Button,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton,
 } from '@mui/material';
-import { Add, Edit, Delete, Refresh, TrendingUp, TrendingDown } from '@mui/icons-material';
+import { Add, Edit, Delete, Refresh, TrendingUp, TrendingDown, Label as LabelIcon, } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import { assetsAPI } from '../services/api';
 import api from '../services/api';
 import { useSelector } from 'react-redux';
@@ -18,7 +19,7 @@ interface AssetItem {
   id: number; name: string; symbol: string; quantity: number; purchase_price: number;
   current_price: number; total_invested: number; current_value: number;
   profit_loss: number; profit_loss_percentage: number; xirr?: number | null; asset_type: string;
-  demat_account_id?: number; broker_name?: string; account_id?: string;
+  isin?: string; demat_account_id?: number; broker_name?: string; account_id?: string;
   account_holder_name?: string; notes?: string; details?: Record<string, any>;
 }
 interface DematAccount { id: number; broker_name: string; account_id: string; account_holder_name?: string; nickname?: string; }
@@ -41,6 +42,8 @@ const SovereignGoldBond: React.FC = () => {
   const selectedPortfolioId = useSelectedPortfolio();
   const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -104,7 +107,7 @@ const SovereignGoldBond: React.FC = () => {
   const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') }); setDialogOpen(true); };
   const handleEdit = (asset: AssetItem) => {
     setEditingId(asset.id);
-    setForm({ name: asset.name || '', symbol: asset.symbol || '', isin: (asset as any).isin || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), xirr: asset.xirr ?? null, broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '', portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
+    setForm({ name: asset.name || '', symbol: asset.symbol || '', isin: asset.isin || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), xirr: asset.xirr ?? null, broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '', portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
     setDialogOpen(true);
   };
   const [dialogError, setDialogError] = useState('');
@@ -192,6 +195,7 @@ const SovereignGoldBond: React.FC = () => {
                         </TableCell>
                       <TableCell align="center">
                         <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(asset.id, asset.symbol || asset.name)} disabled={updatingAssetId === asset.id}>{updatingAssetId === asset.id ? <CircularProgress size={16} /> : <Refresh fontSize="small" />}</IconButton>
+                        <IconButton size="small" color="secondary" title="Attributes" onClick={() => { setTagAssetId(asset.id); setTagAssetName(asset.name); }}><LabelIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="primary" onClick={() => handleEdit(asset)} title="Edit"><Edit fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => handleDelete(asset.id, asset.name)} title="Delete"><Delete fontSize="small" /></IconButton>
                       </TableCell>
@@ -238,6 +242,13 @@ const SovereignGoldBond: React.FC = () => {
           <Button onClick={handleSave} variant="contained" disabled={saving}>{saving ? <CircularProgress size={24} /> : editingId ? 'Save' : 'Add'}</Button>
         </DialogActions>
       </Dialog>
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };

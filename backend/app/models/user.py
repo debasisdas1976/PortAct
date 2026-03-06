@@ -47,5 +47,6 @@ class User(Base):
     expenses = relationship("Expense", back_populates="user", cascade="all, delete-orphan")
     portfolios = relationship("Portfolio", back_populates="owner", cascade="all, delete-orphan")
     portfolio_snapshots = relationship("PortfolioSnapshot", back_populates="owner", cascade="all, delete-orphan")
+    asset_attributes = relationship("AssetAttribute", back_populates="user", cascade="all, delete-orphan")
 
 # Made with Bob

@@ -38,6 +38,7 @@ _USD_PRICED_TYPES = {
 _CONDITIONALLY_USD_TYPES = {
     AssetType.ESOP,
     AssetType.RSU,
+    AssetType.COMMODITY,
 }
 
 # Assets with details.currency + details.original_amount (any currency)

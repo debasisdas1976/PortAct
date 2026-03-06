@@ -108,6 +108,7 @@ class Asset(Base):
     crypto_account = relationship("CryptoAccount", back_populates="assets")
     portfolio = relationship("Portfolio", back_populates="assets")
     transactions = relationship("Transaction", back_populates="asset", cascade="all, delete-orphan", passive_deletes=True)
+    attribute_assignments = relationship("AssetAttributeAssignment", back_populates="asset", cascade="all, delete-orphan", passive_deletes=True)
     
     def calculate_metrics(self):
         """Calculate profit/loss metrics"""

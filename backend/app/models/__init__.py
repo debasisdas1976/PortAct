@@ -17,6 +17,7 @@ from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
 from app.models.asset_category_master import AssetCategoryMaster
 from app.models.asset_type_master import AssetTypeMaster
 from app.models.institution import InstitutionMaster
+from app.models.asset_attribute import AssetAttribute, AssetAttributeValue, AssetAttributeAssignment
 
 __all__ = [
     "User",
@@ -49,6 +50,9 @@ __all__ = [
     "AssetCategoryMaster",
     "AssetTypeMaster",
     "InstitutionMaster",
+    "AssetAttribute",
+    "AssetAttributeValue",
+    "AssetAttributeAssignment",
 ]
 
 # Made with Bob

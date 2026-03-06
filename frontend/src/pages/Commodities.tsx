@@ -27,19 +27,21 @@ import {
   Tooltip,
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Refresh as RefreshIcon,
-  TrendingUp,
-  TrendingDown,
-  KeyboardArrowDown,
-  KeyboardArrowRight,
-  KeyboardArrowUp,
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
-  Info as InfoIcon,
+ Add as AddIcon,
+ Edit as EditIcon,
+ Delete as DeleteIcon,
+ Refresh as RefreshIcon,
+ TrendingUp,
+ TrendingDown,
+ KeyboardArrowDown,
+ KeyboardArrowRight,
+ KeyboardArrowUp,
+ CheckCircle as CheckCircleIcon,
+ Warning as WarningIcon,
+ Info as InfoIcon,
+ Label as LabelIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api, { transactionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
@@ -65,6 +67,7 @@ interface CommodityAsset {
   broker_name?: string;
   account_id?: string;
   account_holder_name?: string;
+  details?: Record<string, any>;
 }
 
 interface DematAccount {
@@ -86,6 +89,8 @@ const buildDematLabel = (da: DematAccount) => {
 
 const Commodities: React.FC = () => {
   const [commodities, setCommodities] = useState<CommodityAsset[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
@@ -168,14 +173,17 @@ const Commodities: React.FC = () => {
   const handleOpenDialog = (asset?: CommodityAsset) => {
     if (asset) {
       setEditingAsset(asset);
+      const d = asset.details || {};
+      const isUsd = d.currency === 'USD';
+      const rate = d.usd_to_inr_rate;
       setFormData({
         name: asset.name,
         symbol: asset.symbol || '',
         isin: asset.isin || '',
         quantity: asset.quantity,
-        purchase_price: asset.purchase_price,
-        total_invested: asset.total_invested,
-        current_price: asset.current_price,
+        purchase_price: isUsd && rate ? asset.purchase_price / rate : asset.purchase_price,
+        total_invested: isUsd && rate ? asset.total_invested / rate : asset.total_invested,
+        current_price: isUsd ? (d.price_usd ?? asset.current_price) : asset.current_price,
         xirr: asset.xirr ?? null,
         demat_account_id: asset.demat_account_id || '',
       });
@@ -311,6 +319,8 @@ const Commodities: React.FC = () => {
       </Box>
     );
   }
+
+  const editCurrIsUsd = editingAsset?.details?.currency === 'USD';
 
   return (
     <Box>
@@ -482,7 +492,10 @@ const Commodities: React.FC = () => {
                               <IconButton size="small" color="info" title="Refresh Price" onClick={(e) => { e.stopPropagation(); handlePriceUpdate(commodity.id, commodity.symbol || commodity.name); }} disabled={updatingAssetId === commodity.id}>
                                 {updatingAssetId === commodity.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                               </IconButton>
-                              <IconButton size="small" color="primary" title="Edit" onClick={(e) => { e.stopPropagation(); handleOpenDialog(commodity); }}>
+                                                            <IconButton size="small" color="secondary" title="Attributes" onClick={(e) => { e.stopPropagation(); setTagAssetId(commodity.id); setTagAssetName(commodity.name); }}>
+                                <LabelIcon fontSize="small" />
+                              </IconButton>
+<IconButton size="small" color="primary" title="Edit" onClick={(e) => { e.stopPropagation(); handleOpenDialog(commodity); }}>
                                 <EditIcon fontSize="small" />
                               </IconButton>
                               <IconButton size="small" color="error" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(commodity); }}>
@@ -551,9 +564,9 @@ const Commodities: React.FC = () => {
             <TextField label="Symbol" value={formData.symbol} onChange={(e) => setFormData({ ...formData, symbol: e.target.value })} fullWidth />
             <TextField label="ISIN" value={formData.isin} onChange={(e) => setFormData({ ...formData, isin: e.target.value })} fullWidth />
             <TextField label="Quantity (grams / units)" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })} fullWidth />
-            <TextField label="Average Buy Price" type="number" value={formData.purchase_price} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} fullWidth />
-            <TextField label="Total Invested" type="number" value={formData.total_invested} onChange={(e) => setFormData({ ...formData, total_invested: parseFloat(e.target.value) || 0 })} fullWidth helperText="Leave 0 to auto-calculate (Qty x Avg Price)" />
-            <TextField label="Current Price" type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Will be auto-updated by price scheduler" />
+            <TextField label={editCurrIsUsd ? 'Average Buy Price (USD)' : 'Average Buy Price'} type="number" value={formData.purchase_price} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} fullWidth />
+            <TextField label={editCurrIsUsd ? 'Total Invested (USD)' : 'Total Invested'} type="number" value={formData.total_invested} onChange={(e) => setFormData({ ...formData, total_invested: parseFloat(e.target.value) || 0 })} fullWidth helperText="Leave 0 to auto-calculate (Qty x Avg Price)" />
+            <TextField label={editCurrIsUsd ? 'Current Price (USD)' : 'Current Price'} type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Will be auto-updated by price scheduler" />
             <TextField label="XIRR (%)" type="number" value={formData.xirr ?? ''} onChange={(e) => setFormData({ ...formData, xirr: e.target.value ? parseFloat(e.target.value) : null })} fullWidth helperText="Auto-calculated from transactions. Enter manually if needed." />
             <TextField
               select
@@ -585,6 +598,13 @@ const Commodities: React.FC = () => {
         onClose={() => { setTxDialogOpen(false); setTxDialogAsset(null); }}
         onTransactionsChanged={fetchData}
         stock={txDialogAsset}
+      />
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
       />
     </Box>
   );

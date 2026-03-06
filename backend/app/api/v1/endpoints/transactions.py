@@ -141,10 +141,10 @@ async def update_transaction(
     update_data = transaction_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(transaction, field, value)
-    
-    # Recalculate asset metrics
+
+    # Recalculate XIRR only (don't modify asset quantity/invested — user manages those)
     asset = transaction.asset
-    _recalculate_asset_from_transactions(asset, db)
+    _recalculate_asset_xirr(asset, db)
     
     db.commit()
     db.refresh(transaction)
@@ -174,9 +174,9 @@ async def delete_transaction(
     
     asset = transaction.asset
     db.delete(transaction)
-    
-    # Recalculate asset metrics
-    _recalculate_asset_from_transactions(asset, db)
+
+    # Recalculate XIRR only (don't modify asset quantity/invested — user manages those)
+    _recalculate_asset_xirr(asset, db)
     
     db.commit()
     

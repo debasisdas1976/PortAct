@@ -27,19 +27,21 @@ import {
   Tooltip,
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Refresh as RefreshIcon,
-  TrendingUp,
-  TrendingDown,
-  KeyboardArrowDown,
-  KeyboardArrowRight,
-  KeyboardArrowUp,
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
-  Info as InfoIcon,
+ Add as AddIcon,
+ Edit as EditIcon,
+ Delete as DeleteIcon,
+ Refresh as RefreshIcon,
+ TrendingUp,
+ TrendingDown,
+ KeyboardArrowDown,
+ KeyboardArrowRight,
+ KeyboardArrowUp,
+ CheckCircle as CheckCircleIcon,
+ Warning as WarningIcon,
+ Info as InfoIcon,
+ Label as LabelIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api, { transactionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -86,6 +88,8 @@ const buildDematLabel = (da: DematAccount) => {
 
 const Stocks: React.FC = () => {
   const [stocks, setStocks] = useState<StockAsset[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
@@ -480,7 +484,10 @@ const Stocks: React.FC = () => {
                               <IconButton size="small" color="info" title="Refresh Price" onClick={(e) => { e.stopPropagation(); handlePriceUpdate(stock.id, stock.symbol || stock.name); }} disabled={updatingAssetId === stock.id}>
                                 {updatingAssetId === stock.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                               </IconButton>
-                              <IconButton size="small" color="primary" title="Edit" onClick={(e) => { e.stopPropagation(); handleOpenDialog(stock); }}>
+                                                            <IconButton size="small" color="secondary" title="Attributes" onClick={(e) => { e.stopPropagation(); setTagAssetId(stock.id); setTagAssetName(stock.name); }}>
+                                <LabelIcon fontSize="small" />
+                              </IconButton>
+<IconButton size="small" color="primary" title="Edit" onClick={(e) => { e.stopPropagation(); handleOpenDialog(stock); }}>
                                 <EditIcon fontSize="small" />
                               </IconButton>
                               <IconButton size="small" color="error" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(stock); }}>
@@ -583,6 +590,13 @@ const Stocks: React.FC = () => {
         onClose={() => { setTxDialogOpen(false); setTxDialogStock(null); }}
         onTransactionsChanged={fetchData}
         stock={txDialogStock}
+      />
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
       />
     </Box>
   );

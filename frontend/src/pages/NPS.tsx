@@ -26,13 +26,15 @@ import {
   MenuItem
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  AccountBalance as NPSIcon,
-  Upload as UploadIcon,
-  Visibility as ViewIcon
+ Add as AddIcon,
+ Edit as EditIcon,
+ Delete as DeleteIcon,
+ AccountBalance as NPSIcon,
+ Upload as UploadIcon,
+ Visibility as ViewIcon,
+ Label as LabelIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api, { institutionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -85,6 +87,8 @@ interface NPSSummary {
 
 const NPS: React.FC = () => {
   const [accounts, setAccounts] = useState<NPSAccount[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [summary, setSummary] = useState<NPSSummary | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [openUploadDialog, setOpenUploadDialog] = useState(false);
@@ -550,6 +554,9 @@ const NPS: React.FC = () => {
                     >
                       <ViewIcon />
                     </IconButton>
+                    <IconButton size="small" color="secondary" title="Attributes" onClick={() => { setTagAssetId(account.id); setTagAssetName(account.nickname); }}>
+                      <LabelIcon fontSize="small" />
+                    </IconButton>
                     <IconButton
                       size="small"
                       onClick={() => handleOpenDialog(account)}
@@ -1003,6 +1010,13 @@ const NPS: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };

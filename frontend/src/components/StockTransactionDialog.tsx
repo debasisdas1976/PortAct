@@ -26,6 +26,7 @@ import {
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   Info as InfoIcon,
@@ -39,6 +40,7 @@ interface StockTransactionDialogProps {
   open: boolean;
   onClose: () => void;
   onTransactionsChanged: () => void;
+  currency?: 'INR' | 'USD';
   stock: {
     id: number;
     name: string;
@@ -63,8 +65,11 @@ interface TransactionRow {
   notes?: string;
 }
 
-const formatCurrency = (value: number) =>
+const formatINR = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
+
+const formatUSD = (value: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
 
 const formatDate = (dateStr: string) => {
   const d = new Date(dateStr);
@@ -86,13 +91,16 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
   open,
   onClose,
   onTransactionsChanged,
+  currency = 'INR',
   stock,
 }) => {
+  const formatCurrency = currency === 'USD' ? formatUSD : formatINR;
   const { notify } = useNotification();
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingTxnId, setEditingTxnId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     transaction_type: 'buy',
     transaction_date: new Date().toISOString().slice(0, 10),
@@ -166,7 +174,28 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
     });
   };
 
-  const handleAddTransaction = async () => {
+  const handleStartEdit = (txn: TransactionRow) => {
+    setEditingTxnId(txn.id);
+    setFormData({
+      transaction_type: txn.transaction_type,
+      transaction_date: txn.transaction_date.slice(0, 10),
+      quantity: txn.quantity,
+      price_per_unit: txn.price_per_unit,
+      total_amount: txn.total_amount,
+      fees: txn.fees,
+      taxes: txn.taxes,
+      notes: txn.notes || '',
+    });
+    setShowAddForm(true);
+  };
+
+  const handleCancelForm = () => {
+    setShowAddForm(false);
+    setEditingTxnId(null);
+    resetForm();
+  };
+
+  const handleSubmitTransaction = async () => {
     if (!stock) return;
     if (!formData.transaction_date) {
       notify.error('Transaction date is required');
@@ -183,7 +212,7 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
 
     setSubmitting(true);
     try {
-      await transactionsAPI.create({
+      const payload = {
         asset_id: stock.id,
         transaction_type: formData.transaction_type,
         transaction_date: new Date(formData.transaction_date).toISOString(),
@@ -193,14 +222,22 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
         fees: formData.fees,
         taxes: formData.taxes,
         notes: formData.notes || undefined,
-      });
-      notify.success('Transaction added');
+      };
+
+      if (editingTxnId) {
+        await transactionsAPI.update(editingTxnId, payload);
+        notify.success('Transaction updated');
+      } else {
+        await transactionsAPI.create(payload);
+        notify.success('Transaction added');
+      }
       setShowAddForm(false);
+      setEditingTxnId(null);
       resetForm();
       await fetchTransactions();
       onTransactionsChanged();
     } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to add transaction'));
+      notify.error(getErrorMessage(err, editingTxnId ? 'Failed to update transaction' : 'Failed to add transaction'));
     } finally {
       setSubmitting(false);
     }
@@ -320,7 +357,15 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
                     <TableCell align="right">{formatCurrency(txn.total_amount)}</TableCell>
                     <TableCell align="right">{txn.fees > 0 ? formatCurrency(txn.fees) : '—'}</TableCell>
                     <TableCell align="right">{txn.taxes > 0 ? formatCurrency(txn.taxes) : '—'}</TableCell>
-                    <TableCell align="center">
+                    <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => handleStartEdit(txn)}
+                        title="Edit transaction"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
                       <IconButton
                         size="small"
                         color="error"
@@ -346,8 +391,12 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
           variant="outlined"
           startIcon={showAddForm ? <ExpandLessIcon /> : <AddIcon />}
           onClick={() => {
-            setShowAddForm(!showAddForm);
-            if (!showAddForm) resetForm();
+            if (showAddForm) {
+              handleCancelForm();
+            } else {
+              setShowAddForm(true);
+              resetForm();
+            }
           }}
           sx={{ mb: 1 }}
         >
@@ -356,7 +405,7 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
 
         <Collapse in={showAddForm}>
           <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
-            <Typography variant="subtitle2" gutterBottom>New Transaction</Typography>
+            <Typography variant="subtitle2" gutterBottom>{editingTxnId ? 'Edit Transaction' : 'New Transaction'}</Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField
@@ -390,7 +439,7 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
                   inputProps={{ min: 0, step: 'any' }}
                 />
                 <TextField
-                  label="Price Per Unit"
+                  label={`Price Per Unit (${currency})`}
                   type="number"
                   value={formData.price_per_unit || ''}
                   onChange={(e) => handleFormChange('price_per_unit', parseFloat(e.target.value) || 0)}
@@ -398,7 +447,7 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
                   inputProps={{ min: 0, step: 'any' }}
                 />
                 <TextField
-                  label="Total Amount"
+                  label={`Total Amount (${currency})`}
                   type="number"
                   value={formData.total_amount || ''}
                   onChange={(e) => handleFormChange('total_amount', parseFloat(e.target.value) || 0)}
@@ -409,7 +458,7 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
               </Box>
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField
-                  label="Fees"
+                  label={`Fees (${currency})`}
                   type="number"
                   value={formData.fees || ''}
                   onChange={(e) => handleFormChange('fees', parseFloat(e.target.value) || 0)}
@@ -417,7 +466,7 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
                   inputProps={{ min: 0, step: 'any' }}
                 />
                 <TextField
-                  label="Taxes"
+                  label={`Taxes (${currency})`}
                   type="number"
                   value={formData.taxes || ''}
                   onChange={(e) => handleFormChange('taxes', parseFloat(e.target.value) || 0)}
@@ -432,14 +481,14 @@ const StockTransactionDialog: React.FC<StockTransactionDialogProps> = ({
                 />
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                <Button onClick={() => { setShowAddForm(false); resetForm(); }}>Cancel</Button>
+                <Button onClick={handleCancelForm}>Cancel</Button>
                 <Button
                   variant="contained"
-                  onClick={handleAddTransaction}
+                  onClick={handleSubmitTransaction}
                   disabled={submitting}
-                  startIcon={submitting ? <CircularProgress size={18} /> : <AddIcon />}
+                  startIcon={submitting ? <CircularProgress size={18} /> : (editingTxnId ? <EditIcon /> : <AddIcon />)}
                 >
-                  {submitting ? 'Adding...' : 'Add Transaction'}
+                  {submitting ? (editingTxnId ? 'Updating...' : 'Adding...') : (editingTxnId ? 'Update Transaction' : 'Add Transaction')}
                 </Button>
               </Box>
             </Box>

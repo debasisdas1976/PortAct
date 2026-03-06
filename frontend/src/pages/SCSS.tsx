@@ -6,7 +6,8 @@ import {
 } from '@mui/material';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-import { Add, Edit, Delete } from '@mui/icons-material';
+import { Add, Edit, Delete, Label as LabelIcon, } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import { assetsAPI } from '../services/api';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
@@ -32,6 +33,8 @@ const SCSS: React.FC = () => {
   const selectedPortfolioId = useSelectedPortfolio();
   const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -128,6 +131,7 @@ const SCSS: React.FC = () => {
                   )}
                 </TableCell>
                 <TableCell align="center">
+                  <IconButton size="small" color="secondary" title="Attributes" onClick={() => { setTagAssetId(asset.id); setTagAssetName(asset.name); }}><LabelIcon fontSize="small" /></IconButton>
                   <IconButton size="small" color="primary" onClick={() => handleEdit(asset)} title="Edit"><Edit fontSize="small" /></IconButton>
                   <IconButton size="small" color="error" onClick={() => handleDelete(asset.id, asset.name)} title="Delete"><Delete fontSize="small" /></IconButton>
                 </TableCell>
@@ -158,6 +162,13 @@ const SCSS: React.FC = () => {
           <Button onClick={handleSave} variant="contained" disabled={saving}>{saving ? <CircularProgress size={24} /> : editingId ? 'Save' : 'Add'}</Button>
         </DialogActions>
       </Dialog>
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };

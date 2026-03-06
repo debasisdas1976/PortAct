@@ -70,8 +70,10 @@ const Help = React.lazy(() => import('./pages/Help'));
 const Portfolios = React.lazy(() => import('./pages/Portfolios'));
 const AssetTypesMaster = React.lazy(() => import('./pages/AssetTypesMaster'));
 const AssetInsight = React.lazy(() => import('./pages/AssetInsight'));
+const AttributeInsight = React.lazy(() => import('./pages/AttributeInsight'));
 const SIPCreator = React.lazy(() => import('./pages/SIPCreator'));
 const SuperAdmin = React.lazy(() => import('./pages/SuperAdmin'));
+const AssetAttributesMaster = React.lazy(() => import('./pages/AssetAttributesMaster'));
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -136,6 +138,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="statements" element={<Statements />} />
             <Route path="alerts" element={<AlertsWithProgress />} />
             <Route path="asset-insight" element={<AssetInsight />} />
+            <Route path="attribute-insight" element={<AttributeInsight />} />
             <Route path="sip-creator" element={<SIPCreator />} />
             <Route path="bank-accounts" element={<BankAccounts />} />
             <Route path="demat-accounts" element={<DematAccounts />} />
@@ -168,6 +171,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="banks-master" element={<BanksMaster />} />
             <Route path="brokers-master" element={<BrokersMaster />} />
             <Route path="asset-types" element={<AssetTypesMaster />} />
+            <Route path="asset-attributes" element={<AssetAttributesMaster />} />
             <Route path="nsc" element={<NSC />} />
             <Route path="kvp" element={<KVP />} />
             <Route path="scss" element={<SCSS />} />

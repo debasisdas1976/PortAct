@@ -384,6 +384,20 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                     new_price = result[0]
                     logger.info(f"Fetched commodity price via MF NAV for {asset.symbol} (ISIN: {asset.isin})")
             if not new_price:
+                # Fallback: try Yahoo Finance chart API (handles US-listed commodity
+                # ETFs like SLV, GLD that aren't on NSE). Convert USD→INR.
+                usd_price = get_us_stock_price(lookup_symbol)
+                if usd_price:
+                    usd_to_inr = get_usd_to_inr_rate()
+                    new_price = usd_price * usd_to_inr
+                    if asset.details is None:
+                        asset.details = {}
+                    asset.details['price_usd'] = usd_price
+                    asset.details['usd_to_inr_rate'] = usd_to_inr
+                    asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
+                    flag_modified(asset, 'details')
+                    logger.info(f"Fetched commodity price via US API for {lookup_symbol}: ${usd_price} (₹{new_price:.2f})")
+            if not new_price:
                 error_message = f"Failed to fetch price for commodity {asset.isin or lookup_symbol}"
         
         elif asset.asset_type == AssetType.CASH:

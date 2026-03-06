@@ -126,8 +126,9 @@ class MonthlyContributionService:
     @staticmethod
     def check_and_run_missed_contributions():
         """
-        Called at startup.  For each eligible user, look back up to 12 months
-        and create any missing PF contributions.  Also refreshes Gratuity.
+        Called at startup.  For each eligible user, catch up any missing PF
+        contributions since the last recorded transaction (not a blanket
+        12-month look-back).  Also refreshes Gratuity.
         """
         logger.info("Checking for missed monthly contributions…")
 
@@ -148,18 +149,32 @@ class MonthlyContributionService:
                 if not pf_assets:
                     continue
 
-                # Determine the earliest month to check: max(12 months ago, date_of_joining)
                 today = date.today()
-                twelve_months_ago = (today.replace(day=1) - timedelta(days=1))
-                twelve_months_ago = (twelve_months_ago - relativedelta(months=11)).replace(day=1)
-
-                start_month = twelve_months_ago
-                if user.date_of_joining and user.date_of_joining.replace(day=1) > start_month:
-                    start_month = user.date_of_joining.replace(day=1)
-
-                # Walk through each month up to (but not including) the current month
-                current_month = start_month
                 end_month = today.replace(day=1)  # 1st of current month
+
+                # Find the most recent PF transaction across all PF assets
+                # to determine where to start catching up from.
+                from sqlalchemy import func as sa_func
+                asset_ids = [a.id for a in pf_assets]
+                latest_txn = db.query(sa_func.max(Transaction.transaction_date)).filter(
+                    Transaction.asset_id.in_(asset_ids),
+                    Transaction.description.like("Employee PF contribution%"),
+                ).scalar()
+
+                if latest_txn:
+                    # Start from the month AFTER the latest transaction
+                    if hasattr(latest_txn, 'date'):
+                        latest_date = latest_txn.date()
+                    else:
+                        latest_date = latest_txn
+                    start_month = (latest_date.replace(day=1) + relativedelta(months=1))
+                else:
+                    # No PF transactions exist — only process the previous month,
+                    # not 12 months of history
+                    start_month = (end_month - timedelta(days=1)).replace(day=1)
+
+                # Walk through each missed month up to (but not including) the current month
+                current_month = start_month
 
                 while current_month < end_month:
                     try:
@@ -184,6 +199,70 @@ class MonthlyContributionService:
             logger.error(f"Error checking missed contributions: {exc}")
         finally:
             db.close()
+
+    @staticmethod
+    def run_missed_contributions_for_user(db: Session, user: User) -> dict:
+        """
+        Catch up missing PF contributions for a single user.
+        Returns a summary dict with counts.
+        """
+        result = {"pf_months_added": 0, "pf_skipped": 0, "pf_errors": 0, "gratuity_updated": False}
+
+        if not MonthlyContributionService._user_eligible_for_pf(user):
+            return result
+
+        pf_assets = db.query(Asset).filter(
+            Asset.user_id == user.id,
+            Asset.asset_type == AssetType.PF,
+            Asset.is_active == True,  # noqa: E712
+        ).all()
+
+        if not pf_assets:
+            return result
+
+        today = date.today()
+        end_month = today.replace(day=1)
+
+        from sqlalchemy import func as sa_func
+        asset_ids = [a.id for a in pf_assets]
+        latest_txn = db.query(sa_func.max(Transaction.transaction_date)).filter(
+            Transaction.asset_id.in_(asset_ids),
+            Transaction.description.like("Employee PF contribution%"),
+        ).scalar()
+
+        if latest_txn:
+            if hasattr(latest_txn, 'date'):
+                latest_date = latest_txn.date()
+            else:
+                latest_date = latest_txn
+            start_month = (latest_date.replace(day=1) + relativedelta(months=1))
+        else:
+            start_month = (end_month - timedelta(days=1)).replace(day=1)
+
+        current_month = start_month
+        while current_month < end_month:
+            try:
+                done = MonthlyContributionService._process_pf_for_user(
+                    db, user, current_month,
+                )
+                if done:
+                    result["pf_months_added"] += 1
+                else:
+                    result["pf_skipped"] += 1
+            except Exception as exc:
+                result["pf_errors"] += 1
+                logger.error(
+                    f"Missed PF catch-up error user={user.id} "
+                    f"month={_month_label(current_month)}: {exc}"
+                )
+            current_month += relativedelta(months=1)
+
+        try:
+            result["gratuity_updated"] = MonthlyContributionService._process_gratuity_for_user(db, user)
+        except Exception as exc:
+            logger.error(f"Gratuity refresh error user={user.id}: {exc}")
+
+        return result
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -227,8 +306,9 @@ class MonthlyContributionService:
         employer_pct = user.pf_employer_pct if user.pf_employer_pct is not None else 12.0
         employee_amount = round(user.basic_salary * employee_pct / 100, 2)
         employer_amount = round(user.basic_salary * employer_pct / 100, 2)
+        # Use 1st of the month — consistent with PF statement parser
         txn_date = datetime.combine(
-            _last_day_of_month(target_month),
+            target_month.replace(day=1),
             datetime.min.time(),
         ).replace(tzinfo=timezone.utc)
 

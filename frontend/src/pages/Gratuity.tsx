@@ -26,7 +26,8 @@ import {
   FormControlLabel,
   MenuItem,
 } from '@mui/material';
-import { Add, Edit, Delete, Work as GratuityIcon, InfoOutlined } from '@mui/icons-material';
+import { Add, Edit, Delete, Work as GratuityIcon, InfoOutlined, Label as LabelIcon, } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
@@ -78,6 +79,8 @@ const Gratuity: React.FC = () => {
   const selectedPortfolioId = useSelectedPortfolio();
   const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [summary, setSummary] = useState<GratuitySummary | null>(null);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -309,6 +312,9 @@ const Gratuity: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                        <IconButton size="small" color="secondary" title="Attributes" onClick={() => { setTagAssetId(account.id); setTagAssetName(account.nickname); }}>
+                          <LabelIcon fontSize="small" />
+                        </IconButton>
                         <IconButton size="small" color="info" onClick={() => handleOpenEdit(account)} title="Edit">
                           <Edit fontSize="small" />
                         </IconButton>
@@ -412,6 +418,13 @@ const Gratuity: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };

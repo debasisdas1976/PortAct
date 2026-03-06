@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from typing import Optional
 from datetime import date, timedelta
@@ -15,6 +15,7 @@ from app.models.portfolio_snapshot import AssetSnapshot
 from app.models.bank_account import BankAccount
 from app.models.demat_account import DematAccount
 from app.models.crypto_account import CryptoAccount
+from app.models.asset_attribute import AssetAttribute, AssetAttributeValue, AssetAttributeAssignment
 from app.services.xirr_service import build_cash_flows_from_transactions, calculate_xirr
 
 router = APIRouter()
@@ -330,3 +331,108 @@ async def get_category_xirr_trend(
         })
 
     return {"period_days": days, "data": data}
+
+
+@router.get("/attribute-allocation")
+async def get_attribute_allocation(
+    portfolio_id: Optional[int] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns current_value aggregated by each attribute's values.
+    For each active attribute, produces a list of { label, color, current_value, asset_count }.
+    Includes an 'Unassigned' bucket for assets without a value for that attribute.
+    """
+    # 1. Fetch all active assets
+    asset_q = db.query(Asset).filter(
+        Asset.user_id == current_user.id,
+        Asset.is_active == True,
+    )
+    if portfolio_id is not None:
+        asset_q = asset_q.filter(Asset.portfolio_id == portfolio_id)
+    assets = asset_q.all()
+
+    if not assets:
+        return {"attributes": [], "total_portfolio_value": 0}
+
+    for asset in assets:
+        asset.calculate_metrics()
+
+    asset_map = {a.id: a for a in assets}
+    asset_ids = list(asset_map.keys())
+
+    # 2. Fetch active attributes with values
+    attributes = (
+        db.query(AssetAttribute)
+        .options(joinedload(AssetAttribute.values))
+        .filter(
+            AssetAttribute.user_id == current_user.id,
+            AssetAttribute.is_active == True,
+        )
+        .order_by(AssetAttribute.sort_order, AssetAttribute.display_label)
+        .all()
+    )
+
+    if not attributes:
+        return {"attributes": [], "total_portfolio_value": 0}
+
+    # 3. Fetch all assignments for these assets
+    assignments = (
+        db.query(AssetAttributeAssignment)
+        .filter(AssetAttributeAssignment.asset_id.in_(asset_ids))
+        .all()
+    )
+
+    # Index: (attribute_id, asset_id) -> attribute_value_id
+    assign_map = {}
+    for a in assignments:
+        assign_map[(a.attribute_id, a.asset_id)] = a.attribute_value_id
+
+    # 4. Build result per attribute
+    total_portfolio_value = sum(a.current_value or 0 for a in assets)
+    result = []
+
+    for attr in attributes:
+        value_map = {v.id: v for v in attr.values}
+        buckets: dict = defaultdict(lambda: {"current_value": 0.0, "asset_count": 0})
+        unassigned = {"current_value": 0.0, "asset_count": 0}
+
+        for asset_id, asset in asset_map.items():
+            val_id = assign_map.get((attr.id, asset_id))
+            if val_id and val_id in value_map:
+                buckets[val_id]["current_value"] += asset.current_value or 0
+                buckets[val_id]["asset_count"] += 1
+            else:
+                unassigned["current_value"] += asset.current_value or 0
+                unassigned["asset_count"] += 1
+
+        values_data = []
+        for v in sorted(attr.values, key=lambda x: x.sort_order):
+            if not v.is_active:
+                continue
+            b = buckets.get(v.id, {"current_value": 0.0, "asset_count": 0})
+            values_data.append({
+                "label": v.label,
+                "color": v.color,
+                "current_value": round(b["current_value"], 2),
+                "asset_count": b["asset_count"],
+            })
+
+        if unassigned["asset_count"] > 0:
+            values_data.append({
+                "label": "Unassigned",
+                "color": "#9E9E9E",
+                "current_value": round(unassigned["current_value"], 2),
+                "asset_count": unassigned["asset_count"],
+            })
+
+        result.append({
+            "attribute_id": attr.id,
+            "attribute_name": attr.name,
+            "display_label": attr.display_label,
+            "icon": attr.icon,
+            "values": values_data,
+        })
+
+    return {"attributes": result, "total_portfolio_value": round(total_portfolio_value, 2)}

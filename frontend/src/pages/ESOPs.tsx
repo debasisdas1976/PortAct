@@ -27,16 +27,18 @@ import {
   Chip,
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Refresh as RefreshIcon,
-  TrendingUp,
-  TrendingDown,
-  WorkOutline,
-  KeyboardArrowDown,
-  KeyboardArrowRight,
+ Add as AddIcon,
+ Edit as EditIcon,
+ Delete as DeleteIcon,
+ Refresh as RefreshIcon,
+ TrendingUp,
+ TrendingDown,
+ WorkOutline,
+ KeyboardArrowDown,
+ KeyboardArrowRight,
+ Label as LabelIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import { Link as RouterLink } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -102,6 +104,8 @@ const buildDematLabel = (da: DematAccount) => {
 
 const ESOPs: React.FC = () => {
   const [assets, setAssets] = useState<ESOPAsset[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
@@ -533,7 +537,10 @@ const ESOPs: React.FC = () => {
                             <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(asset.id, asset.symbol || asset.name)} disabled={updatingAssetId === asset.id}>
                               {updatingAssetId === asset.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                             </IconButton>
-                            <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(asset)}>
+                                                        <IconButton size="small" color="secondary" title="Attributes" onClick={(e) => { e.stopPropagation(); setTagAssetId(asset.id); setTagAssetName(asset.name); }}>
+                              <LabelIcon fontSize="small" />
+                            </IconButton>
+<IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(asset)}>
                               <EditIcon fontSize="small" />
                             </IconButton>
                             <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(asset)}>
@@ -661,6 +668,13 @@ const ESOPs: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };

@@ -26,9 +26,15 @@ import {
   Tooltip,
   TableSortLabel,
 } from '@mui/material';
-import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, AccountBalance, Refresh, Warning, CheckCircle, CameraAlt, Error as ErrorIcon } from '@mui/icons-material';
+import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, AccountBalance, Refresh, Warning, CheckCircle, CameraAlt, Error as ErrorIcon, HourglassEmpty } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchAssets } from '../store/slices/assetsSlice';
+import {
+  setActiveSession,
+  clearActiveSession,
+  startPriceRefreshPolling,
+  checkActivePriceRefresh,
+} from '../store/slices/priceRefreshSlice';
 import api, { assetsAPI, assetTypesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -172,7 +178,12 @@ const Assets: React.FC = () => {
   const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
   const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematAccountsLoading, setDematAccountsLoading] = useState(false);
-  const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const {
+    activeSessionId: priceSessionId,
+    lastProgress: priceProgress,
+    polling: pricePolling,
+  } = useSelector((state: RootState) => state.priceRefresh);
+  const refreshingPrices = !!priceSessionId && (pricePolling || priceProgress?.status === 'running');
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [assetTypes, setAssetTypes] = useState<{ value: string; label: string; category: string; allowedConversions: string[] | null }[]>([]);
@@ -184,7 +195,31 @@ const Assets: React.FC = () => {
     fetchBankAccounts();
     fetchDematAccounts();
     fetchAssetTypes();
+    dispatch(checkActivePriceRefresh());
   }, [dispatch, selectedPortfolioId]);
+
+  // Handle price refresh completion
+  useEffect(() => {
+    if (!priceProgress) return undefined;
+    const st = priceProgress.status;
+    if (st === 'completed' || st === 'failed') {
+      dispatch(fetchAssets(selectedPortfolioId));
+
+      const { updated_assets, failed_assets, total_assets } = priceProgress;
+      if (failed_assets > 0) {
+        notify.success(`Prices updated: ${updated_assets}/${total_assets} succeeded, ${failed_assets} failed`);
+      } else {
+        notify.success(`All ${updated_assets} asset prices updated successfully!`);
+      }
+
+      // Clear session after short delay so user sees final icon states
+      const timer = setTimeout(() => {
+        dispatch(clearActiveSession());
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [priceProgress?.status]);
 
   const fetchAssetTypes = async () => {
     try {
@@ -199,19 +234,24 @@ const Assets: React.FC = () => {
 
   const handleRefreshPrices = async () => {
     try {
-      setRefreshingPrices(true);
-      await api.post('/prices/update', {});
-      
-      notify.success('Price update triggered! Prices will be updated in the background.');
+      const response = await api.post('/assets/update-all-prices', {});
+      const { session_id, status: respStatus } = response.data;
 
-      // Refresh assets after a short delay to show updated prices
-      setTimeout(() => {
-        dispatch(fetchAssets(selectedPortfolioId));
-      }, 3000);
+      if (respStatus === 'already_running') {
+        dispatch(setActiveSession(session_id));
+        dispatch(startPriceRefreshPolling());
+        return;
+      }
+
+      if (!session_id) {
+        notify.info(response.data.message || 'No price-updatable assets found.');
+        return;
+      }
+
+      dispatch(setActiveSession(session_id));
+      dispatch(startPriceRefreshPolling());
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to refresh prices'));
-    } finally {
-      setRefreshingPrices(false);
     }
   };
 
@@ -801,7 +841,7 @@ const Assets: React.FC = () => {
               const needsIsin = assetType === 'stock' || assetType === 'equity_mutual_fund' || assetType === 'hybrid_mutual_fund' || assetType === 'debt_mutual_fund';
               const missingIsin = needsIsin && !group.instances[0]?.isin;
               const assetCategory = assetTypes.find(t => t.value.toLowerCase() === assetType)?.category || '';
-              const hideRefreshPrice = assetType === 'cash' || (['Other', 'Fixed Income', 'Govt. Schemes'].includes(assetCategory) && assetType !== 'debt_mutual_fund');
+              const hideRefreshPrice = assetType === 'cash' || (['Other', 'Fixed Income', 'Govt. Schemes', 'Retirement Plans', 'Cash'].includes(assetCategory) && assetType !== 'debt_mutual_fund');
 
               return (
                 <React.Fragment key={group.groupKey}>
@@ -863,21 +903,62 @@ const Assets: React.FC = () => {
                     <TableCell align="right">
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
                         {formatCurrency(currentPrice)}
-                        {!hideRefreshPrice && (
-                          group.instances.some(i => i.price_update_failed) ? (
-                            <Tooltip title={group.instances.find(i => i.price_update_failed)?.price_update_error || "Price update failed"} arrow>
-                              <ErrorIcon fontSize="small" color="error" />
-                            </Tooltip>
-                          ) : group.instances.some(i => i.last_price_update) ? (
-                            <Tooltip title={`Last updated: ${new Date(group.instances[0].last_price_update!).toLocaleString()}`} arrow>
-                              <CheckCircle fontSize="small" color="success" sx={{ opacity: 0.6 }} />
-                            </Tooltip>
-                          ) : (
+                        {!hideRefreshPrice && (() => {
+                          // Check if a price refresh session is active and find this asset's progress
+                          const progressItem = priceProgress?.status === 'running' || (priceProgress && priceSessionId)
+                            ? priceProgress.assets?.find((ap: any) =>
+                                group.instances.some((inst: any) => inst.id === ap.asset_id)
+                              )
+                            : null;
+
+                          if (progressItem) {
+                            if (progressItem.status === 'pending') {
+                              return (
+                                <Tooltip title="Waiting for price update..." arrow>
+                                  <HourglassEmpty fontSize="small" sx={{ opacity: 0.5, color: 'warning.main' }} />
+                                </Tooltip>
+                              );
+                            }
+                            if (progressItem.status === 'processing') {
+                              return <CircularProgress size={16} />;
+                            }
+                            if (progressItem.status === 'error') {
+                              return (
+                                <Tooltip title={progressItem.error_message || "Price update failed"} arrow>
+                                  <ErrorIcon fontSize="small" color="error" />
+                                </Tooltip>
+                              );
+                            }
+                            if (progressItem.status === 'completed') {
+                              return (
+                                <Tooltip title="Price updated just now" arrow>
+                                  <CheckCircle fontSize="small" color="success" />
+                                </Tooltip>
+                              );
+                            }
+                          }
+
+                          // Default: use DB-persisted state
+                          if (group.instances.some(i => i.price_update_failed)) {
+                            return (
+                              <Tooltip title={group.instances.find(i => i.price_update_failed)?.price_update_error || "Price update failed"} arrow>
+                                <ErrorIcon fontSize="small" color="error" />
+                              </Tooltip>
+                            );
+                          }
+                          if (group.instances.some(i => i.last_price_update)) {
+                            return (
+                              <Tooltip title={`Last updated: ${new Date(group.instances[0].last_price_update!).toLocaleString()}`} arrow>
+                                <CheckCircle fontSize="small" color="success" sx={{ opacity: 0.6 }} />
+                              </Tooltip>
+                            );
+                          }
+                          return (
                             <Tooltip title="Price never updated - click refresh to update" arrow>
                               <Warning fontSize="small" sx={{ opacity: 0.4, color: 'grey.500' }} />
                             </Tooltip>
-                          )
-                        )}
+                          );
+                        })()}
                       </Box>
                     </TableCell>
                     <TableCell align="right">{formatCurrency(group.totalInvested)}</TableCell>
@@ -1081,6 +1162,11 @@ const Assets: React.FC = () => {
             >
               {refreshingPrices ? 'Refreshing...' : 'Refresh Prices'}
             </Button>
+            {priceProgress && priceProgress.status === 'running' && (
+              <Typography variant="caption" color="primary" fontWeight="bold">
+                Updated {priceProgress.updated_assets + priceProgress.failed_assets} of {priceProgress.total_assets} assets
+              </Typography>
+            )}
           </Box>
         </Box>
       </Box>

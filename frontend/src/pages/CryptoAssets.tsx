@@ -18,15 +18,17 @@ import {
   Chip,
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Refresh as RefreshIcon,
-  TrendingUp,
-  TrendingDown,
-  KeyboardArrowDown,
-  KeyboardArrowRight,
+ Add as AddIcon,
+ Edit as EditIcon,
+ Delete as DeleteIcon,
+ Refresh as RefreshIcon,
+ TrendingUp,
+ TrendingDown,
+ KeyboardArrowDown,
+ KeyboardArrowRight,
+ Label as LabelIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import { useSearchParams } from 'react-router-dom';
 import api, { cryptoExchangesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
@@ -81,6 +83,8 @@ const buildCryptoLabel = (ca: CryptoAccount, exchangeMap: Record<string, string>
 
 const CryptoAssets: React.FC = () => {
   const [assets, setAssets] = useState<CryptoAsset[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [cryptoLabelMap, setCryptoLabelMap] = useState<Record<number, string>>({});
   const [cryptoAccountOptions, setCryptoAccountOptions] = useState<CryptoAccountOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -380,7 +384,10 @@ const CryptoAssets: React.FC = () => {
                           <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(asset.id, asset.symbol || asset.name)} disabled={updatingAssetId === asset.id}>
                             {updatingAssetId === asset.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                           </IconButton>
-                          <IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(asset)}>
+                                                    <IconButton size="small" color="secondary" title="Attributes" onClick={(e) => { e.stopPropagation(); setTagAssetId(asset.id); setTagAssetName(asset.name); }}>
+                            <LabelIcon fontSize="small" />
+                          </IconButton>
+<IconButton size="small" color="primary" title="Edit" onClick={() => handleOpenDialog(asset)}>
                             <EditIcon fontSize="small" />
                           </IconButton>
                           <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(asset)}>
@@ -403,6 +410,13 @@ const CryptoAssets: React.FC = () => {
         onSaved={fetchData}
         editingAsset={editingAsset}
         cryptoAccounts={cryptoAccountOptions}
+      />
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
       />
     </Box>
   );

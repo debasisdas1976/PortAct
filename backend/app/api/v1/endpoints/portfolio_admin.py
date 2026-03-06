@@ -30,11 +30,12 @@ from app.models.alert import Alert
 from app.models.portfolio import Portfolio
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
 from app.models.mutual_fund_holding import MutualFundHolding
+from app.models.asset_attribute import AssetAttribute, AssetAttributeValue, AssetAttributeAssignment
 
 router = APIRouter()
 
-EXPORT_VERSION = "5.0"
-SUPPORTED_VERSIONS = {"1.0", "2.0", "3.0", "4.0", "5.0"}
+EXPORT_VERSION = "6.0"
+SUPPORTED_VERSIONS = {"1.0", "2.0", "3.0", "4.0", "5.0", "6.0"}
 
 
 # ─── helpers ────────────────────────────────────────────────────────────────
@@ -99,6 +100,18 @@ async def export_portfolio(
         db.query(MutualFundHolding).filter(MutualFundHolding.user_id == uid).all()
     )
 
+    # Asset attributes, values, and assignments
+    user_asset_attributes = db.query(AssetAttribute).filter(AssetAttribute.user_id == uid).all()
+    attr_ids = [a.id for a in user_asset_attributes]
+    user_attribute_values = (
+        db.query(AssetAttributeValue).filter(AssetAttributeValue.attribute_id.in_(attr_ids)).all()
+        if attr_ids else []
+    )
+    user_attribute_assignments = (
+        db.query(AssetAttributeAssignment).filter(AssetAttributeAssignment.asset_id.in_(asset_ids)).all()
+        if asset_ids else []
+    )
+
     # Portfolio snapshots with their nested asset snapshots
     portfolio_snapshots = (
         db.query(PortfolioSnapshot).filter(PortfolioSnapshot.user_id == uid).all()
@@ -124,6 +137,9 @@ async def export_portfolio(
         "mutual_fund_holdings": [_to_dict(r) for r in mutual_fund_holdings],
         "alerts": [_to_dict(r) for r in alerts],
         "portfolio_snapshots": snapshots_data,
+        "asset_attributes": [_to_dict(r) for r in user_asset_attributes],
+        "asset_attribute_values": [_to_dict(r) for r in user_attribute_values],
+        "asset_attribute_assignments": [_to_dict(r) for r in user_attribute_assignments],
     }
 
     json_bytes = json.dumps(payload, default=str, indent=2).encode("utf-8")
@@ -170,7 +186,8 @@ async def restore_portfolio(
         k: {"imported": 0, "skipped": 0}
         for k in ("portfolios", "bank_accounts", "demat_accounts", "crypto_accounts",
                   "assets", "expense_categories", "expenses", "transactions",
-                  "mutual_fund_holdings", "alerts", "portfolio_snapshots", "asset_snapshots")
+                  "mutual_fund_holdings", "alerts", "portfolio_snapshots", "asset_snapshots",
+                  "asset_attributes", "asset_attribute_values", "asset_attribute_assignments")
     }
 
     # old_id → new_id maps
@@ -180,6 +197,8 @@ async def restore_portfolio(
     ca_map: Dict[int, int] = {}
     cat_map: Dict[int, int] = {}
     asset_map: Dict[int, int] = {}
+    attr_map: Dict[int, int] = {}
+    attr_val_map: Dict[int, int] = {}
 
     # ── 0. Portfolios ────────────────────────────────────────────────────────
     # Ensure the user has a default portfolio (needed for v1/v2 backups or
@@ -651,6 +670,82 @@ async def restore_portfolio(
             )
             db.add(obj)
             stats["alerts"]["imported"] += 1
+    db.flush()
+
+    # ── 8b. Asset attributes ──────────────────────────────────────────────────
+    for r in data.get("asset_attributes", []):
+        old_id = r.get("id")
+        existing = db.query(AssetAttribute).filter(
+            AssetAttribute.user_id == uid,
+            AssetAttribute.name == r.get("name"),
+        ).first()
+        if existing:
+            attr_map[old_id] = existing.id
+            stats["asset_attributes"]["skipped"] += 1
+        else:
+            obj = AssetAttribute(
+                user_id=uid,
+                name=r.get("name"),
+                display_label=r.get("display_label"),
+                description=r.get("description"),
+                icon=r.get("icon"),
+                sort_order=r.get("sort_order", 0),
+                is_active=r.get("is_active", True),
+            )
+            db.add(obj)
+            db.flush()
+            attr_map[old_id] = obj.id
+            stats["asset_attributes"]["imported"] += 1
+
+    # ── 8c. Asset attribute values ────────────────────────────────────────────
+    for r in data.get("asset_attribute_values", []):
+        old_id = r.get("id")
+        new_attr_id = attr_map.get(r.get("attribute_id"))
+        if not new_attr_id:
+            stats["asset_attribute_values"]["skipped"] += 1
+            continue
+        existing = db.query(AssetAttributeValue).filter(
+            AssetAttributeValue.attribute_id == new_attr_id,
+            AssetAttributeValue.label == r.get("label"),
+        ).first()
+        if existing:
+            attr_val_map[old_id] = existing.id
+            stats["asset_attribute_values"]["skipped"] += 1
+        else:
+            obj = AssetAttributeValue(
+                attribute_id=new_attr_id,
+                label=r.get("label"),
+                color=r.get("color"),
+                sort_order=r.get("sort_order", 0),
+                is_active=r.get("is_active", True),
+            )
+            db.add(obj)
+            db.flush()
+            attr_val_map[old_id] = obj.id
+            stats["asset_attribute_values"]["imported"] += 1
+
+    # ── 8d. Asset attribute assignments ───────────────────────────────────────
+    for r in data.get("asset_attribute_assignments", []):
+        new_asset_id = asset_map.get(r.get("asset_id"))
+        new_attr_id = attr_map.get(r.get("attribute_id"))
+        new_val_id = attr_val_map.get(r.get("attribute_value_id"))
+        if not (new_asset_id and new_attr_id and new_val_id):
+            stats["asset_attribute_assignments"]["skipped"] += 1
+            continue
+        existing = db.query(AssetAttributeAssignment).filter(
+            AssetAttributeAssignment.asset_id == new_asset_id,
+            AssetAttributeAssignment.attribute_id == new_attr_id,
+        ).first()
+        if existing:
+            stats["asset_attribute_assignments"]["skipped"] += 1
+        else:
+            obj = AssetAttributeAssignment(
+                asset_id=new_asset_id,
+                attribute_id=new_attr_id,
+                attribute_value_id=new_val_id,
+            )
+            db.add(obj)
+            stats["asset_attribute_assignments"]["imported"] += 1
     db.flush()
 
     # ── 9. Portfolio snapshots ────────────────────────────────────────────────

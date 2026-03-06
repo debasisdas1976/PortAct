@@ -57,6 +57,7 @@ import {
   CurrencyExchange as CurrencyExchangeIcon,
   Token as TokenIcon,
   Build as BuildIcon,
+  Label as LabelIcon,
 } from '@mui/icons-material';
 
 // ── Constants ──
@@ -184,6 +185,7 @@ export const assetGroups: AssetGroup[] = [
 
 const insightsItems: NavItem[] = [
   { text: 'Asset Insight', icon: React.createElement(BarChartIcon), path: '/asset-insight' },
+  { text: 'Attribute Insight', icon: React.createElement(LabelIcon), path: '/attribute-insight' },
   { text: 'Alerts', icon: React.createElement(NotificationsIcon), path: '/alerts' },
   { text: 'MF Holdings', icon: React.createElement(InsightsIcon), path: '/mutual-fund-holdings' },
 ];
@@ -211,6 +213,7 @@ const adminItems: NavItem[] = [
 
 const masterDataItems: NavItem[] = [
   { text: 'Asset Types', icon: React.createElement(ViewListIcon), path: '/asset-types' },
+  { text: 'Asset Attributes', icon: React.createElement(LabelIcon), path: '/asset-attributes' },
   { text: 'Banks', icon: React.createElement(AccountBalanceIcon), path: '/banks-master' },
   { text: 'Brokers', icon: React.createElement(ShowChartIcon), path: '/brokers-master' },
   { text: 'Crypto Exchanges', icon: React.createElement(CryptoIcon), path: '/crypto-exchanges' },

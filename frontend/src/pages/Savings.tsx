@@ -28,14 +28,16 @@ import {
   Chip,
 } from '@mui/material';
 import {
-  AccountBalance,
-  Add as AddIcon,
-  CloudUpload as UploadIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Visibility,
-  VisibilityOff,
+ AccountBalance,
+ Add as AddIcon,
+ CloudUpload as UploadIcon,
+ Delete as DeleteIcon,
+ Edit as EditIcon,
+ Visibility,
+ VisibilityOff,
+ Label as LabelIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api, { banksAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -62,6 +64,8 @@ const Savings: React.FC = () => {
   const selectedPortfolioId = useSelectedPortfolio();
   const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   // Add/Edit account dialog state
@@ -391,6 +395,9 @@ const Savings: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell align="center">
+                    <IconButton size="small" color="secondary" title="Attributes" onClick={() => { setTagAssetId(account.id); setTagAssetName(account.nickname || account.bank_name); }}>
+                      <LabelIcon fontSize="small" />
+                    </IconButton>
                     <IconButton
                       size="small"
                       color="primary"
@@ -630,6 +637,13 @@ const Savings: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };

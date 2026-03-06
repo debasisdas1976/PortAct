@@ -33,15 +33,17 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  Add,
-  AutorenewOutlined,
-  ChevronRight,
-  Delete,
-  Edit,
-  ExpandMore,
-  Refresh,
-  Savings,
+ Add,
+ AutorenewOutlined,
+ ChevronRight,
+ Delete,
+ Edit,
+ ExpandMore,
+ Refresh,
+ Savings,
+ Label as LabelIcon,
 } from '@mui/icons-material';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -101,6 +103,8 @@ const RecurringDeposit: React.FC = () => {
   const selectedPortfolioId = useSelectedPortfolio();
   const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [rds, setRds] = useState<RDAccount[]>([]);
+  const [tagAssetId, setTagAssetId] = useState<number | null>(null);
+  const [tagAssetName, setTagAssetName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [txMap, setTxMap] = useState<Record<number, RDTx[]>>({});
@@ -481,6 +485,11 @@ const RecurringDeposit: React.FC = () => {
                             )}
                           </IconButton>
                         </span>
+                      </Tooltip>
+                      <Tooltip title="Attributes">
+                        <IconButton size="small" color="secondary" onClick={() => { setTagAssetId(rd.id); setTagAssetName(rd.nickname || rd.bank_name); }}>
+                          <LabelIcon fontSize="small" />
+                        </IconButton>
                       </Tooltip>
                       <Tooltip title="Edit">
                         <IconButton size="small" onClick={() => openEditRd(rd)}>
@@ -895,6 +904,13 @@ const RecurringDeposit: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+  
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={() => setTagAssetId(null)}
+      />
     </Box>
   );
 };
