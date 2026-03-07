@@ -97,3 +97,8 @@ class AssetAttributeAssignmentResponse(BaseModel):
 
 class BulkAssignmentUpdate(BaseModel):
     assignments: List[AssetAttributeAssignmentCreate]
+
+
+class BulkMultiAssetAssignmentUpdate(BaseModel):
+    asset_ids: List[int]
+    assignments: List[AssetAttributeAssignmentCreate]

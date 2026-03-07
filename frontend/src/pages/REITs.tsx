@@ -1,15 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Box, Card, CardContent, CircularProgress, Grid, MenuItem, Paper, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, Typography, Chip, Alert, Button,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton,
+  Box, Card, CardContent, CircularProgress, Grid, Paper, Table, TableBody,
+  TableCell, TableContainer, TableHead, TableRow, Typography, Chip, Button,
+  IconButton,
 } from '@mui/material';
 import { Add, Edit, Delete, Refresh, TrendingUp, TrendingDown, Label as LabelIcon, } from '@mui/icons-material';
 import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
-import { assetsAPI } from '../services/api';
+import GenericAssetEditDialog from '../components/GenericAssetEditDialog';
 import api from '../services/api';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
@@ -26,7 +24,6 @@ interface DematAccount { id: number; broker_name: string; account_id: string; ac
 
 const ASSET_TYPE = 'reit';
 const PAGE_TITLE = 'REITs';
-const EMPTY_FORM = { name: '', symbol: '', isin: '', quantity: '', purchase_price: '', current_price: '', xirr: null as number | null, broker_name: '', account_id: '', notes: '', portfolio_id: '' as number | '' };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
@@ -40,26 +37,25 @@ const buildDematLabel = (da: DematAccount) => {
 const REITs: React.FC = () => {
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
-  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [tagAssetId, setTagAssetId] = useState<number | null>(null);
   const [tagAssetName, setTagAssetName] = useState<string>('');
+  const [dematAccounts, setDematAccounts] = useState<DematAccount[]>([]);
   const [dematLabelMap, setDematLabelMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<AssetItem | null>(null);
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
-  const [dialogError, setDialogError] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [assetsRes, dematRes] = await Promise.all([api.get('/assets/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} }), api.get('/demat-accounts/')]);
       setAssets((assetsRes.data as AssetItem[]).filter((a) => a.asset_type?.toLowerCase() === ASSET_TYPE));
+      const dematList = dematRes.data as DematAccount[];
+      setDematAccounts(dematList);
       const labelMap: Record<number, string> = {};
-      for (const da of dematRes.data as DematAccount[]) labelMap[da.id] = buildDematLabel(da);
+      for (const da of dematList) labelMap[da.id] = buildDematLabel(da);
       setDematLabelMap(labelMap);
     } catch (err) { notify.error(getErrorMessage(err, 'Failed to load data')); } finally { setLoading(false); }
   }, [notify, selectedPortfolioId]);
@@ -104,29 +100,16 @@ const REITs: React.FC = () => {
     }
   };
 
-  const handleAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') }); setDialogOpen(true); };
-  const handleEdit = (asset: AssetItem) => {
-    setEditingId(asset.id);
-    setForm({ name: asset.name || '', symbol: asset.symbol || '', isin: (asset as any).isin || '', quantity: String(asset.quantity || ''), purchase_price: String(asset.purchase_price || ''), current_price: String(asset.current_price || ''), xirr: asset.xirr ?? null, broker_name: asset.broker_name || '', account_id: asset.account_id || '', notes: asset.notes || '', portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
+  const handleOpenDialog = (asset?: AssetItem) => {
+    setEditingAsset(asset || null);
     setDialogOpen(true);
   };
-  const handleSave = async () => {
-    if (!form.name) { setDialogError('Name is required'); return; }
-    setDialogError('');
-    const qty = parseFloat(form.quantity) || 1;
-    const buyPrice = parseFloat(form.purchase_price) || 0;
-    const curPrice = parseFloat(form.current_price) || buyPrice;
-    const payload = { asset_type: ASSET_TYPE, name: form.name, symbol: form.symbol || undefined, isin: form.isin || undefined, quantity: qty, purchase_price: buyPrice, current_price: curPrice, total_invested: qty * buyPrice, ...(form.xirr != null ? { xirr: form.xirr } : {}), broker_name: form.broker_name || undefined, account_id: form.account_id || undefined, notes: form.notes || undefined, portfolio_id: form.portfolio_id || undefined };
-    try {
-      setSaving(true);
-      if (editingId) { await assetsAPI.update(editingId, payload); } else { await assetsAPI.create(payload); }
-      notify.success(editingId ? 'REIT updated successfully' : 'REIT added successfully');
-      setDialogOpen(false); fetchData();
-    } catch (err) { notify.error(getErrorMessage(err, 'Failed to save')); } finally { setSaving(false); }
-  };
+
+  const handleCloseDialog = () => { setDialogOpen(false); setEditingAsset(null); };
+
   const handleDelete = async (id: number, name: string) => {
     if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    try { await assetsAPI.delete(id); notify.success('REIT deleted successfully'); fetchData(); }
+    try { await api.delete(`/assets/${id}`); notify.success('REIT deleted successfully'); fetchData(); }
     catch (err) { notify.error(getErrorMessage(err, 'Failed to delete')); }
   };
 
@@ -136,7 +119,7 @@ const REITs: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h4">{PAGE_TITLE}</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>Add</Button>
+        <Button variant="contained" startIcon={<Add />} onClick={() => handleOpenDialog()}>Add</Button>
       </Box>
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}><Card sx={{ width: '100%' }}><CardContent><Typography color="text.secondary" variant="body2">Holdings</Typography><Typography variant="h4">{assets.length}</Typography></CardContent></Card></Grid>
@@ -195,7 +178,7 @@ const REITs: React.FC = () => {
                       <TableCell align="center">
                         <IconButton size="small" color="info" title="Refresh Price" onClick={() => handlePriceUpdate(asset.id, asset.symbol || asset.name)} disabled={updatingAssetId === asset.id}>{updatingAssetId === asset.id ? <CircularProgress size={16} /> : <Refresh fontSize="small" />}</IconButton>
                         <IconButton size="small" color="secondary" title="Attributes" onClick={() => { setTagAssetId(asset.id); setTagAssetName(asset.name); }}><LabelIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" color="primary" onClick={() => handleEdit(asset)} title="Edit"><Edit fontSize="small" /></IconButton>
+                        <IconButton size="small" color="primary" onClick={() => handleOpenDialog(asset)} title="Edit"><Edit fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => handleDelete(asset.id, asset.name)} title="Delete"><Delete fontSize="small" /></IconButton>
                       </TableCell>
                     </TableRow>
@@ -206,42 +189,17 @@ const REITs: React.FC = () => {
           </TableBody>
         </Table>
       </TableContainer>
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingId ? 'Edit' : 'Add'} {PAGE_TITLE}</DialogTitle>
-        <DialogContent>
-          {dialogError && <Alert severity="error" sx={{ mb: 2 }}>{dialogError}</Alert>}
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            <Grid item xs={12}><TextField fullWidth label="Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Symbol / Ticker" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="ISIN" value={form.isin} onChange={(e) => setForm({ ...form, isin: e.target.value })} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Quantity" type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} inputProps={{ min: 0, step: '0.0001' }} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Purchase Price" type="number" value={form.purchase_price} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} inputProps={{ min: 0, step: '0.01' }} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Current Price" type="number" value={form.current_price} onChange={(e) => setForm({ ...form, current_price: e.target.value })} inputProps={{ min: 0, step: '0.01' }} helperText="Leave empty to use purchase price" /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Broker" value={form.broker_name} onChange={(e) => setForm({ ...form, broker_name: e.target.value })} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Account ID" value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })} /></Grid>
-            <Grid item xs={12}><TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Grid>
-            <Grid item xs={12} sm={6}><TextField label="XIRR (%)" type="number" value={form.xirr ?? ''} onChange={(e) => setForm({ ...form, xirr: e.target.value ? parseFloat(e.target.value) : null })} fullWidth helperText="Auto-calculated from transactions. Enter manually if needed." /></Grid>
-            <Grid item xs={12}>
-              <TextField
-                select
-                fullWidth
-                label="Portfolio"
-                value={form.portfolio_id}
-                onChange={(e) => setForm({ ...form, portfolio_id: e.target.value ? Number(e.target.value) : '' })}
-              >
-                {portfolios.map((p: any) => (
-                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained" disabled={saving}>{saving ? <CircularProgress size={24} /> : editingId ? 'Save' : 'Add'}</Button>
-        </DialogActions>
-      </Dialog>
-  
+
+      <GenericAssetEditDialog
+        open={dialogOpen}
+        onClose={handleCloseDialog}
+        onSaved={fetchData}
+        asset={editingAsset}
+        assetType="reit"
+        dematAccounts={dematAccounts}
+        portfolioId={selectedPortfolioId}
+      />
+
       <AssetAttributeTagDialog
         assetId={tagAssetId}
         assetName={tagAssetName}

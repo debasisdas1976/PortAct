@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -7,13 +6,8 @@ import {
   CardContent,
   CircularProgress,
   Collapse,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Grid,
   IconButton,
-  MenuItem,
   Paper,
   Table,
   TableBody,
@@ -21,7 +15,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Typography,
   Chip,
   Tooltip,
@@ -42,6 +35,7 @@ import {
  Label as LabelIcon,
 } from '@mui/icons-material';
 import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
+import GenericAssetEditDialog from '../components/GenericAssetEditDialog';
 import api, { transactionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -99,18 +93,6 @@ const Stocks: React.FC = () => {
   // Add/Edit dialog
   const [openDialog, setOpenDialog] = useState(false);
   const [editingAsset, setEditingAsset] = useState<StockAsset | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    symbol: '',
-    isin: '',
-    quantity: 0,
-    purchase_price: 0,
-    total_invested: 0,
-    current_price: 0,
-    demat_account_id: '' as number | '',
-    xirr: null as number | null,
-  });
-  const [submitting, setSubmitting] = useState(false);
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [txDialogOpen, setTxDialogOpen] = useState(false);
@@ -170,60 +152,11 @@ const Stocks: React.FC = () => {
 
   // ── Add / Edit ──────────────────────────────────────────────────────────
   const handleOpenDialog = (asset?: StockAsset) => {
-    if (asset) {
-      setEditingAsset(asset);
-      setFormData({
-        name: asset.name,
-        symbol: asset.symbol || '',
-        isin: asset.isin || '',
-        quantity: asset.quantity,
-        purchase_price: asset.purchase_price,
-        total_invested: asset.total_invested,
-        current_price: asset.current_price,
-        demat_account_id: asset.demat_account_id || '',
-        xirr: asset.xirr ?? null,
-      });
-    } else {
-      setEditingAsset(null);
-      setFormData({ name: '', symbol: '', isin: '', quantity: 0, purchase_price: 0, total_invested: 0, current_price: 0, demat_account_id: '', xirr: null });
-    }
+    setEditingAsset(asset || null);
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => { setOpenDialog(false); setEditingAsset(null); };
-
-  const handleSubmit = async () => {
-    if (!formData.name.trim()) { notify.error('Stock name is required'); return; }
-    if (!formData.demat_account_id) { notify.error('Demat account is required'); return; }
-    try {
-      setSubmitting(true);
-      const payload: Record<string, unknown> = {
-        asset_type: 'stock',
-        name: formData.name.trim(),
-        symbol: formData.symbol.trim() || undefined,
-        isin: formData.isin.trim() || undefined,
-        quantity: formData.quantity,
-        purchase_price: formData.purchase_price,
-        total_invested: formData.total_invested || formData.quantity * formData.purchase_price,
-        current_price: formData.current_price,
-        demat_account_id: formData.demat_account_id,
-        ...(formData.xirr != null ? { xirr: formData.xirr } : {}),
-      };
-      if (editingAsset) {
-        await api.put(`/assets/${editingAsset.id}`, payload);
-        notify.success('Stock updated');
-      } else {
-        await api.post('/assets/', payload);
-        notify.success('Stock added');
-      }
-      handleCloseDialog();
-      fetchData();
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to save stock'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   // ── Delete ──────────────────────────────────────────────────────────────
   const handleDelete = async (asset: StockAsset) => {
@@ -548,41 +481,14 @@ const Stocks: React.FC = () => {
       </TableContainer>
 
       {/* ── Add / Edit Dialog ──────────────────────────────────────────────── */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingAsset ? 'Edit Stock' : 'Add Stock'}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            <TextField label="Stock Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} fullWidth required />
-            <TextField label="Symbol (e.g. RELIANCE)" value={formData.symbol} onChange={(e) => setFormData({ ...formData, symbol: e.target.value })} fullWidth />
-            <TextField label="ISIN" value={formData.isin} onChange={(e) => setFormData({ ...formData, isin: e.target.value })} fullWidth />
-            <TextField label="Quantity" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })} fullWidth />
-            <TextField label="Average Buy Price" type="number" value={formData.purchase_price} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} fullWidth />
-            <TextField label="Total Invested" type="number" value={formData.total_invested} onChange={(e) => setFormData({ ...formData, total_invested: parseFloat(e.target.value) || 0 })} fullWidth helperText="Leave 0 to auto-calculate (Qty x Avg Price)" />
-            <TextField label="Current Price" type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Will be auto-updated by price scheduler" />
-            <TextField label="XIRR (%)" type="number" value={formData.xirr ?? ''} onChange={(e) => setFormData({ ...formData, xirr: e.target.value ? parseFloat(e.target.value) : null })} fullWidth helperText="Auto-calculated from transactions. Enter manually if needed." />
-            <TextField
-              select
-              label="Demat Account"
-              value={formData.demat_account_id}
-              onChange={(e) => setFormData({ ...formData, demat_account_id: e.target.value ? Number(e.target.value) : '' })}
-              fullWidth
-              required
-              helperText={<>Required. Don't have one? <RouterLink to="/demat-accounts" style={{ color: 'inherit' }}>Create a Demat Account</RouterLink></>}
-            >
-              {dematAccounts.map((da) => (
-                <MenuItem key={da.id} value={da.id}>{buildDematLabel(da)}</MenuItem>
-              ))}
-            </TextField>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={submitting || !formData.name.trim() || !formData.demat_account_id}
-            startIcon={submitting ? <CircularProgress size={18} /> : editingAsset ? <EditIcon /> : <AddIcon />}>
-            {submitting ? 'Saving…' : editingAsset ? 'Update' : 'Add Stock'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <GenericAssetEditDialog
+        open={openDialog}
+        onClose={handleCloseDialog}
+        onSaved={fetchData}
+        asset={editingAsset}
+        assetType="stock"
+        dematAccounts={dematAccounts}
+      />
 
       {/* ── Transaction Dialog ─────────────────────────────────────────────── */}
       <StockTransactionDialog

@@ -9,7 +9,7 @@ from app.models.asset_attribute import AssetAttribute, AssetAttributeValue, Asse
 from app.schemas.asset_attribute import (
     AssetAttributeCreate, AssetAttributeUpdate, AssetAttributeResponse,
     AssetAttributeValueCreate, AssetAttributeValueUpdate, AssetAttributeValueResponse,
-    AssetAttributeAssignmentResponse, BulkAssignmentUpdate,
+    AssetAttributeAssignmentResponse, BulkAssignmentUpdate, BulkMultiAssetAssignmentUpdate,
 )
 
 router = APIRouter()
@@ -305,6 +305,72 @@ async def get_bulk_assignments(
             result[aid] = []
         result[aid].append(_enrich_assignment(a))
     return result
+
+
+@router.put("/assignments/bulk", response_model=dict)
+async def set_bulk_assignments(
+    data: BulkMultiAssetAssignmentUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Upsert attribute assignments for multiple assets at once."""
+    if not data.asset_ids or not data.assignments:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="asset_ids and assignments must not be empty",
+        )
+
+    # Verify all assets belong to user
+    user_asset_ids = {
+        r[0]
+        for r in db.query(Asset.id)
+        .filter(Asset.id.in_(data.asset_ids), Asset.user_id == current_user.id)
+        .all()
+    }
+    if len(user_asset_ids) != len(data.asset_ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="One or more assets not found or not owned by user",
+        )
+
+    # Validate each assignment's attribute + value
+    for item in data.assignments:
+        attr = db.query(AssetAttribute).filter(
+            AssetAttribute.id == item.attribute_id,
+            AssetAttribute.user_id == current_user.id,
+        ).first()
+        if not attr:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Attribute {item.attribute_id} not found",
+            )
+        val = db.query(AssetAttributeValue).filter(
+            AssetAttributeValue.id == item.attribute_value_id,
+            AssetAttributeValue.attribute_id == item.attribute_id,
+        ).first()
+        if not val:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Value {item.attribute_value_id} not valid for attribute {item.attribute_id}",
+            )
+
+    # Upsert: for each asset × attribute, delete existing then insert
+    attr_ids = [a.attribute_id for a in data.assignments]
+    db.query(AssetAttributeAssignment).filter(
+        AssetAttributeAssignment.asset_id.in_(data.asset_ids),
+        AssetAttributeAssignment.attribute_id.in_(attr_ids),
+    ).delete(synchronize_session=False)
+
+    for asset_id in data.asset_ids:
+        for item in data.assignments:
+            db.add(AssetAttributeAssignment(
+                asset_id=asset_id,
+                attribute_id=item.attribute_id,
+                attribute_value_id=item.attribute_value_id,
+            ))
+
+    db.commit()
+    return {"updated": len(data.asset_ids), "attributes_set": len(data.assignments)}
 
 
 @router.put("/assignments/{asset_id}", response_model=List[AssetAttributeAssignmentResponse])

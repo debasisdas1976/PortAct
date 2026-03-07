@@ -1,28 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Button,
   Card,
   CardContent,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
   Grid,
   IconButton,
-  MenuItem,
   Paper,
-  Radio,
-  RadioGroup,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Typography,
   Chip,
 } from '@mui/material';
@@ -39,10 +30,8 @@ import {
  Label as LabelIcon,
 } from '@mui/icons-material';
 import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
-import { Link as RouterLink } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
-import api, { brokersAPI } from '../services/api';
+import GenericAssetEditDialog from '../components/GenericAssetEditDialog';
+import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
@@ -110,31 +99,9 @@ const RSUs: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
-  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
-  const [brokerNames, setBrokerNames] = useState<{ value: string; label: string }[]>([]);
 
   const [openDialog, setOpenDialog] = useState(false);
   const [editingAsset, setEditingAsset] = useState<RSUAsset | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    symbol: '',
-    currency: 'INR' as 'INR' | 'USD',
-    company_name: '',
-    grant_date: '',
-    vesting_date: '',
-    fmv_at_grant: 0,
-    current_price: 0,
-    shares_granted: 0,
-    shares_vested: 0,
-    xirr: null as number | null,
-    demat_account_id: '' as number | '',
-    useNewAccount: false,
-    new_broker_name: '',
-    new_account_id: '',
-    new_account_holder: '',
-    new_portfolio_id: '' as number | '',
-  });
-  const [submitting, setSubmitting] = useState(false);
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
@@ -147,22 +114,12 @@ const RSUs: React.FC = () => {
     });
   };
 
-  const filteredDematAccounts = useMemo(() => {
-    return dematAccounts.filter((da) => {
-      if (formData.currency === 'USD') {
-        return da.currency === 'USD' || da.account_market === 'international';
-      }
-      return da.currency === 'INR' || da.account_market === 'domestic' || (!da.currency && !da.account_market);
-    });
-  }, [dematAccounts, formData.currency]);
-
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [assetsRes, dematRes, brokersData] = await Promise.all([
+      const [assetsRes, dematRes] = await Promise.all([
         api.get('/assets/', { params: selectedPortfolioId ? { portfolio_id: selectedPortfolioId } : {} }),
         api.get('/demat-accounts/'),
-        brokersAPI.getAll({ is_active: true }),
       ]);
       const filtered = (assetsRes.data as RSUAsset[]).filter(
         (a) => a.asset_type?.toLowerCase() === 'rsu'
@@ -176,12 +133,6 @@ const RSUs: React.FC = () => {
         labelMap[da.id] = buildDematLabel(da);
       }
       setDematLabelMap(labelMap);
-
-      setBrokerNames(
-        Array.isArray(brokersData)
-          ? brokersData.map((b: any) => ({ value: b.name, label: b.display_label }))
-          : []
-      );
     } catch (err) {
       notify.error(getErrorMessage(err, 'Failed to load data'));
     } finally {
@@ -192,110 +143,11 @@ const RSUs: React.FC = () => {
   useEffect(() => { fetchData(); }, [selectedPortfolioId]);
 
   const handleOpenDialog = (asset?: RSUAsset) => {
-    if (asset) {
-      setEditingAsset(asset);
-      const hasLinkedDemat = asset.demat_account_id != null;
-      setFormData({
-        name: asset.name,
-        symbol: asset.symbol || '',
-        currency: (asset.details?.currency as 'INR' | 'USD') || 'INR',
-        company_name: asset.details?.company_name || '',
-        grant_date: asset.details?.grant_date || '',
-        vesting_date: asset.details?.vesting_date || '',
-        fmv_at_grant: asset.details?.fmv_at_grant || asset.purchase_price || 0,
-        current_price: asset.details?.currency === 'USD' ? (asset.details?.price_usd || 0) : asset.current_price || 0,
-        shares_granted: asset.details?.shares_granted || 0,
-        shares_vested: asset.details?.shares_vested || asset.quantity || 0,
-        xirr: asset.xirr ?? null,
-        demat_account_id: hasLinkedDemat ? asset.demat_account_id! : '',
-        useNewAccount: !hasLinkedDemat,
-        new_broker_name: '',
-        new_account_id: '',
-        new_account_holder: '',
-        new_portfolio_id: '',
-      });
-    } else {
-      setEditingAsset(null);
-      setFormData({
-        name: '', symbol: '', currency: 'INR', company_name: '',
-        grant_date: '', vesting_date: '', fmv_at_grant: 0, current_price: 0,
-        shares_granted: 0, shares_vested: 0,
-        xirr: null,
-        demat_account_id: '', useNewAccount: false,
-        new_broker_name: '', new_account_id: '', new_account_holder: '',
-        new_portfolio_id: '',
-      });
-    }
+    setEditingAsset(asset || null);
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => { setOpenDialog(false); setEditingAsset(null); };
-
-  const getDematAccountId = async (): Promise<number> => {
-    if (!formData.useNewAccount) {
-      return formData.demat_account_id as number;
-    }
-    // Create a new demat account
-    const dematPayload: Record<string, unknown> = {
-      broker_name: formData.new_broker_name.trim(),
-      account_id: formData.new_account_id.trim(),
-      account_holder_name: formData.new_account_holder.trim() || undefined,
-      account_market: formData.currency === 'USD' ? 'international' : 'domestic',
-      currency: formData.currency,
-      portfolio_id: formData.new_portfolio_id || undefined,
-    };
-    const res = await api.post('/demat-accounts/', dematPayload);
-    return res.data.id;
-  };
-
-  const handleSubmit = async () => {
-    if (!formData.name.trim()) { notify.error('Stock name is required'); return; }
-    if (!formData.useNewAccount && !formData.demat_account_id) { notify.error('Please select a demat account'); return; }
-    if (formData.useNewAccount && !formData.new_broker_name.trim()) { notify.error('Broker name is required'); return; }
-    if (formData.useNewAccount && !formData.new_account_id.trim()) { notify.error('Account ID is required'); return; }
-    try {
-      setSubmitting(true);
-
-      // Step 1: get or create the demat account
-      const dematAccountId = await getDematAccountId();
-
-      // Step 2: create/update the RSU asset
-      const payload: Record<string, unknown> = {
-        asset_type: 'rsu',
-        name: formData.name.trim(),
-        symbol: formData.symbol.trim() || undefined,
-        quantity: formData.shares_vested,
-        purchase_price: formData.fmv_at_grant,
-        current_price: formData.current_price,
-        total_invested: formData.shares_vested * formData.fmv_at_grant,
-        ...(formData.xirr != null ? { xirr: formData.xirr } : {}),
-        demat_account_id: dematAccountId,
-        details: {
-          currency: formData.currency,
-          company_name: formData.company_name.trim() || undefined,
-          grant_date: formData.grant_date || undefined,
-          vesting_date: formData.vesting_date || undefined,
-          fmv_at_grant: formData.fmv_at_grant,
-          shares_granted: formData.shares_granted,
-          shares_vested: formData.shares_vested,
-          ...(formData.currency === 'USD' ? { price_usd: formData.current_price } : {}),
-        },
-      };
-      if (editingAsset) {
-        await api.put(`/assets/${editingAsset.id}`, payload);
-        notify.success('RSU updated');
-      } else {
-        await api.post('/assets/', payload);
-        notify.success('RSU added');
-      }
-      handleCloseDialog();
-      fetchData();
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to save RSU'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleDelete = async (asset: RSUAsset) => {
     if (!window.confirm(`Delete ${asset.symbol || asset.name}?`)) return;
@@ -554,115 +406,16 @@ const RSUs: React.FC = () => {
         </Table>
       </TableContainer>
 
-      {/* ── Add / Edit Dialog ──────────────────────────────────────────────── */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingAsset ? 'Edit RSU' : 'Add RSU'}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            <TextField label="Stock Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} fullWidth required />
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField label="Symbol (e.g. GOOGL)" value={formData.symbol} onChange={(e) => setFormData({ ...formData, symbol: e.target.value })} fullWidth />
-              <TextField
-                select label="Currency" value={formData.currency}
-                onChange={(e) => setFormData({ ...formData, currency: e.target.value as 'INR' | 'USD' })}
-                sx={{ minWidth: 120 }}
-              >
-                <MenuItem value="INR">INR</MenuItem>
-                <MenuItem value="USD">USD</MenuItem>
-              </TextField>
-            </Box>
-            <TextField label="Company Name" value={formData.company_name} onChange={(e) => setFormData({ ...formData, company_name: e.target.value })} fullWidth helperText="Employer granting the RSU" />
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField label="Grant Date" type="date" value={formData.grant_date} onChange={(e) => setFormData({ ...formData, grant_date: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} />
-              <TextField label="Vesting Date" type="date" value={formData.vesting_date} onChange={(e) => setFormData({ ...formData, vesting_date: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} />
-            </Box>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField label="Shares Granted" type="number" value={formData.shares_granted} onChange={(e) => setFormData({ ...formData, shares_granted: parseFloat(e.target.value) || 0 })} fullWidth />
-              <TextField label="Shares Vested" type="number" value={formData.shares_vested} onChange={(e) => setFormData({ ...formData, shares_vested: parseFloat(e.target.value) || 0 })} fullWidth />
-            </Box>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField label={`FMV at Grant (${formData.currency})`} type="number" value={formData.fmv_at_grant} onChange={(e) => setFormData({ ...formData, fmv_at_grant: parseFloat(e.target.value) || 0 })} fullWidth helperText="Fair Market Value at grant date" />
-              <TextField label={`Current Price (${formData.currency})`} type="number" value={formData.current_price} onChange={(e) => setFormData({ ...formData, current_price: parseFloat(e.target.value) || 0 })} fullWidth helperText="Update manually" />
-            </Box>
-            <TextField label="XIRR (%)" type="number" value={formData.xirr ?? ''} onChange={(e) => setFormData({ ...formData, xirr: e.target.value ? parseFloat(e.target.value) : null })} fullWidth helperText="Auto-calculated from transactions. Enter manually if needed." />
-            {/* ── Demat Account Information ─────────────────────────────────── */}
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1, mb: -1 }}>
-              Demat / Trading Account
-            </Typography>
-            <RadioGroup
-              row
-              value={formData.useNewAccount ? 'new' : 'existing'}
-              onChange={(e) => setFormData({ ...formData, useNewAccount: e.target.value === 'new', demat_account_id: '', new_broker_name: '', new_account_id: '', new_account_holder: '', new_portfolio_id: '' })}
-            >
-              <FormControlLabel value="existing" control={<Radio size="small" />} label="Use Existing Account" />
-              <FormControlLabel value="new" control={<Radio size="small" />} label="Create New Account" />
-            </RadioGroup>
+      <GenericAssetEditDialog
+        open={openDialog}
+        onClose={handleCloseDialog}
+        onSaved={fetchData}
+        asset={editingAsset}
+        assetType="rsu"
+        dematAccounts={dematAccounts}
+        portfolioId={selectedPortfolioId}
+      />
 
-            {!formData.useNewAccount ? (
-              <TextField
-                select
-                label="Demat / Trading Account"
-                value={formData.demat_account_id}
-                onChange={(e) => setFormData({ ...formData, demat_account_id: e.target.value ? Number(e.target.value) : '' })}
-                fullWidth
-                required
-                helperText={
-                  filteredDematAccounts.length === 0
-                    ? <>No {formData.currency} accounts found. <RouterLink to="/demat-accounts">Create one</RouterLink> or select "Create New Account" above.</>
-                    : <>Showing {formData.currency} accounts. <RouterLink to="/demat-accounts">Manage accounts</RouterLink></>
-                }
-              >
-                {filteredDematAccounts.map((da) => (
-                  <MenuItem key={da.id} value={da.id}>{buildDematLabel(da)}</MenuItem>
-                ))}
-              </TextField>
-            ) : (
-              <>
-                <TextField
-                  select
-                  label="Portfolio"
-                  value={formData.new_portfolio_id}
-                  onChange={(e) => setFormData({ ...formData, new_portfolio_id: e.target.value ? Number(e.target.value) : '' })}
-                  fullWidth
-                  helperText="Portfolio for the new demat account"
-                >
-                  {portfolios.map((p: any) => (
-                    <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  select
-                  label="Broker Name"
-                  value={formData.new_broker_name}
-                  onChange={(e) => setFormData({ ...formData, new_broker_name: e.target.value })}
-                  fullWidth
-                  required
-                >
-                  {brokerNames.map((broker) => (
-                    <MenuItem key={broker.value} value={broker.value}>{broker.label}</MenuItem>
-                  ))}
-                </TextField>
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <TextField label="Account ID / Client ID" value={formData.new_account_id} onChange={(e) => setFormData({ ...formData, new_account_id: e.target.value })} fullWidth required />
-                  <TextField label="Account Holder Name" value={formData.new_account_holder} onChange={(e) => setFormData({ ...formData, new_account_holder: e.target.value })} fullWidth />
-                </Box>
-              </>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={
-              submitting || !formData.name.trim() ||
-              (!formData.useNewAccount && !formData.demat_account_id) ||
-              (formData.useNewAccount && (!formData.new_broker_name.trim() || !formData.new_account_id.trim()))
-            }
-            startIcon={submitting ? <CircularProgress size={18} /> : editingAsset ? <EditIcon /> : <AddIcon />}>
-            {submitting ? 'Saving…' : editingAsset ? 'Update' : 'Add RSU'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-  
       <AssetAttributeTagDialog
         assetId={tagAssetId}
         assetName={tagAssetName}

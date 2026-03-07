@@ -14,7 +14,7 @@ from app.schemas.asset import (
     AssetWithTransactions,
     AssetSummary
 )
-from app.services.price_updater import update_asset_price, PRICE_UPDATABLE_TYPES
+from app.services.price_updater import update_asset_price, PRICE_UPDATABLE_TYPES, _update_crypto_assets_batch, _build_price_cache, reset_yfinance_circuit_breaker
 from app.services.price_refresh_tracker import price_refresh_tracker
 from app.schemas.price_refresh_progress import PriceRefreshProgress
 
@@ -509,12 +509,30 @@ async def update_all_asset_prices(
     asset_ids = [a.id for a in assets]
 
     def _update_prices():
+        reset_yfinance_circuit_breaker()
         bg_db = SessionLocal()
         try:
             bg_assets = bg_db.query(Asset).filter(Asset.id.in_(asset_ids)).all()
-            for asset in bg_assets:
+
+            # Batch update crypto assets (single CoinGecko API call)
+            crypto_assets = [a for a in bg_assets if a.asset_type == AssetType.CRYPTO]
+            other_assets = [a for a in bg_assets if a.asset_type != AssetType.CRYPTO]
+
+            if crypto_assets:
+                _update_crypto_assets_batch(crypto_assets, bg_db)
+                for asset in crypto_assets:
+                    status_val = "completed" if not asset.price_update_failed else "error"
+                    price_refresh_tracker.update_asset_status(
+                        session_id, asset.id, status_val,
+                        error_message=asset.price_update_error,
+                    )
+
+            # Pre-fetch NSE + US prices in batch (Yahoo spark API)
+            price_cache = _build_price_cache(other_assets)
+
+            for asset in other_assets:
                 price_refresh_tracker.set_asset_processing(session_id, asset.id)
-                success = update_asset_price(asset, bg_db)
+                success = update_asset_price(asset, bg_db, price_cache)
                 if success:
                     price_refresh_tracker.update_asset_status(
                         session_id, asset.id, "completed"

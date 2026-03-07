@@ -657,6 +657,11 @@ export const assetAttributesAPI = {
   removeAssignment: async (assetId: number, attributeId: number) => {
     await api.delete(`/asset-attributes/assignments/${assetId}/${attributeId}`);
   },
+
+  setBulkAssignments: async (assetIds: number[], assignments: Array<{ attribute_id: number; attribute_value_id: number }>) => {
+    const response = await api.put('/asset-attributes/assignments/bulk', { asset_ids: assetIds, assignments });
+    return response.data;
+  },
 };
 
 export default api;

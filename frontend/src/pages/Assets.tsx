@@ -25,8 +25,9 @@ import {
   Button,
   Tooltip,
   TableSortLabel,
+  Checkbox,
 } from '@mui/material';
-import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, AccountBalance, Refresh, Warning, CheckCircle, CameraAlt, Error as ErrorIcon, HourglassEmpty } from '@mui/icons-material';
+import { TrendingUp, TrendingDown, KeyboardArrowDown, KeyboardArrowUp, AccountBalance, Refresh, Warning, CheckCircle, CameraAlt, Error as ErrorIcon, HourglassEmpty, Edit as EditIcon, Delete as DeleteIcon, Label as LabelIcon, Close as CloseIcon } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchAssets } from '../store/slices/assetsSlice';
 import {
@@ -40,6 +41,11 @@ import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import { useNavigate } from 'react-router-dom';
+import { useAssetActions } from '../hooks/useAssetActions';
+import GenericAssetEditDialog from '../components/GenericAssetEditDialog';
+import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
+import CryptoAssetDialog, { type CryptoAccountOption } from '../components/CryptoAssetDialog';
+import BulkAttributeAssignDialog from '../components/BulkAttributeAssignDialog';
 
 const ASSET_TYPE_ROUTES: Record<string, string> = {
   stock: '/stocks',
@@ -189,12 +195,27 @@ const Assets: React.FC = () => {
   const [assetTypes, setAssetTypes] = useState<{ value: string; label: string; category: string; allowedConversions: string[] | null }[]>([]);
   const [sortColumn, setSortColumn] = useState<'asset' | 'type' | 'invested' | 'value' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [cryptoAccounts, setCryptoAccounts] = useState<CryptoAccountOption[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<number>>(new Set());
+  const [bulkAttrDialogOpen, setBulkAttrDialogOpen] = useState(false);
+
+  // Asset action handlers (edit/delete/attributes)
+  const {
+    editDialogOpen, editingAsset, editingAssetType, openEditDialog, closeEditDialog,
+    cryptoDialogOpen, cryptoEditingAsset, closeCryptoDialog,
+    handleDelete,
+    tagAssetId, tagAssetName, openAttributes, closeAttributes,
+  } = useAssetActions({
+    onRefresh: () => dispatch(fetchAssets(selectedPortfolioId)),
+    navigate,
+  });
 
   useEffect(() => {
     dispatch(fetchAssets(selectedPortfolioId));
     fetchBankAccounts();
     fetchDematAccounts();
     fetchAssetTypes();
+    fetchCryptoAccounts();
     dispatch(checkActivePriceRefresh());
   }, [dispatch, selectedPortfolioId]);
 
@@ -292,6 +313,20 @@ const Assets: React.FC = () => {
       notify.error(getErrorMessage(err, 'Failed to load demat accounts'));
     } finally {
       setDematAccountsLoading(false);
+    }
+  };
+
+  const fetchCryptoAccounts = async () => {
+    try {
+      const response = await api.get('/crypto-accounts/');
+      setCryptoAccounts(
+        (response.data || []).map((ca: any) => ({
+          id: ca.id,
+          label: `${ca.exchange_name || ca.wallet_name || 'Account'} (${ca.account_id || ca.id})`,
+        }))
+      );
+    } catch {
+      setCryptoAccounts([]);
     }
   };
 
@@ -785,11 +820,61 @@ const Assets: React.FC = () => {
   );
 
 
-  const renderAssetsTable = (assetsToRender: GroupedAsset[]) => (
+  // ── Selection helpers ──────────────────────────────────────────────
+  const getAllAssetIdsInTab = (groups: GroupedAsset[]): number[] =>
+    groups.flatMap((g) => g.instances.map((i) => i.id));
+
+  const toggleAssetSelection = (id: number) => {
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleGroupSelection = (group: GroupedAsset) => {
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      const ids = group.instances.map((i) => i.id);
+      const allSelected = ids.every((id) => next.has(id));
+      if (allSelected) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (groups: GroupedAsset[]) => {
+    const allIds = getAllAssetIdsInTab(groups);
+    setSelectedAssetIds((prev) => {
+      const allSelected = allIds.every((id) => prev.has(id));
+      if (allSelected) {
+        const next = new Set(prev);
+        allIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...allIds]);
+    });
+  };
+
+  const renderAssetsTable = (assetsToRender: GroupedAsset[]) => {
+    const allIds = getAllAssetIdsInTab(assetsToRender);
+    const allSelected = allIds.length > 0 && allIds.every((id) => selectedAssetIds.has(id));
+    const someSelected = allIds.some((id) => selectedAssetIds.has(id));
+
+    return (
     <TableContainer>
       <Table>
         <TableHead>
           <TableRow>
+            <TableCell padding="checkbox" width="48px">
+              <Checkbox
+                size="small"
+                checked={allSelected}
+                indeterminate={someSelected && !allSelected}
+                onChange={() => toggleSelectAll(assetsToRender)}
+              />
+            </TableCell>
             <TableCell width="40px" />
             <TableCell sortDirection={sortColumn === 'asset' ? sortDirection : false}>
               <TableSortLabel active={sortColumn === 'asset'} direction={sortColumn === 'asset' ? sortDirection : 'asc'} onClick={() => handleSort('asset')}>
@@ -821,7 +906,7 @@ const Assets: React.FC = () => {
         <TableBody>
           {assetsToRender.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={10} align="center">
+              <TableCell colSpan={11} align="center">
                 <Typography color="text.secondary">
                   No assets found in this category. Upload a statement to add assets.
                 </Typography>
@@ -850,6 +935,14 @@ const Assets: React.FC = () => {
                     '& > *': { borderBottom: hasMultipleInstances && isExpanded ? 'none' : undefined },
                     backgroundColor: missingIsin ? 'rgba(255, 0, 0, 0.05)' : 'inherit'
                   }}>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        size="small"
+                        checked={group.instances.every((i) => selectedAssetIds.has(i.id))}
+                        indeterminate={group.instances.some((i) => selectedAssetIds.has(i.id)) && !group.instances.every((i) => selectedAssetIds.has(i.id))}
+                        onChange={() => toggleGroupSelection(group)}
+                      />
+                    </TableCell>
                     <TableCell>
                       {hasMultipleInstances && (
                         <IconButton size="small" onClick={() => toggleRow(group.symbol)}>
@@ -985,7 +1078,7 @@ const Assets: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell align="center">
-                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'nowrap' }}>
                         {!hasMultipleInstances && !hideRefreshPrice && (
                           <IconButton
                             size="small"
@@ -1001,6 +1094,19 @@ const Assets: React.FC = () => {
                             )}
                           </IconButton>
                         )}
+                        {!hasMultipleInstances && (
+                          <>
+                            <IconButton size="small" color="secondary" title="Attributes" onClick={() => openAttributes(group.instances[0].id, group.instances[0].name)}>
+                              <LabelIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" color="primary" title="Edit" onClick={() => openEditDialog(group.instances[0])}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(group.instances[0])}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        )}
                         {hasMultipleInstances && (
                           <Typography variant="caption" color="text.secondary">Expand</Typography>
                         )}
@@ -1011,7 +1117,7 @@ const Assets: React.FC = () => {
                   {/* Expanded Rows - Show individual instances */}
                   {hasMultipleInstances && (
                     <TableRow>
-                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
+                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={11}>
                         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                           <Box sx={{ margin: 2 }}>
                             <Typography variant="h6" gutterBottom component="div">
@@ -1020,6 +1126,7 @@ const Assets: React.FC = () => {
                             <Table size="small">
                               <TableHead>
                                 <TableRow>
+                                  <TableCell padding="checkbox" />
                                   <TableCell>Account ID</TableCell>
                                   <TableCell>Broker</TableCell>
                                   <TableCell>Account Holder</TableCell>
@@ -1036,6 +1143,13 @@ const Assets: React.FC = () => {
                                   const instanceGainLoss = (instance.current_value || 0) - (instance.total_invested || 0);
                                   return (
                                     <TableRow key={instance.id}>
+                                      <TableCell padding="checkbox">
+                                        <Checkbox
+                                          size="small"
+                                          checked={selectedAssetIds.has(instance.id)}
+                                          onChange={() => toggleAssetSelection(instance.id)}
+                                        />
+                                      </TableCell>
                                       <TableCell>
                                         {instance.account_id || 'N/A'}
                                       </TableCell>
@@ -1064,7 +1178,7 @@ const Assets: React.FC = () => {
                                         {formatCurrency(instanceGainLoss)}
                                       </TableCell>
                                       <TableCell align="center">
-                                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'nowrap' }}>
                                           {!hideRefreshPrice && (
                                             <IconButton
                                               size="small"
@@ -1080,6 +1194,15 @@ const Assets: React.FC = () => {
                                               )}
                                             </IconButton>
                                           )}
+                                          <IconButton size="small" color="secondary" title="Attributes" onClick={() => openAttributes(instance.id, instance.name)}>
+                                            <LabelIcon fontSize="small" />
+                                          </IconButton>
+                                          <IconButton size="small" color="primary" title="Edit" onClick={() => openEditDialog(instance)}>
+                                            <EditIcon fontSize="small" />
+                                          </IconButton>
+                                          <IconButton size="small" color="error" title="Delete" onClick={() => handleDelete(instance)}>
+                                            <DeleteIcon fontSize="small" />
+                                          </IconButton>
                                         </Box>
                                       </TableCell>
                                     </TableRow>
@@ -1100,6 +1223,7 @@ const Assets: React.FC = () => {
       </Table>
     </TableContainer>
   );
+  };
 
   // Find the most recent price update timestamp across all assets
   const lastPriceUpdate = React.useMemo(() => {
@@ -1323,6 +1447,75 @@ const Assets: React.FC = () => {
           ))}
       </Menu>
 
+      {/* ── Asset Action Dialogs ─────────────────────────────────────────── */}
+      <GenericAssetEditDialog
+        open={editDialogOpen}
+        onClose={closeEditDialog}
+        onSaved={() => dispatch(fetchAssets(selectedPortfolioId))}
+        asset={editingAsset}
+        assetType={editingAssetType}
+        dematAccounts={dematAccounts}
+        bankAccounts={bankAccounts}
+        portfolioId={selectedPortfolioId}
+      />
+
+      <CryptoAssetDialog
+        open={cryptoDialogOpen}
+        onClose={closeCryptoDialog}
+        onSaved={() => dispatch(fetchAssets(selectedPortfolioId))}
+        editingAsset={cryptoEditingAsset}
+        cryptoAccounts={cryptoAccounts}
+      />
+
+      <AssetAttributeTagDialog
+        assetId={tagAssetId}
+        assetName={tagAssetName}
+        open={tagAssetId !== null}
+        onClose={closeAttributes}
+      />
+
+      {/* ── Bulk Attribute Assignment ─────────────────────────────────────── */}
+      <BulkAttributeAssignDialog
+        assetIds={Array.from(selectedAssetIds)}
+        open={bulkAttrDialogOpen}
+        onClose={() => setBulkAttrDialogOpen(false)}
+        onSaved={() => setSelectedAssetIds(new Set())}
+      />
+
+      {/* ── Floating Selection Bar ────────────────────────────────────────── */}
+      {selectedAssetIds.size > 0 && (
+        <Paper
+          elevation={6}
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            px: 3,
+            py: 1.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            borderRadius: 3,
+            zIndex: 1300,
+          }}
+        >
+          <Typography variant="body2" fontWeight="medium">
+            {selectedAssetIds.size} asset{selectedAssetIds.size > 1 ? 's' : ''} selected
+          </Typography>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<LabelIcon />}
+            onClick={() => setBulkAttrDialogOpen(true)}
+          >
+            Set Attributes
+          </Button>
+          <IconButton size="small" onClick={() => setSelectedAssetIds(new Set())} title="Clear selection">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Paper>
+      )}
     </Box>
   );
 };

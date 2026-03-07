@@ -61,12 +61,20 @@ def get_stock_price_yahoo_chart(symbol: str) -> float:
     return None
 
 
+_yfinance_consecutive_failures = 0
+_YFINANCE_CIRCUIT_BREAKER_THRESHOLD = 3  # Skip yfinance after 3 consecutive failures
+
+
 def get_stock_price_yfinance(symbol: str) -> float:
     """
     Get stock price using yfinance library.
     Handles NSE session management internally.
     Supports both ticker symbols (appends '.NS') and ISIN codes (passed as-is).
+    Circuit breaker: skips yfinance after repeated consecutive failures (library-level issue).
     """
+    global _yfinance_consecutive_failures
+    if _yfinance_consecutive_failures >= _YFINANCE_CIRCUIT_BREAKER_THRESHOLD:
+        return None
     try:
         import yfinance as yf
 
@@ -75,20 +83,31 @@ def get_stock_price_yfinance(symbol: str) -> float:
         info = ticker.fast_info
         price = getattr(info, 'last_price', None)
         if price and price > 0:
+            _yfinance_consecutive_failures = 0  # Reset on success
             logger.info(f"yfinance price for {yf_symbol}: ₹{price:.2f}")
             return float(price)
     except Exception as e:
-        logger.warning(f"yfinance failed for {symbol}: {e}")
+        _yfinance_consecutive_failures += 1
+        if _yfinance_consecutive_failures == _YFINANCE_CIRCUIT_BREAKER_THRESHOLD:
+            logger.warning(f"yfinance circuit breaker tripped after {_YFINANCE_CIRCUIT_BREAKER_THRESHOLD} failures — skipping for remaining assets")
+        else:
+            logger.warning(f"yfinance failed for {symbol}: {e}")
     return None
+
+
+_nse_api_consecutive_failures = 0
+_NSE_API_CIRCUIT_BREAKER_THRESHOLD = 2  # Skip NSE direct API after 2 consecutive failures
 
 
 def get_stock_price_nse(symbol: str) -> float:
     """
     Get stock price from NSE India.
-    Primary: yfinance library.
+    Primary: yfinance library (with circuit breaker).
     Fallback 1: Yahoo Finance chart API (direct HTTP, no yfinance dependency).
-    Fallback 2: direct NSE API.
+    Fallback 2: direct NSE API (with circuit breaker).
     """
+    global _nse_api_consecutive_failures
+
     # Primary — yfinance (reliable when working)
     price = get_stock_price_yfinance(symbol)
     if price:
@@ -97,9 +116,12 @@ def get_stock_price_nse(symbol: str) -> float:
     # Fallback 1 — Yahoo Finance chart API (direct HTTP call)
     price = get_stock_price_yahoo_chart(symbol)
     if price:
+        _nse_api_consecutive_failures = 0
         return price
 
     # Fallback 2 — direct NSE API (often blocked without cookies)
+    if _nse_api_consecutive_failures >= _NSE_API_CIRCUIT_BREAKER_THRESHOLD:
+        return None
     nse_symbol = symbol.rsplit('.', 1)[0] if '.' in symbol else symbol
     try:
         session = requests.Session()
@@ -109,7 +131,7 @@ def get_stock_price_nse(symbol: str) -> float:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'text/html',
             },
-            timeout=settings.API_TIMEOUT,
+            timeout=settings.API_TIMEOUT_SHORT,
         )
         url = f"{settings.NSE_API_BASE}/quote-equity?symbol={nse_symbol}"
         headers = {
@@ -118,14 +140,20 @@ def get_stock_price_nse(symbol: str) -> float:
             'Accept-Language': 'en-US,en;q=0.9',
             'Referer': 'https://www.nseindia.com',
         }
-        response = session.get(url, headers=headers, timeout=settings.API_TIMEOUT)
+        response = session.get(url, headers=headers, timeout=settings.API_TIMEOUT_SHORT)
         if response.status_code == 200:
             data = response.json()
             price = data.get('priceInfo', {}).get('lastPrice')
             if price:
+                _nse_api_consecutive_failures = 0
                 return float(price)
+        _nse_api_consecutive_failures += 1
     except Exception as e:
-        logger.error(f"NSE fallback failed for {nse_symbol}: {e}")
+        _nse_api_consecutive_failures += 1
+        if _nse_api_consecutive_failures == _NSE_API_CIRCUIT_BREAKER_THRESHOLD:
+            logger.warning(f"NSE API circuit breaker tripped after {_NSE_API_CIRCUIT_BREAKER_THRESHOLD} failures")
+        else:
+            logger.error(f"NSE fallback failed for {nse_symbol}: {e}")
 
     return None
 
@@ -273,6 +301,40 @@ def get_us_stock_price(symbol: str) -> float:
     return None
 
 
+def _batch_fetch_yahoo_spark_prices(symbols: list) -> dict:
+    """
+    Batch-fetch prices via Yahoo Finance spark API.
+    Works for both NSE (.NS suffix) and US ticker symbols.
+    Returns {symbol: price} dict. Symbols that aren't found are omitted.
+    Chunks into groups of 20 (spark API limit).
+    """
+    if not symbols:
+        return {}
+    CHUNK_SIZE = 20
+    all_prices = {}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+    for i in range(0, len(symbols), CHUNK_SIZE):
+        chunk = symbols[i:i + CHUNK_SIZE]
+        try:
+            symbols_str = ",".join(chunk)
+            url = f"https://query2.finance.yahoo.com/v8/finance/spark?symbols={symbols_str}&range=1d&interval=1d"
+            response = requests.get(url, headers=headers, timeout=settings.API_TIMEOUT)
+            if response.status_code == 200:
+                data = response.json()
+                for sym, info in data.items():
+                    close_prices = info.get("close", [])
+                    if close_prices and close_prices[-1] and float(close_prices[-1]) > 0:
+                        all_prices[sym] = float(close_prices[-1])
+            else:
+                logger.warning(f"Yahoo spark batch returned status {response.status_code} for chunk {i // CHUNK_SIZE + 1}")
+        except Exception as e:
+            logger.error(f"Yahoo spark batch chunk {i // CHUNK_SIZE + 1} failed: {e}")
+    logger.info(f"Yahoo spark batch: fetched {len(all_prices)}/{len(symbols)} prices in {(len(symbols) - 1) // CHUNK_SIZE + 1} chunk(s)")
+    return all_prices
+
+
 def get_crypto_price(symbol: str, coin_id: str = None) -> tuple:
     """
     Get cryptocurrency price in USD from CoinGecko API.
@@ -301,22 +363,35 @@ def get_crypto_price(symbol: str, coin_id: str = None) -> tuple:
     return None, None
 
 
-def update_asset_price(asset: Asset, db: Session) -> bool:
+def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> bool:
     """
     Update price for a single asset based on its type
     Returns True if price was successfully updated, False otherwise
-    Uses api_symbol if available, otherwise falls back to symbol
+    Uses api_symbol if available, otherwise falls back to symbol.
+    price_cache: optional pre-fetched prices {"yfinance": {sym: price}, "fmp": {sym: price_usd}}
     """
+    yf_cache = (price_cache or {}).get("yfinance", {})
+    fmp_cache = (price_cache or {}).get("fmp", {})
+
     try:
         new_price = None
         error_message = None
-        
+
         # Use api_symbol if available, otherwise use symbol
         lookup_symbol = asset.api_symbol if asset.api_symbol else asset.symbol
-        
+
         if asset.asset_type == AssetType.STOCK:
-            # Prioritize ISIN for price lookup, fall back to api_symbol/symbol
-            if asset.isin:
+            # Check batch cache first (ISIN key, then normalized symbol key)
+            if asset.isin and asset.isin in yf_cache:
+                new_price = yf_cache[asset.isin]
+                logger.info(f"Batch cache hit for {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
+            if not new_price:
+                nse_sym = _normalize_nse_symbol(lookup_symbol)
+                if nse_sym in yf_cache:
+                    new_price = yf_cache[nse_sym]
+                    logger.info(f"Batch cache hit for {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
+            # Fallback to individual API calls
+            if not new_price and asset.isin:
                 new_price = get_stock_price_yfinance(asset.isin)
                 if new_price:
                     logger.info(f"Fetched stock price via ISIN {asset.isin} for {asset.symbol}")
@@ -326,8 +401,12 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                 error_message = f"Failed to fetch NSE price for {asset.isin or lookup_symbol}"
             
         elif asset.asset_type == AssetType.US_STOCK:
-            # Get US stock price and convert to INR
-            us_price_usd = get_us_stock_price(lookup_symbol)
+            # Check batch cache first, then individual API
+            us_price_usd = fmp_cache.get(lookup_symbol)
+            if us_price_usd:
+                logger.info(f"Batch cache hit for US stock {lookup_symbol}: ${us_price_usd}")
+            else:
+                us_price_usd = get_us_stock_price(lookup_symbol)
             if us_price_usd:
                 # Convert USD to INR
                 usd_to_inr = get_usd_to_inr_rate()
@@ -368,25 +447,25 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                 error_message = f"Failed to fetch NAV for {search_identifier}"
         
         elif asset.asset_type == AssetType.COMMODITY:
-            # Commodity ETFs — try stock price sources first, then MF NAV as fallback.
-            # Many commodity ETFs (e.g. SBIGOL, NIPGOLD) have INF* ISINs and are
-            # registered as MF schemes with AMFI, so NAV lookup works for them.
-            if asset.isin:
-                new_price = get_stock_price_yfinance(asset.isin)
-                if new_price:
-                    logger.info(f"Fetched commodity price via ISIN {asset.isin} for {asset.symbol}")
+            # Commodity ETFs — check fast sources first (caches, AMFI), then slow fallbacks.
+            # 1. Batch cache (Yahoo spark)
+            if asset.isin and asset.isin in yf_cache:
+                new_price = yf_cache[asset.isin]
+                logger.info(f"Batch cache hit for commodity {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
             if not new_price:
-                new_price = get_stock_price_nse(lookup_symbol)
+                nse_sym = _normalize_nse_symbol(lookup_symbol)
+                if nse_sym in yf_cache:
+                    new_price = yf_cache[nse_sym]
+                    logger.info(f"Batch cache hit for commodity {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
+            # 2. AMFI NAV (instant cached lookup for INF* ISINs — before slow yfinance)
             if not new_price and asset.isin and asset.isin.startswith('INF'):
-                # INF* ISINs are mutual fund schemes — try AMFI NAV
                 result = get_mutual_fund_price(asset.isin)
                 if result and result[0]:
                     new_price = result[0]
                     logger.info(f"Fetched commodity price via MF NAV for {asset.symbol} (ISIN: {asset.isin})")
+            # 3. FMP/US batch cache, then individual US stock API (for US-listed commodities)
             if not new_price:
-                # Fallback: try Yahoo Finance chart API (handles US-listed commodity
-                # ETFs like SLV, GLD that aren't on NSE). Convert USD→INR.
-                usd_price = get_us_stock_price(lookup_symbol)
+                usd_price = fmp_cache.get(lookup_symbol) or get_us_stock_price(lookup_symbol)
                 if usd_price:
                     usd_to_inr = get_usd_to_inr_rate()
                     new_price = usd_price * usd_to_inr
@@ -397,6 +476,13 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                     asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
                     flag_modified(asset, 'details')
                     logger.info(f"Fetched commodity price via US API for {lookup_symbol}: ${usd_price} (₹{new_price:.2f})")
+            # 4. Slow fallbacks: yfinance/NSE (only if all fast paths failed)
+            if not new_price and asset.isin:
+                new_price = get_stock_price_yfinance(asset.isin)
+                if new_price:
+                    logger.info(f"Fetched commodity price via ISIN {asset.isin} for {asset.symbol}")
+            if not new_price:
+                new_price = get_stock_price_nse(lookup_symbol)
             if not new_price:
                 error_message = f"Failed to fetch price for commodity {asset.isin or lookup_symbol}"
         
@@ -448,9 +534,17 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                 error_message = f"Failed to fetch crypto price for {lookup_symbol}"
 
         elif asset.asset_type in [AssetType.REIT, AssetType.INVIT, AssetType.SOVEREIGN_GOLD_BOND]:
-            # REITs, InvITs, and SGBs are listed on NSE — fetch like stocks
-            # Prioritize ISIN for price lookup, fall back to api_symbol/symbol
-            if asset.isin:
+            # REITs, InvITs, and SGBs are listed on NSE — check batch cache first
+            if asset.isin and asset.isin in yf_cache:
+                new_price = yf_cache[asset.isin]
+                logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
+            if not new_price:
+                nse_sym = _normalize_nse_symbol(lookup_symbol)
+                if nse_sym in yf_cache:
+                    new_price = yf_cache[nse_sym]
+                    logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
+            # Individual fallbacks
+            if not new_price and asset.isin:
                 new_price = get_stock_price_yfinance(asset.isin)
                 if new_price:
                     logger.info(f"Fetched {asset.asset_type.value} price via ISIN {asset.isin} for {asset.symbol}")
@@ -463,7 +557,12 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
             # Route based on currency: USD → US stock API, INR → NSE
             currency = (asset.details or {}).get('currency', 'INR')
             if currency == 'USD':
-                us_price_usd = get_us_stock_price(lookup_symbol)
+                # Check FMP cache first, then individual API
+                us_price_usd = fmp_cache.get(lookup_symbol)
+                if us_price_usd:
+                    logger.info(f"Batch cache hit for {asset.asset_type.value} {lookup_symbol}: ${us_price_usd}")
+                else:
+                    us_price_usd = get_us_stock_price(lookup_symbol)
                 if us_price_usd:
                     usd_to_inr = get_usd_to_inr_rate()
                     new_price = us_price_usd * usd_to_inr
@@ -477,7 +576,16 @@ def update_asset_price(asset: Asset, db: Session) -> bool:
                 else:
                     error_message = f"Failed to fetch US price for {lookup_symbol} ({asset.asset_type.value})"
             else:
-                if asset.isin:
+                # INR ESOP/RSU — check yfinance cache, then individual
+                if asset.isin and asset.isin in yf_cache:
+                    new_price = yf_cache[asset.isin]
+                    logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
+                if not new_price:
+                    nse_sym = _normalize_nse_symbol(lookup_symbol)
+                    if nse_sym in yf_cache:
+                        new_price = yf_cache[nse_sym]
+                        logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
+                if not new_price and asset.isin:
                     new_price = get_stock_price_yfinance(asset.isin)
                 if not new_price:
                     new_price = get_stock_price_nse(lookup_symbol)
@@ -554,11 +662,166 @@ PRICE_UPDATABLE_TYPES = [
 ]
 
 
+def _update_crypto_assets_batch(crypto_assets: list, db: Session) -> tuple:
+    """
+    Update all crypto assets in a single batched CoinGecko API call
+    to avoid rate-limiting. Returns (updated_count, failed_count).
+    """
+    from app.services.crypto_price_service import get_multiple_crypto_prices, get_coin_id_by_symbol
+
+    if not crypto_assets:
+        return 0, 0
+
+    # Step 1: Resolve coin_id for each asset
+    asset_coin_map = {}  # coin_id -> list of assets
+    unresolved = []
+    for asset in crypto_assets:
+        coin_id = (asset.details or {}).get('coin_id') or asset.api_symbol or None
+        if not coin_id:
+            resolved = get_coin_id_by_symbol(asset.symbol)
+            if resolved:
+                coin_id = resolved
+        if coin_id:
+            asset_coin_map.setdefault(coin_id, []).append(asset)
+        else:
+            unresolved.append(asset)
+
+    # Step 2: Fetch all prices in one API call
+    all_coin_ids = list(asset_coin_map.keys())
+    prices = get_multiple_crypto_prices(all_coin_ids) if all_coin_ids else {}
+    usd_to_inr = get_usd_to_inr_rate()
+
+    updated = 0
+    failed = 0
+
+    # Step 3: Apply prices to each asset
+    for coin_id, assets_for_coin in asset_coin_map.items():
+        price_data = prices.get(coin_id)
+        for asset in assets_for_coin:
+            try:
+                if price_data and price_data['price'] > 0:
+                    crypto_price_usd = price_data['price']
+                    new_price = crypto_price_usd * usd_to_inr
+
+                    if asset.details is None:
+                        asset.details = {}
+                    asset.details['price_usd'] = crypto_price_usd
+                    asset.details['usd_to_inr_rate'] = usd_to_inr
+                    asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
+                    if not asset.details.get('coin_id'):
+                        asset.details['coin_id'] = coin_id
+                    flag_modified(asset, 'details')
+
+                    asset.current_price = new_price
+                    asset.current_value = asset.quantity * new_price
+                    asset.calculate_metrics()
+
+                    if not asset.xirr_manual:
+                        transactions = db.query(Transaction).filter(
+                            Transaction.asset_id == asset.id
+                        ).order_by(Transaction.transaction_date).all()
+                        if transactions:
+                            buy_qty = sum(t.quantity or 0 for t in transactions if t.transaction_type == TransactionType.BUY)
+                            sell_qty = sum(t.quantity or 0 for t in transactions if t.transaction_type == TransactionType.SELL)
+                            if abs((buy_qty - sell_qty) - (asset.quantity or 0)) < 0.0001:
+                                asset.xirr = calculate_asset_xirr(transactions, asset.current_value or 0)
+                            else:
+                                asset.xirr = None
+
+                    asset.price_update_failed = False
+                    asset.last_price_update = datetime.now(timezone.utc)
+                    asset.price_update_error = None
+                    db.commit()
+                    logger.info(f"Updated crypto {asset.symbol}: ${crypto_price_usd} (₹{new_price:.2f} at rate {usd_to_inr})")
+                    updated += 1
+                else:
+                    asset.price_update_failed = True
+                    asset.price_update_error = f"Failed to fetch crypto price for {asset.symbol} (coin_id={coin_id})"
+                    db.commit()
+                    logger.warning(f"No price data for crypto {asset.symbol} (coin_id={coin_id})")
+                    failed += 1
+            except Exception as e:
+                logger.error(f"Error updating crypto {asset.symbol}: {e}")
+                try:
+                    asset.price_update_failed = True
+                    asset.price_update_error = str(e)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                failed += 1
+
+    # Step 4: Mark unresolved assets as failed
+    for asset in unresolved:
+        try:
+            asset.price_update_failed = True
+            asset.price_update_error = f"Could not resolve CoinGecko coin_id for symbol {asset.symbol}"
+            db.commit()
+            logger.warning(f"Could not resolve coin_id for crypto {asset.symbol}")
+        except Exception:
+            db.rollback()
+        failed += 1
+
+    logger.info(f"Crypto batch update: {updated} updated, {failed} failed ({len(all_coin_ids)} unique coins)")
+    return updated, failed
+
+
+def _build_price_cache(assets: list) -> dict:
+    """
+    Pre-fetch prices in batch via Yahoo Finance spark API.
+    Returns {"yfinance": {symbol: price_inr}, "fmp": {symbol: price_usd}}.
+    Keys use .NS-suffixed symbols for NSE, raw tickers for US.
+    ISINs are excluded (spark API doesn't support them; individual fallbacks handle them).
+    """
+    # Collect NSE symbols: STOCK, REIT, INVIT, SGB, COMMODITY, ESOP/RSU (INR)
+    nse_types = {AssetType.STOCK, AssetType.REIT, AssetType.INVIT,
+                 AssetType.SOVEREIGN_GOLD_BOND, AssetType.COMMODITY}
+    nse_symbols = set()
+    for a in assets:
+        if a.asset_type in nse_types:
+            lookup = a.api_symbol or a.symbol
+            nse_symbols.add(_normalize_nse_symbol(lookup))
+        elif a.asset_type in (AssetType.ESOP, AssetType.RSU):
+            currency = (a.details or {}).get('currency', 'INR')
+            if currency != 'USD':
+                lookup = a.api_symbol or a.symbol
+                nse_symbols.add(_normalize_nse_symbol(lookup))
+
+    # Collect US symbols: US_STOCK, ESOP/RSU (USD), COMMODITY (non-INF* as fallback)
+    us_symbols = set()
+    for a in assets:
+        if a.asset_type == AssetType.US_STOCK:
+            us_symbols.add(a.api_symbol or a.symbol)
+        elif a.asset_type == AssetType.COMMODITY:
+            # Include commodity symbols as US tickers (handles SLV, GOLD, etc.)
+            if not (a.isin and a.isin.startswith('INF')):
+                us_symbols.add(a.api_symbol or a.symbol)
+        elif a.asset_type in (AssetType.ESOP, AssetType.RSU):
+            currency = (a.details or {}).get('currency', 'INR')
+            if currency == 'USD':
+                us_symbols.add(a.api_symbol or a.symbol)
+
+    # Batch fetch all via Yahoo spark (single API call for NSE, single for US)
+    nse_prices = _batch_fetch_yahoo_spark_prices(list(nse_symbols)) if nse_symbols else {}
+    us_prices = _batch_fetch_yahoo_spark_prices(list(us_symbols)) if us_symbols else {}
+
+    return {"yfinance": nse_prices, "fmp": us_prices}
+
+
+def reset_yfinance_circuit_breaker():
+    """Reset circuit breakers at the start of a new update session."""
+    global _yfinance_consecutive_failures, _nse_api_consecutive_failures
+    _yfinance_consecutive_failures = 0
+    _nse_api_consecutive_failures = 0
+
+
 def update_all_prices():
     """
     Update prices for all active market-priced assets.
     Skips non-market assets (PPF, PF, NPS, FD, RD, Insurance, etc.).
+    Uses batch API calls where supported: CoinGecko (crypto), yfinance (NSE),
+    FMP (US stocks). Individual fallbacks for any batch misses.
     """
+    reset_yfinance_circuit_breaker()
     db = SessionLocal()
     try:
         logger.info("Starting price update for market-priced assets...")
@@ -568,18 +831,32 @@ def update_all_prices():
             Asset.is_active == True,
             Asset.asset_type.in_(PRICE_UPDATABLE_TYPES),
         ).all()
-        
+
+        # Separate crypto assets for batch processing
+        crypto_assets = [a for a in assets if a.asset_type == AssetType.CRYPTO]
+        other_assets = [a for a in assets if a.asset_type != AssetType.CRYPTO]
+
         updated_count = 0
         failed_count = 0
-        
-        for asset in assets:
-            if update_asset_price(asset, db):
+
+        # Batch update crypto (single CoinGecko API call)
+        if crypto_assets:
+            cu, cf = _update_crypto_assets_batch(crypto_assets, db)
+            updated_count += cu
+            failed_count += cf
+
+        # Pre-fetch NSE + US prices in batch via Yahoo spark API (2 API calls total)
+        price_cache = _build_price_cache(other_assets)
+
+        # Update non-crypto assets (using batch cache with individual fallbacks)
+        for asset in other_assets:
+            if update_asset_price(asset, db, price_cache):
                 updated_count += 1
             else:
                 failed_count += 1
-        
+
         logger.info(f"Price update complete. Updated: {updated_count}, Failed: {failed_count}")
-        
+
     except Exception as e:
         logger.error(f"Error in update_all_prices: {str(e)}")
     finally:

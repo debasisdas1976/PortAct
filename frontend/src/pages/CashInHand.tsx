@@ -1,13 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Card, CardContent, CircularProgress, Grid, Paper, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, Typography, Alert, Button,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, MenuItem, Chip,
+  TableCell, TableContainer, TableHead, TableRow, Typography, Button, IconButton, Chip,
 } from '@mui/material';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
 import { Add, Edit, Delete, Label as LabelIcon, } from '@mui/icons-material';
 import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
+import GenericAssetEditDialog from '../components/GenericAssetEditDialog';
 import { assetsAPI } from '../services/api';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
@@ -43,16 +41,6 @@ const CURRENCIES = [
   { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
 ];
 
-const EMPTY_FORM = {
-  name: '',
-  currency: 'INR',
-  original_amount: '',
-  inr_value: '',
-  notes: '',
-  xirr: '' as string,
-  portfolio_id: '' as number | '',
-};
-
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
 
@@ -64,17 +52,12 @@ const formatAmount = (amount: number, currencyCode: string) => {
 const CashInHand: React.FC = () => {
   const { notify } = useNotification();
   const selectedPortfolioId = useSelectedPortfolio();
-  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [tagAssetId, setTagAssetId] = useState<number | null>(null);
   const [tagAssetName, setTagAssetName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [dialogError, setDialogError] = useState('');
-  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
 
   const fetchData = useCallback(async () => {
     try {
@@ -92,101 +75,8 @@ const CashInHand: React.FC = () => {
 
   const totalValue = assets.reduce((s, a) => s + (a.current_value || 0), 0);
 
-  const fetchExchangeRates = useCallback(async () => {
-    try {
-      const res = await api.get('/prices/exchange-rates');
-      setExchangeRates(res.data.rates || {});
-    } catch {
-      // Rates unavailable — user can still enter manually
-    }
-  }, []);
-
-  const handleAdd = () => {
-    setEditingId(null);
-    setForm({ ...EMPTY_FORM, portfolio_id: selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : '') });
-    setDialogError('');
-    setDialogOpen(true);
-    fetchExchangeRates();
-  };
-
-  const handleEdit = (asset: AssetItem) => {
-    setEditingId(asset.id);
-    const currency = asset.details?.currency || asset.symbol || 'INR';
-    const originalAmount = asset.details?.original_amount ?? asset.current_value ?? '';
-    setForm({
-      name: asset.name || '',
-      currency,
-      original_amount: String(originalAmount),
-      inr_value: String(asset.current_value || ''),
-      notes: asset.notes || '',
-      xirr: String(asset.xirr || ''),
-      portfolio_id: (asset as any).portfolio_id || selectedPortfolioId || (portfolios.length === 1 ? portfolios[0].id : ''),
-    });
-    setDialogError('');
-    setDialogOpen(true);
-    fetchExchangeRates();
-  };
-
-  const computeInrValue = (currency: string, amount: string, rates: Record<string, number>): string => {
-    if (currency === 'INR') return amount;
-    const rate = rates[currency];
-    const parsed = parseFloat(amount);
-    if (!rate || !parsed) return '';
-    return (parsed * rate).toFixed(2);
-  };
-
-  const handleFormChange = (field: string, value: string) => {
-    const updated = { ...form, [field]: value };
-    if (field === 'currency' || field === 'original_amount') {
-      updated.inr_value = computeInrValue(updated.currency, updated.original_amount, exchangeRates);
-    }
-    setForm(updated);
-  };
-
-  const handleSave = async () => {
-    if (!form.currency) { setDialogError('Currency is required'); return; }
-    if (!form.original_amount) { setDialogError('Amount is required'); return; }
-
-    const originalAmount = parseFloat(form.original_amount) || 0;
-    const isINR = form.currency === 'INR';
-    const inrValue = isINR ? originalAmount : (parseFloat(form.inr_value) || 0);
-
-    if (!isINR && !inrValue) { setDialogError('INR equivalent value is required for non-INR currencies'); return; }
-
-    setDialogError('');
-
-    const details: Record<string, any> = {
-      currency: form.currency,
-      original_amount: originalAmount,
-    };
-
-    const autoName = form.name || `${form.currency} Cash`;
-
-    const payload = {
-      asset_type: ASSET_TYPE,
-      name: autoName,
-      symbol: form.currency,
-      total_invested: inrValue,
-      quantity: 1,
-      purchase_price: inrValue,
-      current_price: inrValue,
-      notes: form.notes || undefined,
-      details,
-      ...(form.xirr ? { xirr: parseFloat(form.xirr) } : {}),
-      portfolio_id: form.portfolio_id || undefined,
-    };
-
-    try {
-      setSaving(true);
-      if (editingId) { await assetsAPI.update(editingId, payload); }
-      else { await assetsAPI.create(payload); }
-      notify.success(editingId ? 'Cash holding updated successfully' : 'Cash holding added successfully');
-      setDialogOpen(false);
-      fetchData();
-    } catch (err) {
-      notify.error(getErrorMessage(err, 'Failed to save'));
-    } finally { setSaving(false); }
-  };
+  const handleAdd = () => { setEditingId(null); setDialogOpen(true); };
+  const handleEdit = (asset: AssetItem) => { setEditingId(asset.id); setDialogOpen(true); };
 
   const handleDelete = async (id: number, name: string) => {
     if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
@@ -284,58 +174,15 @@ const CashInHand: React.FC = () => {
         </Table>
       </TableContainer>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingId ? 'Edit' : 'Add'} Cash Holding</DialogTitle>
-        <DialogContent>
-          {dialogError && <Alert severity="error" sx={{ mb: 2 }}>{dialogError}</Alert>}
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            <Grid item xs={12}>
-              <TextField fullWidth label="Name" value={form.name} onChange={(e) => handleFormChange('name', e.target.value)} helperText="Optional. Auto-generated from currency if left empty." />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField select fullWidth label="Currency" required value={form.currency} onChange={(e) => handleFormChange('currency', e.target.value)}>
-                {CURRENCIES.map((c) => (<MenuItem key={c.code} value={c.code}>{c.code} — {c.name}</MenuItem>))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Amount" type="number" required value={form.original_amount} onChange={(e) => handleFormChange('original_amount', e.target.value)} inputProps={{ min: 0, step: '0.01' }} />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth label="INR Value" type="number" required
-                value={form.inr_value}
-                onChange={(e) => handleFormChange('inr_value', e.target.value)}
-                inputProps={{ min: 0, step: '0.01' }}
-                disabled={form.currency === 'INR'}
-                InputProps={{ readOnly: form.currency !== 'INR' && !!exchangeRates[form.currency] }}
-                helperText={
-                  form.currency === 'INR'
-                    ? 'Auto-filled for INR'
-                    : exchangeRates[form.currency]
-                      ? `Rate: 1 ${form.currency} = ₹${exchangeRates[form.currency].toFixed(2)}`
-                      : 'Enter INR equivalent value'
-                }
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField select fullWidth label="Portfolio" value={form.portfolio_id} onChange={(e) => handleFormChange('portfolio_id', e.target.value ? e.target.value : '')}>
-                {portfolios.map((p: any) => (<MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="XIRR (%)" type="number" value={form.xirr} onChange={(e) => handleFormChange('xirr', e.target.value)} helperText="Enter annualized return rate" />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField fullWidth label="Notes" multiline rows={2} value={form.notes} onChange={(e) => handleFormChange('notes', e.target.value)} />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained" disabled={saving}>{saving ? <CircularProgress size={24} /> : editingId ? 'Save' : 'Add'}</Button>
-        </DialogActions>
-      </Dialog>
-  
+      <GenericAssetEditDialog
+        open={dialogOpen}
+        onClose={() => { setDialogOpen(false); setEditingId(null); }}
+        onSaved={fetchData}
+        asset={editingId ? assets.find(a => a.id === editingId) || null : null}
+        assetType={ASSET_TYPE}
+        portfolioId={selectedPortfolioId}
+      />
+
       <AssetAttributeTagDialog
         assetId={tagAssetId}
         assetName={tagAssetName}
