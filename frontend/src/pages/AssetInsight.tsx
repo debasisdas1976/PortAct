@@ -12,6 +12,8 @@ import {
   useMediaQuery,
   useTheme,
   Chip,
+  Autocomplete,
+  TextField,
 } from '@mui/material';
 import { Visibility, VisibilityOff, ArrowBack } from '@mui/icons-material';
 import {
@@ -98,6 +100,8 @@ const AssetInsight: React.FC = () => {
 
   // Track all category/asset keys for line chart
   const [lineKeys, setLineKeys] = useState<string[]>([]);
+  // Filter to show specific category or asset in the line chart
+  const [selectedLineFilter, setSelectedLineFilter] = useState<string | null>(null);
 
   // Fetch bar chart data + portfolio XIRR from dashboard overview
   const fetchBarData = useCallback(async () => {
@@ -216,6 +220,7 @@ const AssetInsight: React.FC = () => {
   const handleLineViewChange = (_e: React.MouseEvent<HTMLElement>, val: 'value' | 'xirr' | null) => {
     if (val !== null) {
       setLineViewMode(val);
+      setSelectedLineFilter(null);
       if (val === 'xirr') setDrillCategory(null); // XIRR trend is category-only
     }
   };
@@ -223,11 +228,13 @@ const AssetInsight: React.FC = () => {
   const handleCategoryDrill = (catName: string) => {
     if (lineViewMode === 'value' && !drillCategory) {
       setDrillCategory(catName);
+      setSelectedLineFilter(null);
     }
   };
 
   const handleDrillBack = () => {
     setDrillCategory(null);
+    setSelectedLineFilter(null);
   };
 
   const getColor = (key: string, index: number) => {
@@ -298,6 +305,7 @@ const AssetInsight: React.FC = () => {
 
   const isLineChartLoading = lineViewMode === 'value' ? lineLoading : xirrTrendLoading;
   const activeLineData = lineViewMode === 'value' ? lineData : xirrTrendData;
+  const visibleLineKeys = selectedLineFilter ? [selectedLineFilter] : lineKeys;
 
   return (
     <Box sx={{ p: { xs: 1, sm: 2, md: 3 } }}>
@@ -444,7 +452,7 @@ const AssetInsight: React.FC = () => {
           )}
         </Stack>
 
-        <Stack direction="row" spacing={2} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+        <Stack direction="row" spacing={2} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap alignItems="center">
           <ToggleButtonGroup
             value={lineViewMode}
             exclusive
@@ -467,6 +475,25 @@ const AssetInsight: React.FC = () => {
             <ToggleButton value={180}>6M</ToggleButton>
             <ToggleButton value={365}>1Y</ToggleButton>
           </ToggleButtonGroup>
+
+          {lineKeys.length > 1 && (
+            <Autocomplete
+              size="small"
+              options={lineKeys}
+              value={selectedLineFilter}
+              onChange={(_e, val) => setSelectedLineFilter(val)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  placeholder={drillCategory ? 'Filter asset...' : 'Filter category...'}
+                  variant="outlined"
+                  size="small"
+                />
+              )}
+              sx={{ minWidth: 200, maxWidth: 300 }}
+              clearOnEscape
+            />
+          )}
         </Stack>
 
         {!drillCategory && lineViewMode === 'value' && (
@@ -511,8 +538,8 @@ const AssetInsight: React.FC = () => {
                 }}
                 wrapperStyle={{ cursor: lineViewMode === 'value' && !drillCategory ? 'pointer' : 'default' }}
               />
-              {lineKeys.map((key, idx) => {
-                const color = getColor(key, idx);
+              {visibleLineKeys.map((key) => {
+                const color = getColor(key, lineKeys.indexOf(key));
                 const lastIndex = activeLineData.length - 1;
                 return (
                   <Line
