@@ -447,20 +447,55 @@ Get asset allocation breakdown.
 
 ## Asset Types
 
-Supported asset types:
-- `stock` - Stocks and equities
-- `mutual_fund` - Mutual funds
-- `commodity` - Gold, silver, etc.
-- `crypto` - Cryptocurrencies
+Supported asset types (30+):
+
+**Equities & Funds:**
+- `stock` - Indian stocks and equities
+- `us_stock` - US-listed stocks (with USD/INR conversion)
+- `equity_mutual_fund` - Equity mutual funds
+- `hybrid_mutual_fund` - Hybrid mutual funds
+- `debt_mutual_fund` - Debt/bond mutual funds
+- `commodity` - Gold, silver, and commodities
+- `sovereign_gold_bond` - Sovereign Gold Bonds
+- `esop` - Employee Stock Ownership Plans
+- `rsu` - Restricted Stock Units
+
+**Banking:**
 - `savings_account` - Savings accounts
-- `recurring_deposit` - Recurring deposits
 - `fixed_deposit` - Fixed deposits
-- `real_estate` - Real estate properties
+- `recurring_deposit` - Recurring deposits
+- `credit_card` - Credit card accounts
+
+**Retirement & Government Schemes:**
 - `ppf` - Public Provident Fund
-- `pf` - Provident Fund
+- `pf` - Provident Fund / EPF
 - `nps` - National Pension System
+- `gratuity` - Employee gratuity
+- `pension` - Pension plans
 - `ssy` - Sukanya Samriddhi Yojana
 - `insurance_policy` - Insurance policies
+- `scss` - Senior Citizen Savings Scheme
+
+**Government Securities:**
+- `nsc` - National Savings Certificate
+- `kvp` - Kisan Vikas Patra
+- `mis` - Monthly Income Scheme
+
+**Bonds:**
+- `corporate_bond` - Corporate bonds
+- `rbi_bond` - RBI bonds
+- `tax_saving_bond` - Tax-saving bonds
+
+**Real Estate:**
+- `land` - Land / plots
+- `farm_land` - Agricultural land
+- `house` - Residential / commercial properties
+- `reit` - Real Estate Investment Trusts
+- `invit` - Infrastructure Investment Trusts
+
+**Other:**
+- `crypto` - Cryptocurrencies
+- `cash` - Cash in hand
 
 ## Transaction Types
 

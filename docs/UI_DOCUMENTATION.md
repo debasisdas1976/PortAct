@@ -113,18 +113,26 @@ frontend/
 ## UI Components
 
 ### Layout Component
-- **Responsive Sidebar Navigation**
+- **Responsive Sidebar Navigation** with collapsible sections:
   - Dashboard
-  - Assets
+  - Asset Overview
+  - Demat Holdings (Stocks, US Stocks, Equity MF, Hybrid MF, Debt Funds, Commodities, SGBs, ESOPs, RSUs)
+  - Banking (Savings, Credit Cards, FD, RD, Bank Accounts)
+  - Retirement Plans (PPF, PF, NPS, Gratuity, Pension, Insurance, SCSS)
+  - Government Schemes (NSC, KVP, MIS, SSY)
+  - Bonds (Corporate, RBI, Tax-Saving)
+  - Real Estate (Land, Farm Land, House, REITs, InvITs)
+  - Crypto (Accounts, Assets)
+  - Insights (Asset Insight, Attribute Insight, Alerts, MF Holdings, Cash)
+  - Expenses (Dashboard, Expenses)
   - Statements
-  - Alerts
+  - Utilities (SIP Creator)
+  - Administration (Portfolios, Portfolio Admin, Settings)
+  - Master Data (Asset Types, Attributes, Banks, Brokers, Exchanges, Categories)
 - **Top App Bar**
-  - Page title
-  - User profile menu
-  - Logout functionality
-- **Mobile-Responsive Drawer**
-  - Hamburger menu for mobile devices
-  - Collapsible navigation
+  - Page title, portfolio selector, user profile menu, logout
+- **Responsive Design**
+  - Collapsible navigation drawer
 
 ### Chart Components
 
@@ -359,16 +367,29 @@ REACT_APP_API_URL=http://localhost:8000/api/v1
 - **Color Contrast** - WCAG AA compliant
 - **Focus Indicators** - Clear focus states
 
-## Future Enhancements
+## Current Feature Highlights
 
-1. **Dark Mode** - Theme toggle
-2. **Export Features** - PDF/Excel export
-3. **Advanced Filters** - Asset filtering and search
-4. **Real-time Updates** - WebSocket integration
-5. **Mobile App** - React Native version
-6. **Notifications** - Push notifications
-7. **Multi-language** - i18n support
-8. **Custom Dashboards** - User-configurable layouts
+The frontend has grown significantly beyond the initial pages listed above. The application now includes **65+ pages** covering:
+
+- **30+ Asset Type Pages** — Dedicated management page per asset type (Stocks, US Stocks, Equity/Hybrid/Debt MFs, FDs, RDs, PPF, PF, NPS, Gratuity, Pension, Insurance, SCSS, NSC, KVP, MIS, SSY, Bonds, Real Estate, REITs, InvITs, Crypto, ESOPs, RSUs, Cash, Commodities, SGBs)
+- **Account Management** — Bank accounts, demat accounts, crypto accounts with independent cash balances
+- **Asset Attributes** — Custom tagging system with bulk assignment and attribute-based insights
+- **Expense Tracking** — Expense dashboard with monthly trends, AI-powered categorization, category management
+- **Multi-Portfolio** — Create and manage multiple portfolios; full export/import with auto ID remapping
+- **Price Updates** — Real-time price refresh with progress tracking (stocks, MFs, crypto, commodities, US stocks with forex)
+- **EOD Snapshots** — Daily portfolio snapshots with historical performance charts (7d to 1y views)
+- **AI News & Alerts** — Automated market news analysis via OpenAI/Grok with severity levels
+- **Insights** — Asset insights, attribute insights, mutual fund holdings analysis
+- **Statements** — Upload bank/broker/tradebook statements with bank-specific parsers
+- **SIP Creator** — Generate SIP transactions for mutual funds
+- **Master Data** — Asset types, attributes, banks, brokers, crypto exchanges, expense categories
+- **Application Settings** — Configurable price update interval, EOD time, monthly contributions
+
+## Potential Future Enhancements
+
+1. **Mobile App** - React Native version
+2. **Multi-language** - i18n support
+3. **Custom Dashboards** - User-configurable layouts
 
 ## Troubleshooting
 

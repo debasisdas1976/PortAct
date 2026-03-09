@@ -171,26 +171,56 @@ chmod +x scripts/setup.sh
 
 ## 🎯 Key Features to Try
 
-1. **Multi-Asset Tracking**
-   - Add stocks, mutual funds, crypto, FDs, real estate
-   - Track 13 different asset types
+1. **30+ Asset Types**
+   - Stocks, US Stocks, Mutual Funds (Equity/Hybrid/Debt), Commodities, Sovereign Gold Bonds
+   - Fixed Deposits, Recurring Deposits, Savings Accounts, Credit Cards
+   - PPF, PF, NPS, Gratuity, Pension, Insurance, SSY
+   - NSC, KVP, MIS, SCSS, Corporate/RBI/Tax-Saving Bonds
+   - Land, Farm Land, House, REITs, InvITs
+   - Crypto, ESOPs, RSUs, Cash
 
-2. **Statement Upload**
+2. **Statement Upload & Parsing**
    - Upload PDF/CSV/Excel statements
-   - Automatic asset and transaction extraction
+   - Bank-specific parsers: ICICI, HDFC, IDFC First, SBI, Axis, Kotak
+   - Broker parsers: Zerodha, ICICI Direct, NSDL/CDSL CAS, Upstox, Angel One
+   - Tradebook import for trade history
 
-3. **Portfolio Analytics**
-   - Real-time profit/loss calculations
-   - Asset allocation breakdown
-   - Performance trends
+3. **Automated Price Updates**
+   - Auto-fetches latest prices every 30 minutes
+   - Stocks (NSE/BSE), Mutual Funds (AMFI), Crypto (CoinGecko/Binance)
+   - US Stocks with live USD-to-INR conversion
 
-4. **Transaction Management**
-   - Record buys, sells, dividends
-   - Complete audit trail
+4. **Portfolio Dashboard & EOD Snapshots**
+   - Summary cards, performance charts, asset allocation with drill-down
+   - Daily portfolio snapshots at 7 PM IST for historical tracking
+   - Top/bottom performers, recent transactions
 
-5. **Alerts**
-   - Get notified about important events
-   - Actionable suggestions
+5. **AI-Powered News & Alerts**
+   - Automated market news analysis (OpenAI/Grok)
+   - Severity-based alerts: INFO, WARNING, CRITICAL
+   - Smart filtering for portfolio-relevant news
+
+6. **Expense Tracking**
+   - Auto-import expenses from bank/credit card statements
+   - AI-powered categorization
+   - Expense dashboard with monthly trends
+
+7. **Asset Attributes & Insights**
+   - Custom tags for assets (e.g., "Long-term", "Index Fund")
+   - Attribute-based performance analytics
+   - Asset-level insights and XIRR calculations
+
+8. **Multi-Portfolio & Export/Import**
+   - Multiple portfolios per user
+   - Full portfolio export/import (v5.0) with auto ID remapping
+   - Complete data backup and restore
+
+9. **Mutual Fund Holdings**
+   - View top stocks held across your MF portfolio
+   - Upload MF holdings Excel for composition analysis
+
+10. **SIP Creator**
+    - Generate SIP transactions for mutual funds
 
 ## 💡 Tips
 
