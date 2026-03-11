@@ -121,8 +121,14 @@ class Asset(Base):
             self.profit_loss_percentage = 0.0
 
     def fallback_xirr(self):
-        """Return interest_rate from details or profit_loss_percentage as XIRR fallback
-        when transaction data is not available."""
+        """Return interest_rate from details as XIRR fallback when transaction
+        data is not available.
+
+        Only uses explicit annual interest rates (e.g. FD, bond, RD).
+        Does NOT fall back to profit_loss_percentage because that is a simple
+        gain/loss ratio — not an annualized return — and produces misleading
+        XIRR values (especially for short or long holding periods).
+        """
         from app.services.xirr_service import clamp_xirr
         if self.details and isinstance(self.details, dict):
             interest_rate = self.details.get('interest_rate')
@@ -131,8 +137,6 @@ class Asset(Base):
                     return clamp_xirr(round(float(interest_rate), 2))
                 except (ValueError, TypeError):
                     pass
-        if self.profit_loss_percentage and self.profit_loss_percentage != 0:
-            return clamp_xirr(round(self.profit_loss_percentage, 2))
         return None
 
 # Made with Bob
