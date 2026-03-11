@@ -46,6 +46,7 @@ import api, { transactionsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 import { getErrorMessage } from '../utils/errorUtils';
 import StockTransactionDialog from '../components/StockTransactionDialog';
 
@@ -360,6 +361,9 @@ const Commodities: React.FC = () => {
               {totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%
             </Typography>
           </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <DayChangeCard assets={commodities} />
         </Grid>
         <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <XirrCard assetType="commodity" portfolioId={selectedPortfolioId} />

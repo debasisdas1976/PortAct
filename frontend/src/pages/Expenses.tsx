@@ -26,14 +26,17 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  IconButton
+  IconButton,
+  Checkbox,
+  Tooltip
 } from '@mui/material';
 import {
   FilterList as FilterIcon,
   Upload as UploadIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
-  Add as AddIcon
+  Add as AddIcon,
+  DeleteSweep as DeleteSweepIcon
 } from '@mui/icons-material';
 import { useSelector, useDispatch } from 'react-redux';
 import { AppDispatch, RootState } from '../store';
@@ -135,11 +138,15 @@ const Expenses: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Multi-select
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     dispatch(fetchPortfolios());
   }, [dispatch]);
 
   useEffect(() => {
+    setSelectedIds(new Set());
     fetchExpenses();
   }, [filters, page, rowsPerPage, orderBy, order, selectedPortfolioId]);
 
@@ -328,6 +335,38 @@ const Expenses: React.FC = () => {
     }
   };
 
+  const handleToggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.size === expenses.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(expenses.map(e => e.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedIds.size} transaction(s)?`)) return;
+
+    try {
+      const response = await api.post('/expenses/bulk-delete', Array.from(selectedIds));
+      setSuccess(`Deleted ${response.data.deleted} transaction(s)`);
+      setSelectedIds(new Set());
+      fetchExpenses();
+      fetchSummary();
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to delete transactions'));
+    }
+  };
+
   const handleOpenExpenseDialog = (expense?: Expense) => {
     if (expense) {
       setEditingExpense(expense);
@@ -456,6 +495,18 @@ const Expenses: React.FC = () => {
           >
             Upload Statement
           </Button>
+          {selectedIds.size > 0 && (
+            <Tooltip title={`Delete ${selectedIds.size} selected`}>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<DeleteSweepIcon />}
+                onClick={handleBulkDelete}
+              >
+                Delete ({selectedIds.size})
+              </Button>
+            </Tooltip>
+          )}
         </Box>
       </Box>
 
@@ -609,6 +660,13 @@ const Expenses: React.FC = () => {
         <Table sx={{ minWidth: 650 }}>
           <TableHead>
             <TableRow sx={{ backgroundColor: 'grey.100' }}>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  indeterminate={selectedIds.size > 0 && selectedIds.size < expenses.length}
+                  checked={expenses.length > 0 && selectedIds.size === expenses.length}
+                  onChange={handleToggleSelectAll}
+                />
+              </TableCell>
               <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>
                 <TableSortLabel
                   active={orderBy === 'transaction_date'}
@@ -678,7 +736,7 @@ const Expenses: React.FC = () => {
           <TableBody>
             {expenses.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                   <Typography color="textSecondary">
                     No transactions found. Upload a bank statement to get started.
                   </Typography>
@@ -688,11 +746,18 @@ const Expenses: React.FC = () => {
               expenses.map((expense) => (
                 <TableRow
                   key={expense.id}
+                  selected={selectedIds.has(expense.id)}
                   sx={{
                     '&:hover': { backgroundColor: 'grey.50' },
                     '&:last-child td, &:last-child th': { border: 0 }
                   }}
                 >
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selectedIds.has(expense.id)}
+                      onChange={() => handleToggleSelect(expense.id)}
+                    />
+                  </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     {formatDate(expense.transaction_date)}
                   </TableCell>

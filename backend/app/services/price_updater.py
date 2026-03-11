@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.models.asset import Asset, AssetType
 from app.core.database import SessionLocal
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 import logging
 from app.services.currency_converter import get_usd_to_inr_rate, convert_usd_to_inr, get_rate_to_inr
 from app.models.transaction import Transaction, TransactionType
@@ -35,14 +35,15 @@ def _normalize_nse_symbol(symbol: str) -> str:
     return symbol
 
 
-def get_stock_price_yahoo_chart(symbol: str) -> float:
+def get_stock_price_yahoo_chart(symbol: str) -> tuple:
     """
     Get stock price via Yahoo Finance chart API directly (no yfinance dependency).
     More reliable than yfinance library when it has version-specific bugs.
     Only works with ticker symbols, not ISINs.
+    Returns (price, previous_close) tuple or (None, None).
     """
     if _is_isin(symbol):
-        return None
+        return None, None
     yf_symbol = _normalize_nse_symbol(symbol)
     try:
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}"
@@ -52,13 +53,16 @@ def get_stock_price_yahoo_chart(symbol: str) -> float:
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            price = data.get('chart', {}).get('result', [{}])[0].get('meta', {}).get('regularMarketPrice')
+            meta = data.get('chart', {}).get('result', [{}])[0].get('meta', {})
+            price = meta.get('regularMarketPrice')
+            previous_close = meta.get('chartPreviousClose') or meta.get('previousClose')
             if price and float(price) > 0:
                 logger.info(f"Yahoo chart price for {yf_symbol}: ₹{float(price):.2f}")
-                return float(price)
+                prev = float(previous_close) if previous_close and float(previous_close) > 0 else None
+                return float(price), prev
     except Exception as e:
         logger.warning(f"Yahoo chart API failed for {yf_symbol}: {e}")
-    return None
+    return None, None
 
 
 _yfinance_consecutive_failures = 0
@@ -99,29 +103,30 @@ _nse_api_consecutive_failures = 0
 _NSE_API_CIRCUIT_BREAKER_THRESHOLD = 2  # Skip NSE direct API after 2 consecutive failures
 
 
-def get_stock_price_nse(symbol: str) -> float:
+def get_stock_price_nse(symbol: str) -> tuple:
     """
     Get stock price from NSE India.
     Primary: yfinance library (with circuit breaker).
     Fallback 1: Yahoo Finance chart API (direct HTTP, no yfinance dependency).
     Fallback 2: direct NSE API (with circuit breaker).
+    Returns (price, previous_close) tuple or (None, None).
     """
     global _nse_api_consecutive_failures
 
     # Primary — yfinance (reliable when working)
     price = get_stock_price_yfinance(symbol)
     if price:
-        return price
+        return price, None  # yfinance doesn't give previous_close via fast_info
 
     # Fallback 1 — Yahoo Finance chart API (direct HTTP call)
-    price = get_stock_price_yahoo_chart(symbol)
+    price, previous_close = get_stock_price_yahoo_chart(symbol)
     if price:
         _nse_api_consecutive_failures = 0
-        return price
+        return price, previous_close
 
     # Fallback 2 — direct NSE API (often blocked without cookies)
     if _nse_api_consecutive_failures >= _NSE_API_CIRCUIT_BREAKER_THRESHOLD:
-        return None
+        return None, None
     nse_symbol = symbol.rsplit('.', 1)[0] if '.' in symbol else symbol
     try:
         session = requests.Session()
@@ -144,9 +149,11 @@ def get_stock_price_nse(symbol: str) -> float:
         if response.status_code == 200:
             data = response.json()
             price = data.get('priceInfo', {}).get('lastPrice')
+            prev_close = data.get('priceInfo', {}).get('previousClose')
             if price:
                 _nse_api_consecutive_failures = 0
-                return float(price)
+                prev = float(prev_close) if prev_close else None
+                return float(price), prev
         _nse_api_consecutive_failures += 1
     except Exception as e:
         _nse_api_consecutive_failures += 1
@@ -155,7 +162,7 @@ def get_stock_price_nse(symbol: str) -> float:
         else:
             logger.error(f"NSE fallback failed for {nse_symbol}: {e}")
 
-    return None
+    return None, None
 
 
 def get_mutual_fund_price(identifier: str) -> tuple:
@@ -263,49 +270,68 @@ def get_gold_price() -> float:
     return None
 
 
-def get_us_stock_price(symbol: str) -> float:
+def get_us_stock_price(symbol: str) -> tuple:
     """
     Get US stock price from free APIs
     Uses Yahoo Finance alternative APIs
+    Returns (price_usd, previous_close_usd) tuple or (None, None).
     """
     try:
         # Try using financialmodelingprep API (free tier)
         url = f"{settings.FMP_API_BASE}/quote-short/{symbol}?apikey={settings.FMP_API_KEY}"
         response = requests.get(url, timeout=settings.API_TIMEOUT)
-        
+
         if response.status_code == 200:
             data = response.json()
             if data and len(data) > 0:
                 price = data[0].get('price')
                 if price:
                     logger.info(f"Fetched US stock price for {symbol}: ${price}")
-                    return float(price)
-        
+                    # FMP quote-short doesn't return previousClose; fall through to Yahoo for it
+                    # Try Yahoo chart to get previous_close
+                    prev_close = None
+                    try:
+                        yurl = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+                        yheaders = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                        yresp = requests.get(yurl, headers=yheaders, timeout=10)
+                        if yresp.status_code == 200:
+                            meta = yresp.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
+                            pc = meta.get('chartPreviousClose') or meta.get('previousClose')
+                            if pc and float(pc) > 0:
+                                prev_close = float(pc)
+                    except Exception:
+                        pass
+                    return float(price), prev_close
+
         # Fallback to alternative API
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         response = requests.get(url, headers=headers, timeout=10)
-        
+
         if response.status_code == 200:
             data = response.json()
-            price = data.get('chart', {}).get('result', [{}])[0].get('meta', {}).get('regularMarketPrice')
+            meta = data.get('chart', {}).get('result', [{}])[0].get('meta', {})
+            price = meta.get('regularMarketPrice')
+            previous_close = meta.get('chartPreviousClose') or meta.get('previousClose')
             if price:
                 logger.info(f"Fetched US stock price for {symbol}: ${price}")
-                return float(price)
-                
+                prev = float(previous_close) if previous_close and float(previous_close) > 0 else None
+                return float(price), prev
+
     except Exception as e:
         logger.error(f"Error fetching US stock price for {symbol}: {str(e)}")
 
-    return None
+    return None, None
 
 
 def _batch_fetch_yahoo_spark_prices(symbols: list) -> dict:
     """
     Batch-fetch prices via Yahoo Finance spark API.
     Works for both NSE (.NS suffix) and US ticker symbols.
-    Returns {symbol: price} dict. Symbols that aren't found are omitted.
+    Returns {symbol: {"price": float, "previous_close": float|None}} dict.
+    Uses range=5d to derive previous trading day's close.
     Chunks into groups of 20 (spark API limit).
     """
     if not symbols:
@@ -319,14 +345,18 @@ def _batch_fetch_yahoo_spark_prices(symbols: list) -> dict:
         chunk = symbols[i:i + CHUNK_SIZE]
         try:
             symbols_str = ",".join(chunk)
-            url = f"https://query2.finance.yahoo.com/v8/finance/spark?symbols={symbols_str}&range=1d&interval=1d"
+            url = f"https://query2.finance.yahoo.com/v8/finance/spark?symbols={symbols_str}&range=5d&interval=1d"
             response = requests.get(url, headers=headers, timeout=settings.API_TIMEOUT)
             if response.status_code == 200:
                 data = response.json()
                 for sym, info in data.items():
                     close_prices = info.get("close", [])
-                    if close_prices and close_prices[-1] and float(close_prices[-1]) > 0:
-                        all_prices[sym] = float(close_prices[-1])
+                    # Filter out None values
+                    valid_closes = [c for c in close_prices if c is not None and float(c) > 0]
+                    if valid_closes:
+                        current = float(valid_closes[-1])
+                        previous = float(valid_closes[-2]) if len(valid_closes) >= 2 else None
+                        all_prices[sym] = {"price": current, "previous_close": previous}
             else:
                 logger.warning(f"Yahoo spark batch returned status {response.status_code} for chunk {i // CHUNK_SIZE + 1}")
         except Exception as e:
@@ -338,7 +368,7 @@ def _batch_fetch_yahoo_spark_prices(symbols: list) -> dict:
 def get_crypto_price(symbol: str, coin_id: str = None) -> tuple:
     """
     Get cryptocurrency price in USD from CoinGecko API.
-    Returns (price_usd, resolved_coin_id) so the caller can persist the coin_id.
+    Returns (price_usd, resolved_coin_id, change_24h) tuple.
     """
     try:
         from app.services.crypto_price_service import get_crypto_price as get_price_from_coingecko, get_coin_id_by_symbol
@@ -347,7 +377,7 @@ def get_crypto_price(symbol: str, coin_id: str = None) -> tuple:
         if coin_id:
             price_data = get_price_from_coingecko(coin_id)
             if price_data:
-                return price_data['price'], coin_id
+                return price_data['price'], coin_id, price_data.get('change_24h')
 
         # Otherwise, try to get coin_id from symbol
         if symbol:
@@ -355,12 +385,58 @@ def get_crypto_price(symbol: str, coin_id: str = None) -> tuple:
             if resolved_id:
                 price_data = get_price_from_coingecko(resolved_id)
                 if price_data:
-                    return price_data['price'], resolved_id
+                    return price_data['price'], resolved_id, price_data.get('change_24h')
 
     except Exception as e:
         logger.error(f"Error fetching crypto price for {symbol}: {str(e)}")
 
-    return None, None
+    return None, None, None
+
+
+def _store_day_change(asset: Asset, previous_close: float = None, day_change_pct: float = None):
+    """Store day change % in asset.details JSON. Computes from previous_close if day_change_pct not given."""
+    if asset.details is None:
+        asset.details = {}
+    if day_change_pct is not None:
+        asset.details['day_change_pct'] = round(day_change_pct, 2)
+        flag_modified(asset, 'details')
+    elif previous_close and previous_close > 0 and asset.current_price and asset.current_price > 0:
+        pct = ((asset.current_price - previous_close) / previous_close) * 100
+        asset.details['day_change_pct'] = round(pct, 2)
+        asset.details['previous_close'] = round(previous_close, 4)
+        flag_modified(asset, 'details')
+
+
+def _extract_batch_price(cache_entry) -> tuple:
+    """Extract (price, previous_close) from batch cache entry (new dict format or legacy float)."""
+    if cache_entry is None:
+        return None, None
+    if isinstance(cache_entry, dict):
+        return cache_entry.get("price"), cache_entry.get("previous_close")
+    # Legacy float format
+    return float(cache_entry), None
+
+
+def _get_previous_close_from_snapshot(asset_id: int, db: Session) -> float:
+    """
+    Get the most recent snapshot price for an asset (up to 7 days back).
+    Used as fallback for day change when the price API doesn't return previousClose
+    (e.g. mutual funds via AMFI, some commodities).
+    """
+    from app.models.portfolio_snapshot import AssetSnapshot
+    try:
+        cutoff = date.today() - timedelta(days=7)
+        snap = db.query(AssetSnapshot.current_price).filter(
+            AssetSnapshot.asset_id == asset_id,
+            AssetSnapshot.snapshot_source == "asset",
+            AssetSnapshot.snapshot_date >= cutoff,
+            AssetSnapshot.snapshot_date < date.today(),
+        ).order_by(AssetSnapshot.snapshot_date.desc()).first()
+        if snap and snap.current_price and float(snap.current_price) > 0:
+            return float(snap.current_price)
+    except Exception as e:
+        logger.debug(f"Snapshot lookup failed for asset {asset_id}: {e}")
+    return None
 
 
 def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> bool:
@@ -375,6 +451,8 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
 
     try:
         new_price = None
+        previous_close = None
+        day_change_pct = None
         error_message = None
 
         # Use api_symbol if available, otherwise use symbol
@@ -383,35 +461,45 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
         if asset.asset_type == AssetType.STOCK:
             # Check batch cache first (ISIN key, then normalized symbol key)
             if asset.isin and asset.isin in yf_cache:
-                new_price = yf_cache[asset.isin]
-                logger.info(f"Batch cache hit for {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
+                new_price, previous_close = _extract_batch_price(yf_cache[asset.isin])
+                if new_price:
+                    logger.info(f"Batch cache hit for {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
             if not new_price:
                 nse_sym = _normalize_nse_symbol(lookup_symbol)
                 if nse_sym in yf_cache:
-                    new_price = yf_cache[nse_sym]
-                    logger.info(f"Batch cache hit for {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
+                    new_price, previous_close = _extract_batch_price(yf_cache[nse_sym])
+                    if new_price:
+                        logger.info(f"Batch cache hit for {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
             # Fallback to individual API calls
             if not new_price and asset.isin:
                 new_price = get_stock_price_yfinance(asset.isin)
                 if new_price:
                     logger.info(f"Fetched stock price via ISIN {asset.isin} for {asset.symbol}")
             if not new_price:
-                new_price = get_stock_price_nse(lookup_symbol)
+                new_price, prev = get_stock_price_nse(lookup_symbol)
+                if prev and not previous_close:
+                    previous_close = prev
             if not new_price:
                 error_message = f"Failed to fetch NSE price for {asset.isin or lookup_symbol}"
             
         elif asset.asset_type == AssetType.US_STOCK:
             # Check batch cache first, then individual API
-            us_price_usd = fmp_cache.get(lookup_symbol)
-            if us_price_usd:
-                logger.info(f"Batch cache hit for US stock {lookup_symbol}: ${us_price_usd}")
-            else:
-                us_price_usd = get_us_stock_price(lookup_symbol)
+            us_price_usd = None
+            if lookup_symbol in fmp_cache:
+                us_price_usd, previous_close = _extract_batch_price(fmp_cache[lookup_symbol])
+                if us_price_usd:
+                    logger.info(f"Batch cache hit for US stock {lookup_symbol}: ${us_price_usd}")
+            if not us_price_usd:
+                us_price_usd, prev_usd = get_us_stock_price(lookup_symbol)
+                if prev_usd and not previous_close:
+                    previous_close = prev_usd
             if us_price_usd:
                 # Convert USD to INR
                 usd_to_inr = get_usd_to_inr_rate()
                 new_price = us_price_usd * usd_to_inr
-                
+                if previous_close:
+                    previous_close = previous_close * usd_to_inr  # Convert prev close to INR too
+
                 # Update the details JSON with USD price and exchange rate
                 if asset.details is None:
                     asset.details = {}
@@ -450,13 +538,15 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
             # Commodity ETFs — check fast sources first (caches, AMFI), then slow fallbacks.
             # 1. Batch cache (Yahoo spark)
             if asset.isin and asset.isin in yf_cache:
-                new_price = yf_cache[asset.isin]
-                logger.info(f"Batch cache hit for commodity {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
+                new_price, previous_close = _extract_batch_price(yf_cache[asset.isin])
+                if new_price:
+                    logger.info(f"Batch cache hit for commodity {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
             if not new_price:
                 nse_sym = _normalize_nse_symbol(lookup_symbol)
                 if nse_sym in yf_cache:
-                    new_price = yf_cache[nse_sym]
-                    logger.info(f"Batch cache hit for commodity {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
+                    new_price, previous_close = _extract_batch_price(yf_cache[nse_sym])
+                    if new_price:
+                        logger.info(f"Batch cache hit for commodity {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
             # 2. AMFI NAV (instant cached lookup for INF* ISINs — before slow yfinance)
             if not new_price and asset.isin and asset.isin.startswith('INF'):
                 result = get_mutual_fund_price(asset.isin)
@@ -465,10 +555,16 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
                     logger.info(f"Fetched commodity price via MF NAV for {asset.symbol} (ISIN: {asset.isin})")
             # 3. FMP/US batch cache, then individual US stock API (for US-listed commodities)
             if not new_price:
-                usd_price = fmp_cache.get(lookup_symbol) or get_us_stock_price(lookup_symbol)
+                usd_price, prev_usd = None, None
+                if lookup_symbol in fmp_cache:
+                    usd_price, prev_usd = _extract_batch_price(fmp_cache[lookup_symbol])
+                if not usd_price:
+                    usd_price, prev_usd = get_us_stock_price(lookup_symbol)
                 if usd_price:
                     usd_to_inr = get_usd_to_inr_rate()
                     new_price = usd_price * usd_to_inr
+                    if prev_usd:
+                        previous_close = prev_usd * usd_to_inr
                     if asset.details is None:
                         asset.details = {}
                     asset.details['price_usd'] = usd_price
@@ -482,7 +578,9 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
                 if new_price:
                     logger.info(f"Fetched commodity price via ISIN {asset.isin} for {asset.symbol}")
             if not new_price:
-                new_price = get_stock_price_nse(lookup_symbol)
+                new_price, prev = get_stock_price_nse(lookup_symbol)
+                if prev and not previous_close:
+                    previous_close = prev
             if not new_price:
                 error_message = f"Failed to fetch price for commodity {asset.isin or lookup_symbol}"
         
@@ -513,7 +611,9 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
             # Resolve coin_id: details > api_symbol (often stores CoinGecko ID) > symbol lookup
             coin_id = (asset.details or {}).get('coin_id') or asset.api_symbol or None
 
-            crypto_price_usd, resolved_coin_id = get_crypto_price(asset.symbol, coin_id)
+            crypto_price_usd, resolved_coin_id, crypto_change_24h = get_crypto_price(asset.symbol, coin_id)
+            if crypto_change_24h is not None:
+                day_change_pct = crypto_change_24h
             if crypto_price_usd:
                 # Convert USD to INR
                 usd_to_inr = get_usd_to_inr_rate()
@@ -536,20 +636,24 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
         elif asset.asset_type in [AssetType.REIT, AssetType.INVIT, AssetType.SOVEREIGN_GOLD_BOND]:
             # REITs, InvITs, and SGBs are listed on NSE — check batch cache first
             if asset.isin and asset.isin in yf_cache:
-                new_price = yf_cache[asset.isin]
-                logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
+                new_price, previous_close = _extract_batch_price(yf_cache[asset.isin])
+                if new_price:
+                    logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
             if not new_price:
                 nse_sym = _normalize_nse_symbol(lookup_symbol)
                 if nse_sym in yf_cache:
-                    new_price = yf_cache[nse_sym]
-                    logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
+                    new_price, previous_close = _extract_batch_price(yf_cache[nse_sym])
+                    if new_price:
+                        logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
             # Individual fallbacks
             if not new_price and asset.isin:
                 new_price = get_stock_price_yfinance(asset.isin)
                 if new_price:
                     logger.info(f"Fetched {asset.asset_type.value} price via ISIN {asset.isin} for {asset.symbol}")
             if not new_price:
-                new_price = get_stock_price_nse(lookup_symbol)
+                new_price, prev = get_stock_price_nse(lookup_symbol)
+                if prev and not previous_close:
+                    previous_close = prev
             if not new_price:
                 error_message = f"Failed to fetch price for {asset.isin or lookup_symbol} ({asset.asset_type.value})"
 
@@ -558,14 +662,20 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
             currency = (asset.details or {}).get('currency', 'INR')
             if currency == 'USD':
                 # Check FMP cache first, then individual API
-                us_price_usd = fmp_cache.get(lookup_symbol)
-                if us_price_usd:
-                    logger.info(f"Batch cache hit for {asset.asset_type.value} {lookup_symbol}: ${us_price_usd}")
-                else:
-                    us_price_usd = get_us_stock_price(lookup_symbol)
+                us_price_usd = None
+                if lookup_symbol in fmp_cache:
+                    us_price_usd, previous_close = _extract_batch_price(fmp_cache[lookup_symbol])
+                    if us_price_usd:
+                        logger.info(f"Batch cache hit for {asset.asset_type.value} {lookup_symbol}: ${us_price_usd}")
+                if not us_price_usd:
+                    us_price_usd, prev_usd = get_us_stock_price(lookup_symbol)
+                    if prev_usd and not previous_close:
+                        previous_close = prev_usd
                 if us_price_usd:
                     usd_to_inr = get_usd_to_inr_rate()
                     new_price = us_price_usd * usd_to_inr
+                    if previous_close:
+                        previous_close = previous_close * usd_to_inr
                     if asset.details is None:
                         asset.details = {}
                     asset.details['price_usd'] = us_price_usd
@@ -578,17 +688,21 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
             else:
                 # INR ESOP/RSU — check yfinance cache, then individual
                 if asset.isin and asset.isin in yf_cache:
-                    new_price = yf_cache[asset.isin]
-                    logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
+                    new_price, previous_close = _extract_batch_price(yf_cache[asset.isin])
+                    if new_price:
+                        logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} (ISIN {asset.isin}): ₹{new_price:.2f}")
                 if not new_price:
                     nse_sym = _normalize_nse_symbol(lookup_symbol)
                     if nse_sym in yf_cache:
-                        new_price = yf_cache[nse_sym]
-                        logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
+                        new_price, previous_close = _extract_batch_price(yf_cache[nse_sym])
+                        if new_price:
+                            logger.info(f"Batch cache hit for {asset.asset_type.value} {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
                 if not new_price and asset.isin:
                     new_price = get_stock_price_yfinance(asset.isin)
                 if not new_price:
-                    new_price = get_stock_price_nse(lookup_symbol)
+                    new_price, prev = get_stock_price_nse(lookup_symbol)
+                    if prev and not previous_close:
+                        previous_close = prev
                 if not new_price:
                     error_message = f"Failed to fetch price for {asset.isin or lookup_symbol} ({asset.asset_type.value})"
 
@@ -596,6 +710,15 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
             asset.current_price = new_price
             asset.current_value = asset.quantity * new_price
             asset.calculate_metrics()
+
+            # Store day change % in details JSON
+            # Fallback to most recent snapshot price if API didn't provide previousClose
+            if not previous_close and day_change_pct is None:
+                previous_close = _get_previous_close_from_snapshot(asset.id, db)
+            if previous_close:
+                _store_day_change(asset, previous_close=previous_close)
+            elif day_change_pct is not None:
+                _store_day_change(asset, day_change_pct=day_change_pct)
 
             # Recalculate XIRR if asset has transactions that tally (skip if manually set)
             if not asset.xirr_manual:
@@ -710,6 +833,10 @@ def _update_crypto_assets_batch(crypto_assets: list, db: Session) -> tuple:
                     asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
                     if not asset.details.get('coin_id'):
                         asset.details['coin_id'] = coin_id
+                    # Store 24h change from CoinGecko
+                    change_24h = price_data.get('change_24h')
+                    if change_24h is not None:
+                        asset.details['day_change_pct'] = round(change_24h, 2)
                     flag_modified(asset, 'details')
 
                     asset.current_price = new_price

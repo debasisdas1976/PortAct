@@ -44,6 +44,7 @@ import { getErrorMessage } from '../utils/errorUtils';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 import { RootState } from '../store';
 
 // Helper function to get user-friendly transaction type label
@@ -501,6 +502,9 @@ const PF: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+            <DayChangeCard assets={accounts} />
           </Grid>
           <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <XirrCard assetType="pf" portfolioId={selectedPortfolioId} />

@@ -101,6 +101,14 @@ async def get_dashboard_overview(
         monthly_inv_query = monthly_inv_query.filter(Asset.portfolio_id == portfolio_id)
     monthly_investments = monthly_inv_query.group_by('month').order_by('month').all()
     
+    # Previous day snapshot value (for day change calculation)
+    today = date.today()
+    prev_snapshot = db.query(PortfolioSnapshot).filter(
+        PortfolioSnapshot.user_id == current_user.id,
+        PortfolioSnapshot.snapshot_date < today
+    ).order_by(PortfolioSnapshot.snapshot_date.desc()).first()
+    previous_day_value = prev_snapshot.total_current_value if prev_snapshot else None
+
     # Calculate portfolio XIRR as investment-weighted average of per-asset XIRRs
     # (same approach as Assets Overview page)
     _DEFAULT_RATES_SUMMARY = {
@@ -152,6 +160,7 @@ async def get_dashboard_overview(
             "total_profit_loss": round(total_profit_loss, 2),
             "total_profit_loss_percentage": round(total_profit_loss_percentage, 2),
             "portfolio_xirr": portfolio_xirr,
+            "previous_day_value": round(previous_day_value, 2) if previous_day_value is not None else None,
         },
         "assets_by_type": assets_by_type,
         "value_by_type": {k: round(v, 2) for k, v in value_by_type.items()},

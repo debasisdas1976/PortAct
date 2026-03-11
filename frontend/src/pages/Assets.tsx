@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
@@ -46,6 +46,7 @@ import GenericAssetEditDialog from '../components/GenericAssetEditDialog';
 import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import CryptoAssetDialog, { type CryptoAccountOption } from '../components/CryptoAssetDialog';
 import BulkAttributeAssignDialog from '../components/BulkAttributeAssignDialog';
+import DayChangeCard from '../components/DayChangeCard';
 
 const ASSET_TYPE_ROUTES: Record<string, string> = {
   stock: '/stocks',
@@ -142,6 +143,7 @@ interface GroupedAsset {
   totalInvested: number;
   totalCurrentValue: number;
   xirr: number | null;
+  dayChangePct: number | null;
   instances: Asset[];
 }
 
@@ -193,7 +195,7 @@ const Assets: React.FC = () => {
   const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [assetTypes, setAssetTypes] = useState<{ value: string; label: string; category: string; allowedConversions: string[] | null }[]>([]);
-  const [sortColumn, setSortColumn] = useState<'asset' | 'type' | 'invested' | 'value' | null>(null);
+  const [sortColumn, setSortColumn] = useState<'asset' | 'type' | 'invested' | 'value' | 'dayChange' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [cryptoAccounts, setCryptoAccounts] = useState<CryptoAccountOption[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<number>>(new Set());
@@ -218,6 +220,21 @@ const Assets: React.FC = () => {
     fetchCryptoAccounts();
     dispatch(checkActivePriceRefresh());
   }, [dispatch, selectedPortfolioId]);
+
+  // Progressive refresh: update asset data periodically during bulk price refresh
+  // so that summary cards (Total Value, Gain/Loss, Return, XIRR) update as prices come in
+  const lastProgressiveRefreshRef = useRef<number>(0);
+  useEffect(() => {
+    if (!priceProgress || priceProgress.status !== 'running') return;
+    const completedCount = (priceProgress.updated_assets || 0) + (priceProgress.failed_assets || 0);
+    if (completedCount === 0) return;
+    const now = Date.now();
+    // Refresh assets every 6 seconds during bulk price update
+    if (now - lastProgressiveRefreshRef.current >= 6000) {
+      lastProgressiveRefreshRef.current = now;
+      dispatch(fetchAssets(selectedPortfolioId));
+    }
+  }, [priceProgress]);
 
   // Handle price refresh completion
   useEffect(() => {
@@ -418,6 +435,7 @@ const Assets: React.FC = () => {
           totalInvested: 0,
           totalCurrentValue: 0,
           xirr: null,
+          dayChangePct: null,
           instances: [],
         });
       }
@@ -446,6 +464,18 @@ const Assets: React.FC = () => {
         }
       });
       group.xirr = xirrWeightTotal > 0 ? xirrWeightedSum / xirrWeightTotal : null;
+
+      // Compute value-weighted average day change % from instances
+      let dayChangeWeightedSum = 0;
+      let dayChangeWeightTotal = 0;
+      group.instances.forEach((inst) => {
+        const pct = inst.details?.day_change_pct;
+        if (pct != null && inst.current_value > 0) {
+          dayChangeWeightedSum += pct * inst.current_value;
+          dayChangeWeightTotal += inst.current_value;
+        }
+      });
+      group.dayChangePct = dayChangeWeightTotal > 0 ? dayChangeWeightedSum / dayChangeWeightTotal : null;
     });
 
     return Array.from(groups.values());
@@ -492,6 +522,8 @@ const Assets: React.FC = () => {
             return dir * (a.totalInvested - b.totalInvested);
           case 'value':
             return dir * (a.totalCurrentValue - b.totalCurrentValue);
+          case 'dayChange':
+            return dir * ((a.dayChangePct ?? 0) - (b.dayChangePct ?? 0));
           default:
             return 0;
         }
@@ -578,7 +610,7 @@ const Assets: React.FC = () => {
     setCurrentTab(newValue);
   };
 
-  const handleSort = (column: 'asset' | 'type' | 'invested' | 'value') => {
+  const handleSort = (column: 'asset' | 'type' | 'invested' | 'value' | 'dayChange') => {
     if (sortColumn === column) {
       setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
@@ -888,6 +920,11 @@ const Assets: React.FC = () => {
             </TableCell>
             <TableCell align="right">Qty</TableCell>
             <TableCell align="right">Current Price</TableCell>
+            <TableCell align="right" sortDirection={sortColumn === 'dayChange' ? sortDirection : false}>
+              <TableSortLabel active={sortColumn === 'dayChange'} direction={sortColumn === 'dayChange' ? sortDirection : 'asc'} onClick={() => handleSort('dayChange')}>
+                Day Change
+              </TableSortLabel>
+            </TableCell>
             <TableCell align="right" sortDirection={sortColumn === 'invested' ? sortDirection : false}>
               <TableSortLabel active={sortColumn === 'invested'} direction={sortColumn === 'invested' ? sortDirection : 'asc'} onClick={() => handleSort('invested')}>
                 Invested
@@ -906,7 +943,7 @@ const Assets: React.FC = () => {
         <TableBody>
           {assetsToRender.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={11} align="center">
+              <TableCell colSpan={12} align="center">
                 <Typography color="text.secondary">
                   No assets found in this category. Upload a statement to add assets.
                 </Typography>
@@ -1054,6 +1091,25 @@ const Assets: React.FC = () => {
                         })()}
                       </Box>
                     </TableCell>
+                    <TableCell align="right">
+                      {group.dayChangePct != null ? (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: group.dayChangePct >= 0 ? 'success.main' : 'error.main',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            gap: 0.3,
+                          }}
+                        >
+                          {group.dayChangePct >= 0 ? <TrendingUp fontSize="small" /> : <TrendingDown fontSize="small" />}
+                          {formatPercentage(group.dayChangePct)}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">—</Typography>
+                      )}
+                    </TableCell>
                     <TableCell align="right">{formatCurrency(group.totalInvested)}</TableCell>
                     <TableCell align="right">{formatCurrency(group.totalCurrentValue)}</TableCell>
                     {/* P&L: amount + % combined */}
@@ -1117,7 +1173,7 @@ const Assets: React.FC = () => {
                   {/* Expanded Rows - Show individual instances */}
                   {hasMultipleInstances && (
                     <TableRow>
-                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={11}>
+                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={12}>
                         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                           <Box sx={{ margin: 2 }}>
                             <Typography variant="h6" gutterBottom component="div">
@@ -1297,7 +1353,7 @@ const Assets: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={2.4}>
+        <Grid item xs={12} md={2}>
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom variant="body2">
@@ -1307,7 +1363,7 @@ const Assets: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={2.4}>
+        <Grid item xs={12} md={2}>
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom variant="body2">
@@ -1317,7 +1373,7 @@ const Assets: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={2.4}>
+        <Grid item xs={12} md={2}>
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom variant="body2">
@@ -1339,7 +1395,7 @@ const Assets: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={6} md={2.4}>
+        <Grid item xs={6} md={2}>
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom variant="body2">
@@ -1354,7 +1410,10 @@ const Assets: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={6} md={2.4}>
+        <Grid item xs={6} md={2}>
+          <DayChangeCard assets={currentTabAssets.flatMap(g => g.instances)} />
+        </Grid>
+        <Grid item xs={6} md={2}>
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom variant="body2">

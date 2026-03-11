@@ -26,7 +26,7 @@ except ImportError:
 # Import US broker parsers
 from app.services.vested_parser import VestedParser
 from app.services.indmoney_parser import INDMoneyParser
-from app.services.tradebook_parser import parse_zerodha_tradebook
+from app.services.tradebook_parser import parse_zerodha_tradebook, parse_groww_tradebook, is_groww_tradebook
 from app.services.currency_converter import convert_usd_to_inr, get_usd_to_inr_rate
 from app.services.isin_lookup import lookup_isin_for_asset
 from app.api.dependencies import get_default_portfolio_id
@@ -393,7 +393,11 @@ def _process_tradebook_statement(statement: Statement, db: Session, demat_accoun
     if not demat_account:
         raise ValueError("Demat account not found or does not belong to the user")
 
-    trades, total_count = parse_zerodha_tradebook(statement.file_path, statement.file_type)
+    # Auto-detect tradebook format: try Groww first (more specific headers), then Zerodha
+    if is_groww_tradebook(statement.file_path):
+        trades, total_count = parse_groww_tradebook(statement.file_path, statement.file_type)
+    else:
+        trades, total_count = parse_zerodha_tradebook(statement.file_path, statement.file_type)
 
     if not trades:
         raise ValueError("No trades found in tradebook file")

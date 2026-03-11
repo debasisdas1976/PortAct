@@ -3,10 +3,10 @@ import {
   Box, Card, CardContent, Typography, TextField, Button, Grid, Alert,
   CircularProgress, Snackbar, Tabs, Tab, MenuItem, Select,
   FormControl, FormControlLabel, Switch, InputLabel, InputAdornment, Paper, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, IconButton,
+  TableCell, TableContainer, TableHead, TableRow, IconButton, Chip,
   Accordion, AccordionSummary, AccordionDetails,
 } from '@mui/material';
-import { Save, RestartAlt, Visibility, VisibilityOff, ExpandMore } from '@mui/icons-material';
+import { Save, RestartAlt, Visibility, VisibilityOff, ExpandMore, Schedule, Work, AccountBalance } from '@mui/icons-material';
 import { authAPI, settingsAPI } from '../services/api';
 
 /* ─────────────────── types ─────────────────── */
@@ -85,6 +85,13 @@ const Settings: React.FC = () => {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
 
+  // Automations state
+  const [automations, setAutomations] = useState<{
+    system_automations: any[];
+    asset_automations: any[];
+  } | null>(null);
+  const [automationsLoading, setAutomationsLoading] = useState(false);
+
   // API key visibility toggles
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
 
@@ -119,6 +126,23 @@ const Settings: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const fetchAutomations = useCallback(async () => {
+    setAutomationsLoading(true);
+    try {
+      const data = await settingsAPI.getAutomations();
+      setAutomations(data);
+    } catch {
+      setSnackbar({ open: true, message: 'Failed to load automations' });
+    } finally {
+      setAutomationsLoading(false);
+    }
+  }, []);
+
+  // Fetch automations when the tab is selected
+  useEffect(() => {
+    if (tab === 3 && !automations) fetchAutomations();
+  }, [tab, automations, fetchAutomations]);
 
   /* ── profile save ── */
   const handleSaveProfile = async () => {
@@ -249,6 +273,7 @@ const Settings: React.FC = () => {
         <Tab label="Profile" />
         <Tab label="Employment & Salary" />
         <Tab label="Application Settings" />
+        <Tab label="Automation Setup" />
       </Tabs>
 
       {/* ════════════ TAB 0 — Profile ════════════ */}
@@ -650,6 +675,184 @@ const Settings: React.FC = () => {
               Reset to Defaults
             </Button>
           </Box>
+        </Box>
+      )}
+
+      {/* ════════════ TAB 3 — Automation Setup ════════════ */}
+      {tab === 3 && (
+        <Box>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            This page shows all automations configured in your account — both system-level scheduled tasks
+            and per-asset automations like auto-generated FD interest or RD installments.
+          </Alert>
+
+          {automationsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : automations ? (
+            <>
+              {/* System Automations */}
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Schedule color="primary" />
+                    <Typography variant="h6">System Automations</Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Background tasks that run automatically to keep your portfolio data up-to-date.
+                  </Typography>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell><strong>Automation</strong></TableCell>
+                          <TableCell><strong>Description</strong></TableCell>
+                          <TableCell align="center"><strong>Status</strong></TableCell>
+                          <TableCell align="right"><strong>Schedule</strong></TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {automations.system_automations
+                          .filter(a => a.category === 'scheduler')
+                          .map((a, i) => (
+                            <TableRow key={i}>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight="medium">{a.name}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">{a.description}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Chip label={a.enabled ? 'Active' : 'Inactive'}
+                                  color={a.enabled ? 'success' : 'default'} size="small" />
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2">{a.schedule}</Typography>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+
+              {/* Employment Automations */}
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Work color="primary" />
+                    <Typography variant="h6">Employment-Based Automations</Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Automated calculations based on your employment and salary configuration.
+                  </Typography>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell><strong>Automation</strong></TableCell>
+                          <TableCell><strong>Description</strong></TableCell>
+                          <TableCell align="center"><strong>Status</strong></TableCell>
+                          <TableCell align="right"><strong>Schedule</strong></TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {automations.system_automations
+                          .filter(a => a.category === 'employment')
+                          .map((a, i) => (
+                            <TableRow key={i}>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight="medium">{a.name}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">{a.description}</Typography>
+                                {a.prerequisite && !a.enabled && (
+                                  <Typography variant="caption" color="warning.main">{a.prerequisite}</Typography>
+                                )}
+                              </TableCell>
+                              <TableCell align="center">
+                                <Chip label={a.enabled ? 'Active' : 'Inactive'}
+                                  color={a.enabled ? 'success' : 'default'} size="small" />
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2">{a.schedule}</Typography>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+
+              {/* Asset Automations */}
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <AccountBalance color="primary" />
+                    <Typography variant="h6">Asset-Level Automations</Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Per-asset automations for Fixed Deposits and Recurring Deposits. Toggle auto-update from the respective asset pages.
+                  </Typography>
+                  {automations.asset_automations.length === 0 ? (
+                    <Alert severity="info" variant="outlined">
+                      No Fixed Deposits or Recurring Deposits found. Add FD/RD assets and enable auto-update to see them here.
+                    </Alert>
+                  ) : (
+                    <TableContainer component={Paper} variant="outlined">
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell><strong>Asset</strong></TableCell>
+                            <TableCell><strong>Type</strong></TableCell>
+                            <TableCell><strong>Automation</strong></TableCell>
+                            <TableCell><strong>Details</strong></TableCell>
+                            <TableCell align="center"><strong>Auto-Update</strong></TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {automations.asset_automations.map((a, i) => (
+                            <TableRow key={i}>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight="medium">{a.asset_name}</Typography>
+                                {a.details.bank_name && (
+                                  <Typography variant="caption" color="text.secondary">{a.details.bank_name}</Typography>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Chip label={a.asset_type} size="small" variant="outlined" />
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">{a.automation}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {a.details.interest_rate ? `${a.details.interest_rate}% ` : ''}
+                                  {a.details.interest_type || ''}
+                                  {a.details.monthly_installment ? `₹${Number(a.details.monthly_installment).toLocaleString('en-IN')}/mo` : ''}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Chip label={a.enabled ? 'Enabled' : 'Disabled'}
+                                  color={a.enabled ? 'success' : 'default'} size="small" />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Button variant="outlined" onClick={fetchAutomations} disabled={automationsLoading}>
+                Refresh
+              </Button>
+            </>
+          ) : null}
         </Box>
       )}
 

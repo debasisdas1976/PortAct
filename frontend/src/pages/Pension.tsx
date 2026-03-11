@@ -30,6 +30,7 @@ import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 import { RootState } from '../store';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
@@ -273,6 +274,9 @@ const Pension: React.FC = () => {
               </Typography>
             </CardContent>
           </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <DayChangeCard assets={accounts} />
         </Grid>
         <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <XirrCard assetType="pension" portfolioId={selectedPortfolioId} />

@@ -154,7 +154,7 @@ async def get_category_performance_history(
         allowed_types = category_types.get(category, [])
         if not allowed_types:
             return {"period_days": days, "category": category, "data": []}
-        base_q = base_q.filter(AssetSnapshot.asset_type.in_(allowed_types))
+        base_q = base_q.filter(Asset.asset_type.in_(allowed_types))
 
         # Group by date + asset
         rows = (
@@ -175,22 +175,28 @@ async def get_category_performance_history(
         )
 
         # Pivot: date -> { asset_name: { invested, value } }
-        date_map: dict = defaultdict(dict)
+        # Multiple assets can share the same name (e.g. same fund in different accounts),
+        # so accumulate values instead of overwriting.
+        date_map: dict = defaultdict(lambda: defaultdict(lambda: {"invested": 0.0, "value": 0.0}))
         for row in rows:
-            date_map[row.snapshot_date.isoformat()][row.asset_name] = {
-                "invested": round(row.invested or 0, 2),
-                "value": round(row.value or 0, 2),
-            }
+            bucket = date_map[row.snapshot_date.isoformat()][row.asset_name]
+            bucket["invested"] += round(row.invested or 0, 2)
+            bucket["value"] += round(row.value or 0, 2)
 
-        data = [{"date": d, "assets": assets} for d, assets in sorted(date_map.items())]
+        data = [{"date": d, "assets": dict(assets)} for d, assets in sorted(date_map.items())]
         return {"period_days": days, "category": category, "data": data}
 
-    # Category-level aggregation
-    snapshots = base_q.all()
+    # Category-level aggregation — use asset's current type for categorisation
+    snapshots = base_q.with_entities(
+        AssetSnapshot.snapshot_date,
+        AssetSnapshot.total_invested,
+        AssetSnapshot.current_value,
+        Asset.asset_type,
+    ).all()
 
     date_map: dict = defaultdict(lambda: defaultdict(lambda: {"invested": 0.0, "value": 0.0}))
     for snap in snapshots:
-        cat = type_to_category.get(snap.asset_type, "Other")
+        cat = type_to_category.get(snap.asset_type.value if hasattr(snap.asset_type, 'value') else snap.asset_type, "Other")
         bucket = date_map[snap.snapshot_date.isoformat()][cat]
         bucket["invested"] += snap.total_invested or 0
         bucket["value"] += snap.current_value or 0

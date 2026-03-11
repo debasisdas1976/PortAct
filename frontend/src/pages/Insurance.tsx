@@ -33,6 +33,7 @@ import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 import { RootState } from '../store';
 import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
@@ -337,6 +338,9 @@ const Insurance: React.FC = () => {
               <Typography variant="h5">{formatCurrency(summary?.total_premium_paid ?? 0)}</Typography>
             </CardContent>
           </Card>
+        </Grid>
+        <Grid item xs={12} md sx={{ display: 'flex' }}>
+          <DayChangeCard assets={policies} />
         </Grid>
         <Grid item xs={12} md sx={{ display: 'flex' }}>
           <XirrCard assetType="insurance_policy" portfolioId={selectedPortfolioId} />

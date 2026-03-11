@@ -50,6 +50,7 @@ import { getErrorMessage } from '../utils/errorUtils';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 import { RootState } from '../store';
 
 interface RDAccount {
@@ -396,6 +397,9 @@ const RecurringDeposit: React.FC = () => {
             </Card>
           </Grid>
         ))}
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <DayChangeCard assets={rds} />
+        </Grid>
         <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <XirrCard assetType="recurring_deposit" portfolioId={selectedPortfolioId} />
         </Grid>

@@ -67,7 +67,7 @@ def diagnose_asset_price_updates():
                 # Try to fetch price and diagnose
                 if asset.asset_type == AssetType.STOCK:
                     print(f"  → Attempting to fetch NSE price for '{asset.symbol}'...")
-                    price = get_stock_price_nse(asset.symbol)
+                    price, _prev = get_stock_price_nse(asset.symbol)
                     if price:
                         print(f"  ✓ Successfully fetched: ₹{price:,.2f}")
                         print(f"  → Issue: Price fetch works, but may have failed during scheduled update")
@@ -97,7 +97,7 @@ def diagnose_asset_price_updates():
                         
                 elif asset.asset_type == AssetType.US_STOCK:
                     print(f"  → Attempting to fetch US stock price for '{asset.symbol}'...")
-                    price = get_us_stock_price(asset.symbol)
+                    price, _prev = get_us_stock_price(asset.symbol)
                     if price:
                         print(f"  ✓ Successfully fetched: ${price:,.2f}")
                         print(f"  → Issue: Price fetch works, but may have failed during scheduled update")

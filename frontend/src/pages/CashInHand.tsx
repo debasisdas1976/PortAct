@@ -12,6 +12,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 
 interface AssetItem {
   id: number;
@@ -118,6 +119,9 @@ const CashInHand: React.FC = () => {
             <Typography color="text.secondary" variant="body2">Currencies</Typography>
             <Typography variant="h4">{new Set(assets.map(a => a.details?.currency || a.symbol)).size}</Typography>
           </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md>
+          <DayChangeCard assets={assets} />
         </Grid>
         <Grid item xs={12} sm={6} md>
           <XirrCard assetType={ASSET_TYPE} portfolioId={selectedPortfolioId} />

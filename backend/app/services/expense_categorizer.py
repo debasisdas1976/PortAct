@@ -9,6 +9,7 @@ from sqlalchemy import or_
 from app.models.expense_category import ExpenseCategory
 from app.models.expense import Expense
 import difflib
+import re
 from collections import Counter
 
 
@@ -415,15 +416,72 @@ class ExpenseCategorizer:
         
         return None
     
+    @staticmethod
+    def _keyword_matches(keyword: str, text: str) -> bool:
+        """
+        Check if keyword matches in text using word-boundary matching.
+        Multi-word keywords use substring match (they're specific enough).
+        Single-word keywords use word-boundary regex to avoid false positives
+        (e.g. 'more' should NOT match inside 'anymore').
+        """
+        keyword = keyword.strip()
+        if not keyword:
+            return False
+        if ' ' in keyword:
+            # Multi-word keyword: substring match is fine (specific enough)
+            return keyword in text
+        # Single-word keyword: require word boundaries
+        return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text))
+
+    def _find_best_keyword_match(self, text_to_match: str, categories, use_fuzzy: bool = True) -> Optional[int]:
+        """
+        Score all categories against the text and return the best match.
+        Scoring: longer keyword matches score higher, so specific matches beat generic ones.
+        Multi-word keyword matches get a bonus.
+        """
+        best_category_id = None
+        best_score = 0
+
+        for category in categories:
+            if not category.keywords:
+                continue
+            keywords = [k.strip().lower() for k in category.keywords.split(',')]
+            cat_score = 0
+            for keyword in keywords:
+                if not keyword:
+                    continue
+                if self._keyword_matches(keyword, text_to_match):
+                    # Score by keyword length; multi-word keywords get a bonus
+                    score = len(keyword)
+                    if ' ' in keyword:
+                        score += 10  # bonus for multi-word (more specific)
+                    if score > cat_score:
+                        cat_score = score
+            if cat_score > best_score:
+                best_score = cat_score
+                best_category_id = category.id
+
+        # If no exact match found, try fuzzy matching
+        if not best_category_id and use_fuzzy:
+            for category in categories:
+                if not category.keywords:
+                    continue
+                keywords = [k.strip() for k in category.keywords.split(',')]
+                fuzzy_match = self._fuzzy_match(text_to_match, keywords, threshold=0.75)
+                if fuzzy_match:
+                    return category.id
+
+        return best_category_id
+
     def categorize(self, description: str, merchant_name: Optional[str] = None, use_fuzzy: bool = True) -> Optional[int]:
         """
         Categorize an expense based on description and merchant name
         Uses multiple strategies in order of priority:
         1. Learned patterns from user's past categorizations
-        2. Exact keyword matching from database categories
-        3. Fuzzy keyword matching
-        4. Default keywords with fuzzy matching
-        
+        2. Best keyword match from database categories (scored by specificity)
+        3. Best keyword match from default keywords (scored by specificity)
+        4. Fuzzy keyword matching as fallback
+
         Returns category_id if found, None otherwise
         """
         # Strategy 1: Check learned patterns first (highest priority)
@@ -431,11 +489,11 @@ class ExpenseCategorizer:
             learned_category = self._get_learned_category(merchant_name)
             if learned_category:
                 return learned_category
-        
+
         # Combine description and merchant name for matching
         text_to_match = f"{description} {merchant_name or ''}".lower()
-        
-        # Strategy 2: Try exact matching with database categories (user's + system, active only)
+
+        # Strategy 2: Score-based matching with database categories (user's + system, active only)
         cat_query = self.db.query(ExpenseCategory).filter(
             ExpenseCategory.keywords.isnot(None),
             ExpenseCategory.is_active == True
@@ -451,39 +509,39 @@ class ExpenseCategorizer:
         categories = cat_query.order_by(
             ExpenseCategory.is_system.asc()
         ).all()
-        
-        for category in categories:
-            if category.keywords:
-                keywords = [k.strip().lower() for k in category.keywords.split(',')]
-                # Exact substring match
-                if any(keyword in text_to_match for keyword in keywords):
-                    return category.id
-        
-        # Strategy 3: Try fuzzy matching with database categories (if enabled)
-        if use_fuzzy:
-            for category in categories:
-                if category.keywords:
-                    keywords = [k.strip() for k in category.keywords.split(',')]
-                    fuzzy_match = self._fuzzy_match(text_to_match, keywords, threshold=0.75)
-                    if fuzzy_match:
-                        return category.id
-        
-        # Strategy 4: Try default keywords with exact and fuzzy matching
+
+        # Check user-defined categories first (non-system) with first-match priority
+        user_categories = [c for c in categories if not c.is_system]
+        if user_categories:
+            result = self._find_best_keyword_match(text_to_match, user_categories, use_fuzzy=False)
+            if result:
+                return result
+
+        # Score-based matching across all system categories — best match wins
+        system_categories = [c for c in categories if c.is_system]
+        result = self._find_best_keyword_match(text_to_match, system_categories, use_fuzzy=use_fuzzy)
+        if result:
+            return result
+
+        # Strategy 3: Try default keywords with score-based matching
+        # Build pseudo-category objects for scoring
+        class _PseudoCategory:
+            def __init__(self, cat_id, keywords_str):
+                self.id = cat_id
+                self.keywords = keywords_str
+                self.is_system = True
+
+        default_cats = []
         for category_name, keywords in self.DEFAULT_KEYWORDS.items():
-            # Exact match
-            if any(keyword in text_to_match for keyword in keywords):
-                category_id = self._category_cache.get(category_name.lower())
-                if category_id:
-                    return category_id
-            
-            # Fuzzy match (if enabled)
-            if use_fuzzy:
-                fuzzy_match = self._fuzzy_match(text_to_match, keywords, threshold=0.75)
-                if fuzzy_match:
-                    category_id = self._category_cache.get(category_name.lower())
-                    if category_id:
-                        return category_id
-        
+            category_id = self._category_cache.get(category_name.lower())
+            if category_id:
+                default_cats.append(_PseudoCategory(category_id, ','.join(keywords)))
+
+        if default_cats:
+            result = self._find_best_keyword_match(text_to_match, default_cats, use_fuzzy=use_fuzzy)
+            if result:
+                return result
+
         return None
     
     def learn_from_categorization(self, merchant_name: str, category_id: int):
@@ -506,13 +564,19 @@ class ExpenseCategorizer:
         Useful for displaying suggestions to users
         """
         text_to_match = f"{description} {merchant_name or ''}".lower()
-        
-        # Try default keywords
+
+        # Score-based matching across default keywords
+        best_name = None
+        best_score = 0
         for category_name, keywords in self.DEFAULT_KEYWORDS.items():
-            if any(keyword in text_to_match for keyword in keywords):
-                return category_name
-        
-        return None
+            for keyword in keywords:
+                if self._keyword_matches(keyword, text_to_match):
+                    score = len(keyword) + (10 if ' ' in keyword else 0)
+                    if score > best_score:
+                        best_score = score
+                        best_name = category_name
+
+        return best_name
     
     def bulk_categorize(self, expenses: List[Dict]) -> List[Dict]:
         """

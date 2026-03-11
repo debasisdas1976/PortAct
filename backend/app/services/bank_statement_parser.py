@@ -121,45 +121,237 @@ class ICICIBankParser(BankStatementParser):
             raise ValueError("Unsupported file format for ICICI Bank")
     
     def _parse_pdf(self) -> List[Dict[str, Any]]:
-        """Parse ICICI Bank PDF statement"""
+        """Parse ICICI Bank PDF statement — tries table extraction first, falls back to text"""
+        transactions = self._parse_pdf_tables()
+        if transactions:
+            logger.info(f"ICICI Bank PDF: table extraction found {len(transactions)} transactions")
+            return transactions
+
+        transactions = self._parse_pdf_text()
+        logger.info(f"ICICI Bank PDF: text extraction found {len(transactions)} transactions")
+        return transactions
+
+    def _parse_pdf_tables(self) -> List[Dict[str, Any]]:
+        """Parse ICICI Bank PDF using pdfplumber table extraction"""
+        import pdfplumber
         transactions = []
-        
-        with open(self.file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            
-            for page in pdf_reader.pages:
-                text = page.extract_text()
-                lines = text.split('\n')
-                
-                for line in lines:
-                    # ICICI format: Date | Description | Cheque No | Debit | Credit | Balance
-                    # Example: 01/01/2024 UPI-MERCHANT@PAYTM 123456 500.00 - 10000.00
-                    match = re.match(
-                        r'(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(\d+)?\s+([\d,]+\.\d{2})?\s+([\d,]+\.\d{2})?\s+([\d,]+\.\d{2})',
-                        line
-                    )
-                    
-                    if match:
-                        date_str, description, cheque_no, debit_str, credit_str, balance_str = match.groups()
-                        
-                        debit = self._clean_amount(debit_str) if debit_str else 0.0
-                        credit = self._clean_amount(credit_str) if credit_str else 0.0
-                        balance = self._clean_amount(balance_str) if balance_str else 0.0
-                        
-                        transaction_date = self._parse_date(date_str, ['%d/%m/%Y'])
-                        
-                        if transaction_date:
-                            transactions.append({
-                                'transaction_date': transaction_date,
-                                'description': description.strip(),
-                                'amount': debit if debit > 0 else credit,
-                                'transaction_type': self._detect_transaction_type(description, debit, credit),
-                                'payment_method': self._detect_payment_method(description),
-                                'merchant_name': self._extract_merchant_name(description),
-                                'reference_number': cheque_no if cheque_no else None,
-                                'balance_after': balance
-                            })
-        
+
+        try:
+            with pdfplumber.open(self.file_path) as pdf:
+                for page in pdf.pages:
+                    tables = page.extract_tables()
+                    for table in tables:
+                        if not table:
+                            continue
+                        for row in table:
+                            if not row or len(row) < 7:
+                                continue
+                            # Columns: S No. | Value Date | Transaction Date | Cheque Number |
+                            #          Transaction Remarks | Withdrawal Amount(INR) | Deposit Amount(INR) | Balance(INR)
+                            # Check if first cell is a serial number or if we have dates in expected positions
+                            cells = [str(c).strip() if c else '' for c in row]
+
+                            # Find the row layout — may or may not have S No. column
+                            value_date_str = ''
+                            txn_date_str = ''
+                            description = ''
+                            withdrawal_str = ''
+                            deposit_str = ''
+                            balance_str = ''
+
+                            # Try 8-column layout (with S No.)
+                            if len(cells) >= 8 and re.match(r'\d{2}/\d{2}/\d{4}', cells[1]):
+                                value_date_str = cells[1]
+                                txn_date_str = cells[2]
+                                description = cells[4]
+                                withdrawal_str = cells[5]
+                                deposit_str = cells[6]
+                                balance_str = cells[7]
+                            # Try 7-column layout (without S No.)
+                            elif len(cells) >= 7 and re.match(r'\d{2}/\d{2}/\d{4}', cells[0]):
+                                value_date_str = cells[0]
+                                txn_date_str = cells[1]
+                                description = cells[3]
+                                withdrawal_str = cells[4]
+                                deposit_str = cells[5]
+                                balance_str = cells[6]
+                            else:
+                                continue
+
+                            date_str = txn_date_str if txn_date_str else value_date_str
+                            if not re.match(r'\d{2}/\d{2}/\d{4}', date_str):
+                                continue
+
+                            # Clean description (replace newlines from multi-line cells)
+                            description = re.sub(r'\s*\n\s*', ' ', description).strip()
+                            if not description:
+                                continue
+
+                            debit = self._clean_amount(withdrawal_str) if withdrawal_str and withdrawal_str not in ('', 'None', 'nan') else 0.0
+                            credit = self._clean_amount(deposit_str) if deposit_str and deposit_str not in ('', 'None', 'nan') else 0.0
+                            balance = self._clean_amount(balance_str) if balance_str and balance_str not in ('', 'None', 'nan') else 0.0
+
+                            transaction_date = self._parse_date(date_str, ['%d/%m/%Y'])
+                            if transaction_date and (debit > 0 or credit > 0):
+                                transactions.append({
+                                    'transaction_date': transaction_date,
+                                    'description': description,
+                                    'amount': debit if debit > 0 else credit,
+                                    'transaction_type': self._detect_transaction_type(description, debit, credit),
+                                    'payment_method': self._detect_payment_method(description),
+                                    'merchant_name': self._extract_merchant_name(description),
+                                    'reference_number': None,
+                                    'balance_after': balance
+                                })
+        except Exception as e:
+            logger.error(f"ICICI Bank PDF table extraction failed: {e}")
+            return []
+
+        return transactions
+
+    def _parse_pdf_text(self) -> List[Dict[str, Any]]:
+        """Parse ICICI Bank PDF using text extraction with multi-line description handling"""
+        import pdfplumber
+        transactions = []
+
+        # Collect all lines from all pages
+        all_lines = []
+        try:
+            with pdfplumber.open(self.file_path) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        all_lines.extend(text.split('\n'))
+        except Exception as e:
+            logger.error(f"ICICI Bank PDF text extraction failed: {e}")
+            return []
+
+        # Transaction line pattern:
+        # S.No  ValueDate  TxnDate  ChequeNo  Description  Withdrawal  Deposit  Balance
+        # The S.No may or may not be present. Dates are DD/MM/YYYY.
+        # Sometimes: 1 01/12/2025 01/12/2025 UPI/RATIKANTA/... 0.00 16851.00 199956.35
+        # Key: line starts with optional S.No, then two dates (value date + txn date)
+        txn_re = re.compile(
+            r'(?:\d+\s+)?'                         # optional S No.
+            r'(\d{2}/\d{2}/\d{4})\s+'              # value date
+            r'(\d{2}/\d{2}/\d{4})\s+'              # transaction date
+            r'(.+?)\s+'                             # description (greedy but will be trimmed)
+            r'([\d,]+\.\d{2})\s+'                  # withdrawal amount
+            r'([\d,]+\.\d{2})\s+'                  # deposit amount
+            r'([\d,]+\.\d{2})\s*$'                 # balance
+        )
+
+        # Simpler pattern: date + description only (amounts on a separate or no-amount continuation)
+        date_start_re = re.compile(
+            r'(?:\d+\s+)?'
+            r'(\d{2}/\d{2}/\d{4})\s+'
+            r'(\d{2}/\d{2}/\d{4})\s+'
+            r'(.+)'
+        )
+
+        # Amount-only tail pattern: matches "withdrawal deposit balance" at end of a line
+        amounts_tail_re = re.compile(
+            r'([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$'
+        )
+
+        i = 0
+        while i < len(all_lines):
+            line = all_lines[i].strip()
+            if not line:
+                i += 1
+                continue
+
+            # Try full single-line match
+            m = txn_re.match(line)
+            if m:
+                value_date_str, txn_date_str, description, withdrawal_str, deposit_str, balance_str = m.groups()
+                date_str = txn_date_str if txn_date_str else value_date_str
+                description = description.strip()
+
+                debit = self._clean_amount(withdrawal_str)
+                credit = self._clean_amount(deposit_str)
+                balance = self._clean_amount(balance_str)
+
+                transaction_date = self._parse_date(date_str, ['%d/%m/%Y'])
+                if transaction_date and (debit > 0 or credit > 0):
+                    transactions.append({
+                        'transaction_date': transaction_date,
+                        'description': description,
+                        'amount': debit if debit > 0 else credit,
+                        'transaction_type': self._detect_transaction_type(description, debit, credit),
+                        'payment_method': self._detect_payment_method(description),
+                        'merchant_name': self._extract_merchant_name(description),
+                        'reference_number': None,
+                        'balance_after': balance
+                    })
+                i += 1
+                continue
+
+            # Try multi-line: date line with partial description, continuation lines, then amounts
+            dm = date_start_re.match(line)
+            if dm:
+                value_date_str, txn_date_str, desc_part = dm.groups()
+                desc_parts = [desc_part.strip()]
+
+                # Look ahead for continuation lines (no date prefix, no amount-only pattern that ends the block)
+                j = i + 1
+                withdrawal_str = deposit_str = balance_str = None
+                while j < len(all_lines):
+                    next_line = all_lines[j].strip()
+                    if not next_line:
+                        j += 1
+                        continue
+
+                    # Check if next line starts a new transaction
+                    if date_start_re.match(next_line):
+                        break
+
+                    # Check if the current accumulated desc + this line ends with amounts
+                    combined = ' '.join(desc_parts) + ' ' + next_line
+                    am = amounts_tail_re.search(combined)
+                    if am:
+                        # Extract description part before amounts
+                        desc_before_amounts = combined[:am.start()].strip()
+                        if desc_before_amounts:
+                            desc_parts = [desc_before_amounts]
+                        withdrawal_str, deposit_str, balance_str = am.groups()
+                        j += 1
+                        break
+                    else:
+                        # Check if this line itself is just amounts
+                        am2 = amounts_tail_re.match(next_line)
+                        if am2:
+                            withdrawal_str, deposit_str, balance_str = am2.groups()
+                            j += 1
+                            break
+                        # It's a continuation of the description
+                        desc_parts.append(next_line)
+                    j += 1
+
+                if withdrawal_str and deposit_str and balance_str:
+                    date_str = txn_date_str if txn_date_str else value_date_str
+                    description = ' '.join(desc_parts).strip()
+                    debit = self._clean_amount(withdrawal_str)
+                    credit = self._clean_amount(deposit_str)
+                    balance = self._clean_amount(balance_str)
+
+                    transaction_date = self._parse_date(date_str, ['%d/%m/%Y'])
+                    if transaction_date and (debit > 0 or credit > 0):
+                        transactions.append({
+                            'transaction_date': transaction_date,
+                            'description': description,
+                            'amount': debit if debit > 0 else credit,
+                            'transaction_type': self._detect_transaction_type(description, debit, credit),
+                            'payment_method': self._detect_payment_method(description),
+                            'merchant_name': self._extract_merchant_name(description),
+                            'reference_number': None,
+                            'balance_after': balance
+                        })
+                    i = j
+                    continue
+
+            i += 1
+
         return transactions
     
     def _parse_excel(self) -> List[Dict[str, Any]]:
@@ -191,6 +383,14 @@ class ICICIBankParser(BankStatementParser):
             # Read again with the correct header row
             df = pd.read_excel(self.file_path, engine=engine, header=header_row)
         
+        # Normalize column names: strip whitespace, collapse spaces, remove spaces inside parens
+        def _norm_col(c):
+            c = re.sub(r'\s+', ' ', str(c).strip())
+            c = re.sub(r'\(\s+', '(', c)
+            c = re.sub(r'\s+\)', ')', c)
+            return c
+        df.columns = [_norm_col(c) for c in df.columns]
+
         # Map possible column names to standard names
         column_mapping = {
             'Transaction Date': 'date',
@@ -198,8 +398,11 @@ class ICICIBankParser(BankStatementParser):
             'Transaction Remarks': 'description',
             'Cheque Number': 'cheque_no',
             'Withdrawal Amount(INR)': 'debit',
+            'Withdrawal Amount (INR)': 'debit',
             'Deposit Amount(INR)': 'credit',
+            'Deposit Amount (INR)': 'credit',
             'Balance(INR)': 'balance',
+            'Balance (INR)': 'balance',
             # Alternative names
             'Date': 'date',
             'Description': 'description',
@@ -208,7 +411,7 @@ class ICICIBankParser(BankStatementParser):
             'Credit': 'credit',
             'Balance': 'balance'
         }
-        
+
         # Rename columns
         df = df.rename(columns=column_mapping)
         
@@ -249,19 +452,216 @@ class ICICIBankParser(BankStatementParser):
 
 
 class ICICICreditCardParser(BankStatementParser):
-    """Parser for ICICI Credit Card statements (Excel format)"""
-    
+    """Parser for ICICI Credit Card statements (Excel and PDF format)"""
+
     def parse(self) -> List[Dict[str, Any]]:
         """Parse ICICI Credit Card statement"""
-        if self.file_path.lower().endswith(('.xlsx', '.xls')):
+        if self.file_path.lower().endswith('.pdf'):
+            return self._parse_pdf()
+        elif self.file_path.lower().endswith(('.xlsx', '.xls')):
             return self._parse_excel()
         else:
-            raise ValueError("Unsupported file format for ICICI Credit Card. Only Excel files are supported.")
+            raise ValueError("Unsupported file format for ICICI Credit Card. Only PDF and Excel files are supported.")
     
+    def _parse_pdf(self) -> List[Dict[str, Any]]:
+        """Parse ICICI Credit Card PDF statement using pdfplumber.
+
+        PDF table layout:
+          Date | SerNo. | Transaction Details | Reward Points | Intl.# amount | Amount (in₹)
+
+        Amount column contains the value with optional "CR" suffix for credits.
+        Card number header lines like "4315XXXXXXXX3003" separate card sections.
+        """
+        import pdfplumber
+
+        # Try text-based parsing first — more reliable for ICICI CC PDFs
+        # where table extraction only picks up highlighted/bordered rows
+        transactions = self._parse_pdf_text(pdfplumber)
+        if transactions:
+            return transactions
+        return self._parse_pdf_tables(pdfplumber)
+
+    def _parse_pdf_tables(self, pdfplumber) -> List[Dict[str, Any]]:
+        """Try pdfplumber table extraction for ICICI CC PDF."""
+        transactions = []
+        date_formats = ['%d/%m/%Y', '%d-%m-%Y']
+
+        with pdfplumber.open(self.file_path) as pdf:
+            for page in pdf.pages:
+                tables = page.extract_tables()
+                for table in tables:
+                    if not table:
+                        continue
+                    for row in table:
+                        if not row or len(row) < 4:
+                            continue
+                        # Find the date cell — could be at index 0
+                        date_str = (row[0] or '').strip()
+                        if not re.match(r'^\d{2}/\d{2}/\d{4}$', date_str):
+                            continue
+
+                        transaction_date = self._parse_date(date_str, date_formats)
+                        if not transaction_date:
+                            continue
+
+                        # Determine column layout:
+                        # 6 cols: Date | SerNo | Details | Reward | Intl | Amount
+                        # 5 cols: Date | SerNo | Details | Reward | Amount
+                        if len(row) >= 6:
+                            serial_no = (row[1] or '').strip()
+                            description = (row[2] or '').strip()
+                            amount_str = (row[-1] or '').strip()
+                        elif len(row) >= 5:
+                            serial_no = (row[1] or '').strip()
+                            description = (row[2] or '').strip()
+                            amount_str = (row[-1] or '').strip()
+                        else:
+                            serial_no = ''
+                            description = (row[1] or '').strip()
+                            amount_str = (row[-1] or '').strip()
+
+                        if not description or not amount_str:
+                            continue
+
+                        # Clean multi-line description
+                        description = re.sub(r'\s+', ' ', description).strip()
+
+                        # Parse amount — "27,944.96 CR" or "952.00"
+                        is_credit = 'CR' in amount_str.upper()
+                        amount_clean = re.sub(r'[CRcr\s]', '', amount_str)
+                        amount = self._clean_amount(amount_clean)
+
+                        if amount == 0:
+                            continue
+
+                        transaction_type = ExpenseType.CREDIT if is_credit else ExpenseType.DEBIT
+
+                        transactions.append({
+                            'transaction_date': transaction_date,
+                            'description': description,
+                            'amount': amount,
+                            'transaction_type': transaction_type,
+                            'payment_method': PaymentMethod.CREDIT_CARD,
+                            'merchant_name': self._extract_merchant_name(description),
+                            'reference_number': serial_no if serial_no and serial_no.isdigit() else None,
+                            'balance_after': None
+                        })
+
+        return transactions
+
+    def _parse_pdf_text(self, pdfplumber) -> List[Dict[str, Any]]:
+        """Fallback text-based parsing for ICICI CC PDF.
+
+        Text lines look like:
+          31/10/2025 12246982564 BBPS Payment received 0 27,944.96 CR
+          30/10/2025 12248546676 AMAZON PAY IN GROCERY BANGALORE IN 47 952.00
+        Or multi-line:
+          01/11/2025 12259305108 AMAZON PAY IN E COMMERC BANGALORE 42 843.00
+          IN
+        Or with chart label noise (SPENDS OVERVIEW pie chart bleeds into text):
+          26% 03/11/2025 12273883785 BHARTI AIRTEL LTD GURGAON IN 0 2,358.82
+          Travel-26% Apparel/Grocery-6% 04/11/2025 12278569234 AMAZON PAY ... 627.70 CR
+        """
+        transactions = []
+        date_formats = ['%d/%m/%Y', '%d-%m-%Y']
+
+        # Match: DD/MM/YYYY <serial> <description> <reward_pts> [intl_amt] <amount> [CR]
+        # Uses re.search (not match) because chart labels may prefix the date
+        txn_re = re.compile(
+            r'(\d{2}/\d{2}/\d{4})\s+(\d{8,15})\s+(.+?)\s+(-?\d+)\s+'
+            r'(?:([\d,]+\.\d{2})\s+)?'  # optional intl amount
+            r'([\d,]+\.\d{2})\s*(CR)?\s*$',
+            re.IGNORECASE
+        )
+        # Skip patterns
+        skip_re = re.compile(
+            r'(Date\s+SerNo|CREDIT CARD|STATEMENT|Page \d|Invoice|Credit Limit|'
+            r'Previous Balance|EARNINGS|SPENDS|IMPORTANT|GREAT OFFERS|'
+            r'^\d{4}[X]+\d+$|^#|International Spends)',
+            re.IGNORECASE
+        )
+        # Pattern to strip chart label noise that prefixes transaction lines
+        chart_noise_re = re.compile(
+            r'^(?:[\d.]+%\s*)*(?:(?:Travel|Others|Apparel|Grocery|Shopping|Food|Fuel|Entertainment)'
+            r'[-/\w]*[-]?\d*%?\s*)*',
+            re.IGNORECASE
+        )
+
+        with pdfplumber.open(self.file_path) as pdf:
+            all_lines: List[str] = []
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    all_lines.extend(text.split('\n'))
+
+        i = 0
+        while i < len(all_lines):
+            line = all_lines[i].strip()
+
+            if not line or skip_re.search(line):
+                i += 1
+                continue
+
+            # Try matching directly first, then with chart noise stripped
+            match = txn_re.search(line)
+            if not match:
+                i += 1
+                continue
+
+            date_str, serial_no, description, reward_pts, intl_amt, amount_str, cr_flag = match.groups()
+
+            # Collect continuation lines (e.g., "IN" on next line)
+            k = i + 1
+            while k < len(all_lines):
+                nxt = all_lines[k].strip()
+                # Strip chart noise from continuation lines too (e.g., "Others-69% IN")
+                nxt_clean = chart_noise_re.sub('', nxt).strip()
+                # Continuation is a short non-date, non-numeric line
+                if (not nxt_clean or skip_re.search(nxt)
+                        or re.search(r'\d{2}/\d{2}/\d{4}', nxt_clean)
+                        or re.match(r'^[\d,]+\.\d{2}', nxt_clean)):
+                    break
+                # Short continuation (like "IN" or location suffix)
+                if len(nxt_clean) <= 40:
+                    description += ' ' + nxt_clean
+                    k += 1
+                else:
+                    break
+
+            transaction_date = self._parse_date(date_str, date_formats)
+            if not transaction_date:
+                i = k
+                continue
+
+            is_credit = cr_flag is not None
+            amount = self._clean_amount(amount_str)
+
+            if amount == 0:
+                i = k
+                continue
+
+            description = re.sub(r'\s+', ' ', description).strip()
+            transaction_type = ExpenseType.CREDIT if is_credit else ExpenseType.DEBIT
+
+            transactions.append({
+                'transaction_date': transaction_date,
+                'description': description,
+                'amount': amount,
+                'transaction_type': transaction_type,
+                'payment_method': PaymentMethod.CREDIT_CARD,
+                'merchant_name': self._extract_merchant_name(description),
+                'reference_number': serial_no,
+                'balance_after': None
+            })
+
+            i = k
+
+        return transactions
+
     def _parse_excel(self) -> List[Dict[str, Any]]:
         """Parse ICICI Credit Card Excel statement"""
         transactions = []
-        
+
         # Try openpyxl first (for .xlsx), then xlrd (for .xls)
         # Some .xls files are actually .xlsx format
         try:
@@ -365,75 +765,123 @@ class ScapiaCreditCardParser(BankStatementParser):
             raise ValueError("Unsupported file format for Scapia Credit Card. Only PDF files are supported.")
     
     def _parse_pdf(self) -> List[Dict[str, Any]]:
-        """Parse Scapia Credit Card PDF statement"""
-        transactions = []
-        
-        with open(self.file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            
-            for page in pdf_reader.pages:
+        """Parse Scapia Credit Card PDF statement using pdfplumber with PyPDF2 fallback.
+
+        Some Scapia statement layouts cause pdfplumber to garble text due to
+        overlapping columns, while PyPDF2 extracts cleanly. Try pdfplumber first,
+        fall back to PyPDF2 if no transactions are found.
+        """
+        import pdfplumber
+
+        # Try pdfplumber first
+        all_lines = []
+        try:
+            with pdfplumber.open(self.file_path) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        all_lines.extend(text.split('\n'))
+        except Exception as e:
+            logger.error(f"Scapia CC PDF pdfplumber extraction failed: {e}")
+
+        transactions = self._extract_transactions(all_lines)
+        if transactions:
+            return transactions
+
+        # Fallback: PyPDF2 handles some Scapia layouts better
+        all_lines = []
+        try:
+            reader = PyPDF2.PdfReader(self.file_path)
+            for page in reader.pages:
                 text = page.extract_text()
-                lines = text.split('\n')
-                
-                for line in lines:
-                    # Scapia format: DD-MM-YYYY ·HH:MMMerchantName ₹Amount [RewardPoints]
-                    # Example: 24-11-2025 ·19:38ApolloPharmacy ₹270.70
-                    # Example with payment: 28-11-2025 ·11:44Billpayment Payment +₹16,969.83
-                    
-                    # Match transaction pattern
-                    match = re.match(
-                        r'(\d{2}-\d{2}-\d{4})\s*·\s*(\d{2}:\d{2})(.+?)\s+([\+\-]?₹[\d,]+\.?\d*)\s*(\d+)?$',
-                        line
-                    )
-                    
-                    if match:
-                        date_str, time_str, description, amount_str, reward_points = match.groups()
-                        
-                        # Parse date
-                        transaction_date = self._parse_date(date_str, ['%d-%m-%Y'])
-                        if not transaction_date:
-                            continue
-                        
-                        # Clean description
-                        description = description.strip()
-                        if not description:
-                            continue
-                        
-                        # Parse amount
-                        is_credit = '+' in amount_str or 'Payment' in description
-                        amount_clean = amount_str.replace('+', '').replace('-', '').replace('₹', '').strip()
-                        amount = self._clean_amount(amount_clean)
-                        
-                        if amount == 0:
-                            continue
-                        
-                        # Determine transaction type
-                        if is_credit:
-                            transaction_type = ExpenseType.CREDIT
-                            debit = 0.0
-                            credit = amount
-                        else:
-                            transaction_type = ExpenseType.DEBIT
-                            debit = amount
-                            credit = 0.0
-                        
-                        # For credit cards, payment method is always CREDIT_CARD
-                        payment_method = PaymentMethod.CREDIT_CARD
-                        
-                        # Extract merchant name (remove time and clean up)
-                        merchant = self._extract_merchant_name(description)
-                        
-                        transactions.append({
-                            'transaction_date': transaction_date,
-                            'description': description,
-                            'amount': amount,
-                            'transaction_type': transaction_type,
-                            'payment_method': payment_method,
-                            'merchant_name': merchant,
-                            'reference_number': None,  # Scapia statements don't have reference numbers
-                            'balance_after': None  # Credit card statements don't have running balance
-                        })
-        
+                if text:
+                    all_lines.extend(text.split('\n'))
+        except Exception as e:
+            logger.error(f"Scapia CC PDF PyPDF2 extraction failed: {e}")
+            return []
+
+        return self._extract_transactions(all_lines)
+
+    def _extract_transactions(self, all_lines: list) -> List[Dict[str, Any]]:
+        """Extract transactions from text lines using Scapia format patterns."""
+        transactions = []
+
+        # Scapia format variants (pdfplumber output):
+        # "24 Sep 2025 · 08:31 Bistro ₹158.00"
+        # "25 Sep 2025 · 17:54 Santosini Dash ₹690.00 35"
+        # "30 Sep 2025 · 18:16 Bill payment Payment + ₹15,071.90"
+        # PyPDF2 format (no spaces):
+        # "24-11-2025 ·19:38ApolloPharmacy ₹270.70"
+        # "28-11-2025 ·11:44Billpayment Payment +₹16,969.83"
+
+        # Pattern 1: pdfplumber — "DD Mon YYYY · HH:MM Description [Payment] [+] ₹Amount [RewardPts]"
+        pdfplumber_re = re.compile(
+            r'(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s*[·:]\s*(\d{2}:\d{2})\s+'  # date · time
+            r'(.+?)\s+'                                                       # description
+            r'(\+\s*)?[₹]\s*([\d,]+\.\d{2})\s*'                              # optional + sign, ₹amount
+            r'(?:[\d,]+)?\s*$'                                                # optional reward points
+        )
+
+        # Pattern 2: PyPDF2 fallback — "DD-MM-YYYY ·HH:MMDescription ₹Amount"
+        pypdf2_re = re.compile(
+            r'(\d{2}-\d{2}-\d{4})\s*·\s*(\d{2}:\d{2})(.+?)\s+'  # date·timeDescription
+            r'(\+\s*)?[₹]\s*([\d,]+\.?\d*)\s*'                    # optional +, ₹amount
+            r'(?:\d+)?\s*$'                                        # optional reward points
+        )
+
+        for line in all_lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Try pdfplumber format first
+            m = pdfplumber_re.match(line)
+            if m:
+                date_str, time_str, description, plus_sign, amount_str = m.groups()
+                transaction_date = self._parse_date(date_str, ['%d %b %Y'])
+            else:
+                # Try PyPDF2 format
+                m = pypdf2_re.match(line)
+                if m:
+                    date_str, time_str, description, plus_sign, amount_str = m.groups()
+                    transaction_date = self._parse_date(date_str, ['%d-%m-%Y'])
+                else:
+                    continue
+
+            if not transaction_date:
+                continue
+
+            description = description.strip()
+            if not description:
+                continue
+
+            amount = self._clean_amount(amount_str)
+            if amount == 0:
+                continue
+
+            # Credit detection: "+" prefix or "Payment" in description
+            is_credit = bool(plus_sign) or 'Payment' in description
+
+            if is_credit:
+                transaction_type = ExpenseType.CREDIT
+            else:
+                transaction_type = ExpenseType.DEBIT
+
+            # Clean "Payment" suffix from description for bill payments
+            desc_clean = re.sub(r'\s+Payment\s*$', '', description).strip()
+
+            transactions.append({
+                'transaction_date': transaction_date,
+                'description': desc_clean,
+                'amount': amount,
+                'transaction_type': transaction_type,
+                'payment_method': PaymentMethod.CREDIT_CARD,
+                'merchant_name': self._extract_merchant_name(desc_clean),
+                'reference_number': None,
+                'balance_after': None
+            })
+
+        logger.info(f"Scapia CC PDF: found {len(transactions)} transactions")
         return transactions
 
 
@@ -448,75 +896,136 @@ class IDFCFirstCreditCardParser(BankStatementParser):
             raise ValueError("Unsupported file format for IDFC First Bank Credit Card. Only PDF files are supported.")
     
     def _parse_pdf(self) -> List[Dict[str, Any]]:
-        """Parse IDFC First Bank Credit Card PDF statement"""
+        """Parse IDFC First Bank Credit Card PDF statement using pdfplumber.
+
+        Handles multi-line merchant descriptions where pdfplumber splits long
+        merchant names across lines, e.g.:
+          INNOVATIVE RETAIL CONC,
+          09 Feb 26 808.00 DR
+          BENGALURU
+        """
+        import pdfplumber
+
         transactions = []
-        
-        with open(self.file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            
-            for page in pdf_reader.pages:
+
+        # Single-line: DD Mon YY <description> [Convert] <amount> DR/CR
+        single_line_re = re.compile(
+            r'(\d{2}\s+[A-Za-z]{3}\s+\d{2})\s+(.+?)\s+(Convert\s+)?[\s\u00a0]*([\d,]+\.\d{2})\s+(DR|CR)'
+        )
+        # Multi-line: DD Mon YY [Convert] <amount> DR/CR  (date + amount, NO description)
+        date_amount_only_re = re.compile(
+            r'(\d{2}\s+[A-Za-z]{3}\s+\d{2})\s+(Convert\s+)?([\d,]+\.\d{2})\s+(DR|CR)\s*$'
+        )
+        # Skip patterns — header/section lines that look like transactions
+        skip_re = re.compile(
+            r'(Card Number|Purchases|Payments & Other|Transaction|Amount|Eligibility|'
+            r'YOUR TRANSACTIONS|YOUR CARD|Credit Card Statement|Statement Date|'
+            r'Relationship No|CKYC|^\d{2}/[A-Za-z]{3}/\d{4})'
+        )
+        # Date prefix pattern — to detect if a line starts with a transaction date
+        date_prefix_re = re.compile(r'^\d{2}\s+[A-Za-z]{3}\s+\d{2}')
+
+        with pdfplumber.open(self.file_path) as pdf:
+            all_lines: List[str] = []
+            for page in pdf.pages:
                 text = page.extract_text()
-                lines = text.split('\n')
-                
-                for line in lines:
-                    # IDFC format: DD Mon YY MerchantName, Location [Convert] Amount DR/CR
-                    # Example: 26 Nov 25 NATIONAL INSTITUTE OF O, MEERUT Convert  1,584.92 DR
-                    # Example: 28 Nov 25BillDesk BBPS CC Payment/DP1153321143094pqGLA46,429.93 CR
-                    
-                    # Match transaction pattern
-                    match = re.match(
-                        r'(\d{2}\s+[A-Za-z]{3}\s+\d{2})\s*(.+?)\s+(Convert\s+)?[\s\u00a0]*([\d,]+\.?\d*)\s+(DR|CR)',
+                if text:
+                    all_lines.extend(text.split('\n'))
+
+            i = 0
+            while i < len(all_lines):
+                line = all_lines[i].strip()
+
+                # Skip headers and non-transaction lines
+                if not line or skip_re.search(line):
+                    i += 1
+                    continue
+
+                # Try single-line match first (most common case)
+                match = single_line_re.match(line)
+                if match:
+                    date_str, description, _, amount_str, dr_cr = match.groups()
+                    # "Convert" alone is not a real description — treat as multi-line
+                    if description.strip().lower() != 'convert':
+                        txn = self._build_transaction(date_str, description, amount_str, dr_cr)
+                        if txn:
+                            transactions.append(txn)
+                        i += 1
+                        continue
+
+                # Try multi-line: current line has date + amount but no description
+                # Also matches "DD Mon YY Convert AMOUNT DR/CR" (description was on prev line)
+                ml_match = date_amount_only_re.match(line)
+                if not ml_match:
+                    # Re-check with Convert pattern for lines like "13 Feb 26 Convert 1,568.29 DR"
+                    ml_match = re.match(
+                        r'(\d{2}\s+[A-Za-z]{3}\s+\d{2})\s+Convert\s+([\d,]+\.\d{2})\s+(DR|CR)\s*$',
                         line
                     )
-                    
-                    if match:
-                        date_str, description, convert_flag, amount_str, dr_cr = match.groups()
-                        
-                        # Parse date (DD Mon YY format)
-                        transaction_date = self._parse_date(date_str, ['%d %b %y'])
-                        if not transaction_date:
-                            continue
-                        
-                        # Clean description
-                        description = description.strip()
-                        if not description:
-                            continue
-                        
-                        # Parse amount
-                        is_credit = dr_cr == 'CR'
-                        amount = self._clean_amount(amount_str)
-                        
-                        if amount == 0:
-                            continue
-                        
-                        # Determine transaction type
-                        if is_credit:
-                            transaction_type = ExpenseType.CREDIT
-                            debit = 0.0
-                            credit = amount
-                        else:
-                            transaction_type = ExpenseType.DEBIT
-                            debit = amount
-                            credit = 0.0
-                        
-                        # For credit cards, payment method is always CREDIT_CARD
-                        payment_method = PaymentMethod.CREDIT_CARD
-                        
-                        # Extract merchant name
-                        merchant = self._extract_merchant_name(description)
-                        
-                        transactions.append({
-                            'transaction_date': transaction_date,
-                            'description': description,
-                            'amount': amount,
-                            'transaction_type': transaction_type,
-                            'payment_method': payment_method,
-                            'merchant_name': merchant,
-                            'reference_number': None,  # IDFC CC statements don't have clear reference numbers
-                            'balance_after': None  # Credit card statements don't have running balance
-                        })
-        
+                    if ml_match:
+                        date_str, amount_str, dr_cr = ml_match.groups()
+                    else:
+                        i += 1
+                        continue
+                else:
+                    date_str, _, amount_str, dr_cr = ml_match.groups()
+
+                # Look backward exactly one line for the description prefix
+                desc_before = ''
+                if i > 0:
+                    prev = all_lines[i - 1].strip()
+                    if (prev and not skip_re.search(prev)
+                            and not date_prefix_re.match(prev)
+                            and not re.search(r'\d\s+(DR|CR)\s*$', prev)):
+                        desc_before = prev
+
+                # Look forward exactly one line for location continuation
+                desc_after = ''
+                k = i + 1
+                if k < len(all_lines):
+                    nxt = all_lines[k].strip()
+                    if (nxt and not skip_re.search(nxt)
+                            and not date_prefix_re.match(nxt)
+                            and not re.search(r'\d\s+(DR|CR)\s*$', nxt)):
+                        desc_after = nxt
+                        k += 1
+
+                description = (desc_before + ' ' + desc_after).strip() if desc_before else desc_after
+                txn = self._build_transaction(date_str, description, amount_str, dr_cr)
+                if txn:
+                    transactions.append(txn)
+                i = k
+                continue
+
         return transactions
+
+    def _build_transaction(self, date_str: str, description: str, amount_str: str, dr_cr: str) -> Optional[Dict[str, Any]]:
+        """Build a transaction dict from parsed components."""
+        transaction_date = self._parse_date(date_str, ['%d %b %y'])
+        if not transaction_date:
+            return None
+
+        description = description.strip()
+        if not description:
+            return None
+
+        amount = self._clean_amount(amount_str)
+        if amount == 0:
+            return None
+
+        is_credit = dr_cr == 'CR'
+        transaction_type = ExpenseType.CREDIT if is_credit else ExpenseType.DEBIT
+
+        return {
+            'transaction_date': transaction_date,
+            'description': description,
+            'amount': amount,
+            'transaction_type': transaction_type,
+            'payment_method': PaymentMethod.CREDIT_CARD,
+            'merchant_name': self._extract_merchant_name(description),
+            'reference_number': None,
+            'balance_after': None
+        }
 
 
 class HDFCBankParser(BankStatementParser):
@@ -668,44 +1177,187 @@ class IDFCFirstBankParser(BankStatementParser):
             raise ValueError("Unsupported file format for IDFC First Bank")
     
     def _parse_pdf(self) -> List[Dict[str, Any]]:
-        """Parse IDFC First Bank PDF statement"""
+        """Parse IDFC First Bank PDF statement using pdfplumber.
+
+        PDF table layout:
+          Transaction Date | Value Date | Particulars | Cheque No | Debit | Credit | Balance
+
+        Handles multi-line descriptions where long particulars wrap across rows,
+        and determines debit/credit by comparing balance with previous balance
+        when table extraction is unavailable.
+        """
+        import pdfplumber
+
+        transactions = self._parse_pdf_tables(pdfplumber)
+        if transactions:
+            return transactions
+
+        # Fallback: text-based parsing
+        return self._parse_pdf_text(pdfplumber)
+
+    def _parse_pdf_tables(self, pdfplumber) -> List[Dict[str, Any]]:
+        """Try pdfplumber table extraction for IDFC First Bank savings PDF."""
         transactions = []
-        
-        with open(self.file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            
-            for page in pdf_reader.pages:
+        date_formats = ['%d-%b-%Y', '%d-%B-%Y', '%Y-%m-%d']
+
+        with pdfplumber.open(self.file_path) as pdf:
+            for page in pdf.pages:
+                tables = page.extract_tables()
+                for table in tables:
+                    if not table:
+                        continue
+                    for row in table:
+                        if not row or len(row) < 7:
+                            continue
+                        # row: [txn_date, value_date, particulars, cheque_no, debit, credit, balance]
+                        txn_date_str = (row[0] or '').strip()
+                        if not txn_date_str:
+                            continue
+
+                        transaction_date = self._parse_date(txn_date_str, date_formats)
+                        if not transaction_date:
+                            continue
+
+                        description = (row[2] or '').strip()
+                        if not description or description.lower() in ('opening balance', 'closing balance'):
+                            continue
+
+                        debit = self._clean_amount(row[4]) if row[4] else 0.0
+                        credit = self._clean_amount(row[5]) if row[5] else 0.0
+                        balance = self._clean_amount(row[6]) if row[6] else 0.0
+
+                        if debit == 0 and credit == 0:
+                            continue
+
+                        # Clean up multi-line description (table cells may contain newlines)
+                        description = re.sub(r'\s+', ' ', description).strip()
+
+                        transactions.append({
+                            'transaction_date': transaction_date,
+                            'description': description,
+                            'amount': debit if debit > 0 else credit,
+                            'transaction_type': self._detect_transaction_type(description, debit, credit),
+                            'payment_method': self._detect_payment_method(description),
+                            'merchant_name': self._extract_merchant_name(description),
+                            'reference_number': (row[3] or '').strip() or None,
+                            'balance_after': balance
+                        })
+
+        return transactions
+
+    def _parse_pdf_text(self, pdfplumber) -> List[Dict[str, Any]]:
+        """Fallback text-based parsing for IDFC First Bank savings PDF.
+
+        Text lines look like:
+          01-Nov-2025 01-Nov-2025 NACH/ZERODHA BROKING 12,500.00 2,34,390.67
+          LTD/KPELUT794AUY42                   (continuation of description)
+
+        We get two amounts: transaction amount and running balance. Debit vs credit
+        is determined by comparing the balance with the previous balance.
+        """
+        transactions = []
+        date_formats = ['%d-%b-%Y', '%d-%B-%Y']
+
+        # Match: DD-Mon-YYYY DD-Mon-YYYY <description> <amount> <balance>
+        txn_re = re.compile(
+            r'^(\d{2}-[A-Za-z]{3,9}-\d{4})\s+(\d{2}-[A-Za-z]{3,9}-\d{4})\s+'
+            r'(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$'
+        )
+        # Match opening balance line to seed prev_balance
+        opening_re = re.compile(r'Opening Balance\s+([\d,]+\.\d{2})')
+        # Date prefix to detect transaction start lines
+        date_prefix_re = re.compile(r'^\d{2}-[A-Za-z]{3,9}-\d{4}\s+\d{2}-[A-Za-z]{3,9}-\d{4}')
+        # Skip patterns
+        skip_re = re.compile(
+            r'(STATEMENT OF ACCOUNT|CUSTOMER|ACCOUNT|REGISTERED OFFICE|Page \d|'
+            r'Opening Balance|Closing Balance|Total Debit|Total Credit|'
+            r'Transaction\s+Date|Value Date|Particulars|Cheque|^-+$)',
+            re.IGNORECASE
+        )
+
+        prev_balance = 0.0
+
+        with pdfplumber.open(self.file_path) as pdf:
+            all_lines: List[str] = []
+            for page in pdf.pages:
                 text = page.extract_text()
-                lines = text.split('\n')
-                
-                for line in lines:
-                    # IDFC format: Date | Description | Ref No | Debit | Credit | Balance
-                    match = re.match(
-                        r'(\d{2}-\w{3}-\d{4})\s+(.+?)\s+(\w+)?\s+([\d,]+\.\d{2})?\s+([\d,]+\.\d{2})?\s+([\d,]+\.\d{2})',
-                        line
-                    )
-                    
-                    if match:
-                        date_str, description, ref_no, debit_str, credit_str, balance_str = match.groups()
-                        
-                        debit = self._clean_amount(debit_str) if debit_str else 0.0
-                        credit = self._clean_amount(credit_str) if credit_str else 0.0
-                        balance = self._clean_amount(balance_str) if balance_str else 0.0
-                        
-                        transaction_date = self._parse_date(date_str, ['%d-%b-%Y'])
-                        
-                        if transaction_date:
-                            transactions.append({
-                                'transaction_date': transaction_date,
-                                'description': description.strip(),
-                                'amount': debit if debit > 0 else credit,
-                                'transaction_type': self._detect_transaction_type(description, debit, credit),
-                                'payment_method': self._detect_payment_method(description),
-                                'merchant_name': self._extract_merchant_name(description),
-                                'reference_number': ref_no if ref_no else None,
-                                'balance_after': balance
-                            })
-        
+                if text:
+                    all_lines.extend(text.split('\n'))
+
+        # First pass: find opening balance
+        for line in all_lines:
+            m = opening_re.search(line)
+            if m:
+                prev_balance = self._clean_amount(m.group(1))
+                break
+
+        # Second pass: parse transactions with continuation lines
+        i = 0
+        while i < len(all_lines):
+            line = all_lines[i].strip()
+
+            if not line or skip_re.search(line):
+                i += 1
+                continue
+
+            match = txn_re.match(line)
+            if not match:
+                i += 1
+                continue
+
+            txn_date_str, _, description, amount_str, balance_str = match.groups()
+
+            # Collect continuation lines (non-date, non-header lines that follow)
+            k = i + 1
+            while k < len(all_lines):
+                nxt = all_lines[k].strip()
+                if (not nxt or skip_re.search(nxt) or date_prefix_re.match(nxt)
+                        or re.match(r'^[\d,]+\.\d{2}$', nxt)):
+                    break
+                description += ' ' + nxt
+                k += 1
+
+            transaction_date = self._parse_date(txn_date_str, date_formats)
+            if not transaction_date:
+                i = k
+                continue
+
+            amount = self._clean_amount(amount_str)
+            balance = self._clean_amount(balance_str)
+
+            if amount == 0:
+                i = k
+                continue
+
+            # Determine debit/credit by comparing balance with previous balance
+            # balance = prev_balance - debit  OR  balance = prev_balance + credit
+            expected_after_debit = prev_balance - amount
+            expected_after_credit = prev_balance + amount
+
+            debit_diff = abs(expected_after_debit - balance)
+            credit_diff = abs(expected_after_credit - balance)
+
+            if debit_diff < credit_diff:
+                debit, credit = amount, 0.0
+            else:
+                debit, credit = 0.0, amount
+
+            description = re.sub(r'\s+', ' ', description).strip()
+
+            transactions.append({
+                'transaction_date': transaction_date,
+                'description': description,
+                'amount': amount,
+                'transaction_type': self._detect_transaction_type(description, debit, credit),
+                'payment_method': self._detect_payment_method(description),
+                'merchant_name': self._extract_merchant_name(description),
+                'reference_number': None,
+                'balance_after': balance
+            })
+
+            prev_balance = balance
+            i = k
+
         return transactions
     
     def _parse_excel(self) -> List[Dict[str, Any]]:

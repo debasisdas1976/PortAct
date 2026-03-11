@@ -142,7 +142,7 @@ const AssetInsight: React.FC = () => {
         const chartData = res.data.map((d: any) => {
           const point: any = { date: formatDate(d.date) };
           assetNames.forEach((name) => {
-            point[name] = d.assets?.[name]?.value || 0;
+            point[name] = d.assets?.[name]?.value ?? null;
           });
           return point;
         });
@@ -159,7 +159,7 @@ const AssetInsight: React.FC = () => {
         const chartData = res.data.map((d: any) => {
           const point: any = { date: formatDate(d.date) };
           catNames.forEach((cat) => {
-            point[cat] = d.categories?.[cat]?.value || 0;
+            point[cat] = d.categories?.[cat]?.value ?? null;
           });
           return point;
         });

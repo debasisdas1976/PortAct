@@ -919,14 +919,6 @@
   ],
   "expense_categories": [
     {
-      "name": "Transportation",
-      "description": "Fuel, cab, metro, parking, vehicle services",
-      "icon": "🚗",
-      "color": "#2196F3",
-      "is_income": false,
-      "keywords": "uber,ola,rapido,blu smart,meru,taxi,namma yatri,auto,indriver,indian oil,iocl,bharat petroleum,bpcl,hp petrol,hpcl,shell,essar,reliance petrol,petrol,diesel,fuel,cng,gas station,petrol pump,fuel station,bmtc,namma metro,bangalore metro,bmrcl,purple line,green line,metro,dmrc,best,bus,train,railway,local train,mumbai metro,chennai metro,hyderabad metro,kolkata metro,parking,toll,fastag,paytm fastag,netc fastag,park plus,park+,car wash,servicing,car service,bike service,tyre,battery,mechanic,garage,transport,cab,rickshaw,vehicle,commute"
-    },
-    {
       "name": "Fitness & Gym",
       "description": "Gym membership, sports, fitness",
       "icon": "💪",
@@ -948,15 +940,15 @@
       "icon": "🛒",
       "color": "#4CAF50",
       "is_income": false,
-      "keywords": "bigbasket,grofers,blinkit,zepto,dunzo,jiomart,amazon fresh,amazon pantry,instamart,swiggy instamart,milkbasket,supr daily,licious,freshtohome,meatigo,country delight,ninjacart,dmart,reliance fresh,reliance smart,more,spencer,star bazaar,hypercity,big bazaar,easyday,nilgiris,24 seven,spar,nature basket,foodhall,le marche,namdhari,namdhari fresh,hopcoms,namma basket,total mall,ratnadeep,starmarket,kirana,provision,general store,departmental store,grocery,supermarket,vegetables,fruits,milk,bread,food items,household,provisions,ration,sabzi,mandi, FirstClub, FroosRetailLlp, Mymarket"
+      "keywords": "bigbasket,grofers,blinkit,zepto,dunzo,jiomart,amazon fresh,amazon pantry,instamart,swiggy instamart,milkbasket,supr daily,licious,freshtohome,meatigo,country delight,ninjacart,dmart,reliance fresh,reliance smart,more,spencer,star bazaar,hypercity,big bazaar,easyday,nilgiris,24 seven,spar,nature basket,foodhall,le marche,namdhari,namdhari fresh,hopcoms,namma basket,total mall,ratnadeep,starmarket,kirana,provision,general store,departmental store,grocery,supermarket,vegetables,fruits,milk,bread,food items,household,provisions,ration,sabzi,mandi, FirstClub, FroosRetailLlp, Mymarket, MY MARKET,"
     },
     {
-      "name": "Utilities",
-      "description": "Electricity, water, internet, mobile, gas",
-      "icon": "💡",
-      "color": "#FFC107",
+      "name": "Transportation",
+      "description": "Fuel, cab, metro, parking, vehicle services",
+      "icon": "🚗",
+      "color": "#2196F3",
       "is_income": false,
-      "keywords": "airtel,jio,vodafone,vi,bsnl,mtnl,mobile recharge,prepaid,postpaid,phone bill,broadband,wifi,internet,fiber,act fibernet,tata sky,dish tv,sun direct,dth,cable,hathway,you broadband,excitel,tikona,bescom,bwssb,bangalore water,bbmp,kaveri,cauvery water,electricity,power,msedcl,tata power,adani electricity,torrent power,cesc,water,water bill,gas,lpg,indane,bharat gas,hp gas,piped gas,png,mahanagar gas,adani gas,gail gas,bill payment,bbps,billdesk,utility,paytm bill,cred bill,phonepe bill"
+      "keywords": "uber,ola,rapido,blu smart,meru,taxi,namma yatri,auto,indriver,indian oil,iocl,bharat petroleum,bpcl,hp petrol,hpcl,shell,essar,reliance petrol,petrol,diesel,fuel,cng,gas station,petrol pump,fuel station,bmtc,namma metro,bangalore metro,bmrcl,purple line,green line,metro,dmrc,best,bus,train,railway,local train,mumbai metro,chennai metro,hyderabad metro,kolkata metro,parking,toll,fastag,paytm fastag,netc fastag,park plus,park+,car wash,servicing,car service,bike service,tyre,battery,mechanic,garage,transport,cab,rickshaw,vehicle,commute,auto"
     },
     {
       "name": "Rent & Mortgage",
@@ -1117,6 +1109,14 @@
       "color": "#6C5CE7",
       "is_income": false,
       "keywords": "transfer,neft,imps,rtgs,upi transfer,fund transfer,money transfer,payment to,sent to,transferred to,upi,paytm,phonepe,gpay,google pay,bhim,mobikwik,freecharge,amazon pay,bil/inft,inft,bil/ont,self transfer,internal transfer"
+    },
+    {
+      "name": "Utilities",
+      "description": "Electricity, water, internet, mobile, gas",
+      "icon": "💡",
+      "color": "#FFC107",
+      "is_income": false,
+      "keywords": "airtel,jio,vodafone,vi,bsnl,mtnl,mobile recharge,prepaid,postpaid,phone bill,broadband,wifi,internet,fiber,act fibernet,tata sky,dish tv,sun direct,dth,cable,hathway,you broadband,excitel,tikona,bescom,bwssb,bangalore water,bbmp,kaveri,cauvery water,electricity,power,msedcl,tata power,adani electricity,torrent power,cesc,water,water bill,gas,lpg,indane,bharat gas,hp gas,piped gas,png,mahanagar gas,adani gas,gail gas,bill payment,bbps,billdesk,utility,paytm bill,cred bill,phonepe bill,GAIL, Gas"
     }
   ]
 }

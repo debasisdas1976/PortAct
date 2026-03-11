@@ -41,6 +41,7 @@ import { getErrorMessage } from '../utils/errorUtils';
 import { useSelector } from 'react-redux';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 import { RootState } from '../store';
 
 interface NPSAccount {
@@ -495,6 +496,9 @@ const NPS: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+            <DayChangeCard assets={accounts} />
           </Grid>
           <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
             <XirrCard assetType="nps" portfolioId={selectedPortfolioId} />

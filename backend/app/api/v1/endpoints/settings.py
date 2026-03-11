@@ -1,7 +1,7 @@
 """
 Application settings CRUD endpoints.
 """
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from loguru import logger
@@ -9,6 +9,7 @@ from loguru import logger
 from app.core.database import get_db
 from app.api.dependencies import get_current_active_user
 from app.models.user import User
+from app.models.asset import Asset, AssetType
 from app.models.app_settings import AppSettings, DEFAULT_APP_SETTINGS
 from app.schemas.app_settings import (
     AppSettingResponse,
@@ -174,3 +175,152 @@ async def reset_settings(
 
     rows = db.query(AppSettings).order_by(AppSettings.category, AppSettings.key).all()
     return _apply_masking(rows)
+
+
+# ── helpers for automations endpoint ──
+
+def _get_setting_value(db: Session, key: str, default: str = "") -> str:
+    """Helper to fetch a single setting value."""
+    row = db.query(AppSettings).filter(AppSettings.key == key).first()
+    return row.value if row and row.value else default
+
+
+@router.get("/automations")
+async def list_automations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """
+    Return a consolidated view of all automations the user has opted for.
+    Includes system-level scheduled tasks and per-asset automations.
+    """
+    _seed_defaults_if_empty(db)
+    _ensure_new_defaults(db)
+
+    # ── System automations (from app_settings) ──
+    system_automations = []
+
+    price_interval = _get_setting_value(db, "price_update_interval_minutes", "30")
+    system_automations.append({
+        "name": "Price Updates",
+        "category": "scheduler",
+        "description": "Auto-fetches latest prices for stocks, mutual funds, crypto, and commodities",
+        "enabled": True,
+        "schedule": f"Every {price_interval} minutes",
+    })
+
+    eod_h = _get_setting_value(db, "eod_snapshot_hour", "13")
+    eod_m = _get_setting_value(db, "eod_snapshot_minute", "30")
+    system_automations.append({
+        "name": "EOD Portfolio Snapshot",
+        "category": "scheduler",
+        "description": "Captures daily portfolio value for historical tracking and performance charts",
+        "enabled": True,
+        "schedule": f"Daily at {eod_h}:{eod_m.zfill(2)} UTC",
+    })
+
+    news_morning = _get_setting_value(db, "news_morning_hour", "9")
+    system_automations.append({
+        "name": "Morning News Alerts",
+        "category": "scheduler",
+        "description": "AI-generated news alerts for portfolio holdings",
+        "enabled": True,
+        "schedule": f"Daily at {news_morning}:00 IST",
+    })
+
+    news_evening = _get_setting_value(db, "news_evening_hour", "18")
+    system_automations.append({
+        "name": "Evening News Alerts",
+        "category": "scheduler",
+        "description": "AI-generated news alerts for portfolio holdings",
+        "enabled": True,
+        "schedule": f"Daily at {news_evening}:00 IST",
+    })
+
+    system_automations.append({
+        "name": "Daily Forex Refresh",
+        "category": "scheduler",
+        "description": "Updates foreign currency asset values with latest exchange rates",
+        "enabled": True,
+        "schedule": "Daily at 9:00 UTC (2:30 PM IST)",
+    })
+
+    # ── Employment-based automations ──
+    is_employed = getattr(current_user, "is_employed", False) or False
+    has_salary = (getattr(current_user, "basic_salary", 0) or 0) > 0
+
+    contrib_day = _get_setting_value(db, "monthly_contribution_day", "1")
+    contrib_h = _get_setting_value(db, "monthly_contribution_hour", "0")
+    contrib_m = _get_setting_value(db, "monthly_contribution_minute", "30")
+
+    system_automations.append({
+        "name": "Monthly PF Contributions",
+        "category": "employment",
+        "description": "Automatically adds Employee and Employer PF contributions on the 1st of each month",
+        "enabled": bool(is_employed and has_salary),
+        "schedule": f"Monthly on day {contrib_day} at {contrib_h}:{contrib_m.zfill(2)} UTC",
+        "prerequisite": "Requires employment details and salary configuration",
+    })
+
+    system_automations.append({
+        "name": "Gratuity Revaluation",
+        "category": "employment",
+        "description": "Recomputes gratuity amount based on years of service and current basic salary",
+        "enabled": bool(is_employed and has_salary),
+        "schedule": f"Monthly on day {contrib_day} at {contrib_h}:{contrib_m.zfill(2)} UTC",
+        "prerequisite": "Requires 5+ years of service for eligibility",
+    })
+
+    # ── Per-asset automations (FD / RD with auto_update) ──
+    asset_automations = []
+
+    fd_assets = (
+        db.query(Asset)
+        .filter(
+            Asset.user_id == current_user.id,
+            Asset.asset_type == AssetType.FIXED_DEPOSIT.value,
+        )
+        .all()
+    )
+    for fd in fd_assets:
+        d = fd.details or {}
+        asset_automations.append({
+            "asset_id": fd.id,
+            "asset_name": fd.name,
+            "asset_type": "Fixed Deposit",
+            "automation": "Auto-generate interest transactions",
+            "enabled": d.get("auto_update", False),
+            "details": {
+                "bank_name": d.get("bank_name", ""),
+                "interest_rate": d.get("interest_rate", 0),
+                "interest_type": d.get("interest_type", "simple"),
+            },
+        })
+
+    rd_assets = (
+        db.query(Asset)
+        .filter(
+            Asset.user_id == current_user.id,
+            Asset.asset_type == AssetType.RECURRING_DEPOSIT.value,
+        )
+        .all()
+    )
+    for rd in rd_assets:
+        d = rd.details or {}
+        asset_automations.append({
+            "asset_id": rd.id,
+            "asset_name": rd.name,
+            "asset_type": "Recurring Deposit",
+            "automation": "Auto-generate installment and interest transactions",
+            "enabled": d.get("auto_update", False),
+            "details": {
+                "bank_name": d.get("bank_name", ""),
+                "interest_rate": d.get("interest_rate", 0),
+                "monthly_installment": d.get("monthly_installment", 0),
+            },
+        })
+
+    return {
+        "system_automations": system_automations,
+        "asset_automations": asset_automations,
+    }

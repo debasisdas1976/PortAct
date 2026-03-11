@@ -34,6 +34,7 @@ import api, { cryptoExchangesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 import { getErrorMessage } from '../utils/errorUtils';
 import CryptoAssetDialog, { CryptoAccountOption, CryptoAssetForEdit } from '../components/CryptoAssetDialog';
 
@@ -282,6 +283,9 @@ const CryptoAssets: React.FC = () => {
               {totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%
             </Typography>
           </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <DayChangeCard assets={assets} />
         </Grid>
         <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <XirrCard assetType="crypto" portfolioId={selectedPortfolioId} />

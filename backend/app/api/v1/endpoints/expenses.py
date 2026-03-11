@@ -793,16 +793,35 @@ async def delete_expense(
         Expense.id == expense_id,
         Expense.user_id == current_user.id
     ).first()
-    
+
     if not expense:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Expense not found"
         )
-    
+
     db.delete(expense)
     db.commit()
-    
+
     return None
+
+
+@router.post("/bulk-delete", status_code=status.HTTP_200_OK)
+async def bulk_delete_expenses(
+    expense_ids: List[int],
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete multiple expenses at once
+    """
+    deleted_count = db.query(Expense).filter(
+        Expense.id.in_(expense_ids),
+        Expense.user_id == current_user.id
+    ).delete(synchronize_session=False)
+
+    db.commit()
+
+    return {"deleted": deleted_count}
 
 # Made with Bob

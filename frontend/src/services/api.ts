@@ -546,6 +546,11 @@ export const settingsAPI = {
     const response = await api.post('/settings/reset');
     return response.data;
   },
+
+  getAutomations: async () => {
+    const response = await api.get('/settings/automations');
+    return response.data;
+  },
 };
 
 // System API (version check)

@@ -41,6 +41,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 import StockTransactionDialog from '../components/StockTransactionDialog';
 
 interface MFAsset {
@@ -290,6 +291,9 @@ const EquityMF: React.FC = () => {
               {totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%
             </Typography>
           </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          <DayChangeCard assets={funds} />
         </Grid>
         <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <XirrCard assetType="equity_mutual_fund" portfolioId={selectedPortfolioId} />

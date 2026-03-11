@@ -35,6 +35,7 @@ import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 
 const AREA_UNITS = [
   { value: 'sqft', label: 'Sq. Ft.' },
@@ -276,6 +277,9 @@ const RealEstate: React.FC<RealEstateProps> = ({ propertyType, title }) => {
             </Card>
           </Grid>
         ))}
+        <Grid item xs={12} sm={6} md>
+          <DayChangeCard assets={properties} />
+        </Grid>
         <Grid item xs={12} sm={6} md>
           <XirrCard assetType={propertyType} />
         </Grid>

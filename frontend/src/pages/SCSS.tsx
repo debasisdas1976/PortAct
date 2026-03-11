@@ -12,6 +12,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
 import XirrCard from '../components/XirrCard';
+import DayChangeCard from '../components/DayChangeCard';
 
 interface AssetItem {
   id: number; name: string; symbol: string; total_invested: number; current_value: number;
@@ -69,6 +70,7 @@ const SCSS: React.FC = () => {
         <Grid item xs={12} sm={6} md><Card><CardContent><Typography color="text.secondary" variant="body2">Accounts</Typography><Typography variant="h4">{assets.length}</Typography></CardContent></Card></Grid>
         <Grid item xs={12} sm={6} md><Card><CardContent><Typography color="text.secondary" variant="body2">Total Invested</Typography><Typography variant="h5">{formatCurrency(totalInvested)}</Typography></CardContent></Card></Grid>
         <Grid item xs={12} sm={6} md><Card><CardContent><Typography color="text.secondary" variant="body2">Current Value</Typography><Typography variant="h5">{formatCurrency(totalValue)}</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} sm={6} md><DayChangeCard assets={assets} /></Grid>
         <Grid item xs={12} sm={6} md><XirrCard assetType={ASSET_TYPE} portfolioId={selectedPortfolioId} /></Grid>
       </Grid>
       <TableContainer component={Paper}>

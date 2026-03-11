@@ -98,7 +98,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, subtitle, ico
             <Typography color="text.secondary" gutterBottom variant="body2">
               {title}
             </Typography>
-            <Typography variant="h4" component="div">
+            <Typography variant="h5" component="div" sx={{ fontWeight: 600 }}>
               {hideNumbers ? '••••••' : value}
             </Typography>
             {change !== undefined && (
@@ -482,6 +482,26 @@ const Dashboard: React.FC = () => {
             color={(summary?.portfolio_summary?.total_profit_loss || 0) >= 0 ? 'success.main' : 'error.main'}
             hideNumbers={hideNumbers}
           />
+        </Grid>
+        <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
+          {(() => {
+            const currentTotal = (summary?.portfolio_summary?.total_current_value || 0) + totalBankBalance + totalDematCash + totalCryptoCash;
+            const prevValue = summary?.portfolio_summary?.previous_day_value;
+            const dayChange = prevValue != null ? currentTotal - prevValue : null;
+            const dayChangePct = prevValue != null && prevValue > 0 ? ((currentTotal - prevValue) / prevValue) * 100 : null;
+            const isUp = (dayChange ?? 0) >= 0;
+            return (
+              <StatCard
+                title="Day Change"
+                value={dayChange != null ? formatCurrency(dayChange) : 'N/A'}
+                change={dayChangePct != null ? dayChangePct : undefined}
+                subtitle={prevValue != null ? `Prev: ${formatCurrency(prevValue)}` : 'No snapshot yet'}
+                icon={isUp ? <TrendingUp sx={{ color: 'white' }} /> : <TrendingDown sx={{ color: 'white' }} />}
+                color={dayChange != null ? (isUp ? 'success.main' : 'error.main') : 'grey.500'}
+                hideNumbers={hideNumbers}
+              />
+            );
+          })()}
         </Grid>
         <Grid item xs={12} sm={6} md sx={{ display: 'flex' }}>
           <StatCard
