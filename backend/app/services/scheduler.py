@@ -66,7 +66,7 @@ def start_scheduler(db: Optional[Session] = None):
     # EOD snapshot job (runs forex refresh first to ensure fresh INR values)
     scheduler.add_job(
         func=_eod_with_forex_refresh,
-        trigger=CronTrigger(hour=eod_hour, minute=eod_minute),
+        trigger=CronTrigger(hour=eod_hour, minute=eod_minute, timezone="UTC"),
         id="eod_snapshot_job",
         name="End of Day Portfolio Snapshot (with Forex Refresh)",
         replace_existing=True,
@@ -75,7 +75,7 @@ def start_scheduler(db: Optional[Session] = None):
     # Monthly PF contribution & Gratuity update job
     scheduler.add_job(
         func=MonthlyContributionService.process_all_users,
-        trigger=CronTrigger(day=mc_day, hour=mc_hour, minute=mc_minute),
+        trigger=CronTrigger(day=mc_day, hour=mc_hour, minute=mc_minute, timezone="UTC"),
         id="monthly_contribution_job",
         name="Monthly PF Contribution & Gratuity Update",
         replace_existing=True,
@@ -84,7 +84,7 @@ def start_scheduler(db: Optional[Session] = None):
     # Daily forex refresh for all non-INR assets (9 AM UTC = 2:30 PM IST)
     scheduler.add_job(
         func=refresh_foreign_currency_values,
-        trigger=CronTrigger(hour=9, minute=0),
+        trigger=CronTrigger(hour=9, minute=0, timezone="UTC"),
         id="forex_refresh_job",
         name="Daily Foreign Currency Value Refresh",
         replace_existing=True,
@@ -141,8 +141,8 @@ def apply_schedule_settings(db: Session) -> None:
     mc_minute = _get_setting(db, "monthly_contribution_minute", settings.MONTHLY_CONTRIBUTION_MINUTE)
 
     scheduler.reschedule_job("price_update_job", trigger=IntervalTrigger(minutes=price_interval))
-    scheduler.reschedule_job("eod_snapshot_job", trigger=CronTrigger(hour=eod_hour, minute=eod_minute))
-    scheduler.reschedule_job("monthly_contribution_job", trigger=CronTrigger(day=mc_day, hour=mc_hour, minute=mc_minute))
+    scheduler.reschedule_job("eod_snapshot_job", trigger=CronTrigger(hour=eod_hour, minute=eod_minute, timezone="UTC"))
+    scheduler.reschedule_job("monthly_contribution_job", trigger=CronTrigger(day=mc_day, hour=mc_hour, minute=mc_minute, timezone="UTC"))
 
     logger.info(
         f"Scheduler rescheduled — prices every {price_interval} min, "

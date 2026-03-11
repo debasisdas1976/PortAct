@@ -315,12 +315,13 @@ class EODSnapshotService:
                         Asset.user_id == user.id,
                         Asset.is_active == True
                     ).first()
-                    
+
                     if not has_assets:
                         continue  # Skip users with no assets
-                    
-                    # Start from yesterday if no snapshots exist
-                    last_date = date.today() - timedelta(days=1)
+
+                    # Start from the day before the user was created
+                    # so that the loop begins at the user's creation date
+                    last_date = user.created_at.date() - timedelta(days=1)
                 
                 # Check for missing dates between last snapshot and yesterday
                 yesterday = date.today() - timedelta(days=1)
