@@ -3,7 +3,7 @@ from app.api.v1.endpoints import (
     auth, users, assets, transactions, statements, alerts, dashboard, prices,
     bank_accounts, demat_accounts, crypto_accounts, crypto_exchanges, banks, brokers, expense_categories, expenses, bank_statements, ppf, pf, mutual_fund_holdings, ssy, nps,
     gratuity, insurance, pension, fixed_deposit, recurring_deposit, portfolio_admin, settings, real_estate, portfolios, asset_categories, asset_types, institutions,
-    system, insights, sip_creator, asset_attributes
+    system, insights, sip_creator, asset_attributes, market
 )
 
 api_router = APIRouter()
@@ -47,5 +47,6 @@ api_router.include_router(system.router, prefix="/system", tags=["System"])
 api_router.include_router(insights.router, prefix="/insights", tags=["Insights"])
 api_router.include_router(sip_creator.router, prefix="/sip-creator", tags=["SIP Creator"])
 api_router.include_router(asset_attributes.router, prefix="/asset-attributes", tags=["Asset Attributes"])
+api_router.include_router(market.router, prefix="/market", tags=["Market Data"])
 
 # Made with Bob

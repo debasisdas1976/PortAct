@@ -59,6 +59,7 @@ import {
   Build as BuildIcon,
   Label as LabelIcon,
   Timeline as TimelineIcon,
+  Public as MarketInsightIcon,
 } from '@mui/icons-material';
 
 // ── Constants ──
@@ -190,6 +191,7 @@ const insightsItems: NavItem[] = [
   { text: 'Alerts', icon: React.createElement(NotificationsIcon), path: '/alerts' },
   { text: 'MF Holdings', icon: React.createElement(InsightsIcon), path: '/mutual-fund-holdings' },
   { text: 'Maturity Timeline', icon: React.createElement(TimelineIcon), path: '/maturity-timeline' },
+  { text: 'Market Insight', icon: React.createElement(MarketInsightIcon), path: '/market-insight' },
 ];
 
 const utilitiesItems: NavItem[] = [
