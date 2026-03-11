@@ -48,6 +48,7 @@ import api, { assetTypesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
+import { clampXirr } from '../utils/xirrUtils';
 
 interface BankAccount {
   id: number;
@@ -331,10 +332,11 @@ const Dashboard: React.FC = () => {
     assetsByCategory[category].value += asset.current_value || 0;
     assetsByCategory[category].count += 1;
     assetsByCategory[category].invested += asset.total_invested || 0;
-    if (asset.xirr != null) {
+    const clampedXirr = clampXirr(asset.xirr);
+    if (clampedXirr != null) {
       const w = (asset.total_invested || 0) > 0 ? asset.total_invested : ((asset.current_value || 0) > 0 ? asset.current_value : 0);
       if (w > 0) {
-        assetsByCategory[category].xirrWeightedSum += asset.xirr * w;
+        assetsByCategory[category].xirrWeightedSum += clampedXirr * w;
         assetsByCategory[category].xirrInvested += w;
       }
     }
@@ -348,10 +350,10 @@ const Dashboard: React.FC = () => {
     assetsByTypeInCategory[category][type].value += asset.current_value || 0;
     assetsByTypeInCategory[category][type].count += 1;
     assetsByTypeInCategory[category][type].invested += asset.total_invested || 0;
-    if (asset.xirr != null) {
+    if (clampedXirr != null) {
       const w = (asset.total_invested || 0) > 0 ? asset.total_invested : ((asset.current_value || 0) > 0 ? asset.current_value : 0);
       if (w > 0) {
-        assetsByTypeInCategory[category][type].xirrWeightedSum += asset.xirr * w;
+        assetsByTypeInCategory[category][type].xirrWeightedSum += clampedXirr * w;
         assetsByTypeInCategory[category][type].xirrInvested += w;
       }
     }

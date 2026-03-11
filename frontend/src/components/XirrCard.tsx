@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, Typography, CircularProgress, Box, Tooltip } from '@mui/material';
 import { dashboardAPI } from '../services/api';
+import { clampXirr } from '../utils/xirrUtils';
 
 interface XirrCardProps {
   assetType: string;
@@ -16,7 +17,7 @@ const XirrCard: React.FC<XirrCardProps> = ({ assetType, portfolioId }) => {
       try {
         setLoading(true);
         const data = await dashboardAPI.getAssetTypeXirr(assetType, portfolioId);
-        if (!cancelled) setXirr(data.xirr);
+        if (!cancelled) setXirr(clampXirr(data.xirr));
       } catch {
         if (!cancelled) setXirr(null);
       } finally {

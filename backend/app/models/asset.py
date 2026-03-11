@@ -123,15 +123,16 @@ class Asset(Base):
     def fallback_xirr(self):
         """Return interest_rate from details or profit_loss_percentage as XIRR fallback
         when transaction data is not available."""
+        from app.services.xirr_service import clamp_xirr
         if self.details and isinstance(self.details, dict):
             interest_rate = self.details.get('interest_rate')
             if interest_rate is not None:
                 try:
-                    return round(float(interest_rate), 2)
+                    return clamp_xirr(round(float(interest_rate), 2))
                 except (ValueError, TypeError):
                     pass
         if self.profit_loss_percentage and self.profit_loss_percentage != 0:
-            return round(self.profit_loss_percentage, 2)
+            return clamp_xirr(round(self.profit_loss_percentage, 2))
         return None
 
 # Made with Bob

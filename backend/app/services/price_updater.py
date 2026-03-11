@@ -11,7 +11,7 @@ from datetime import datetime, timezone, date, timedelta
 import logging
 from app.services.currency_converter import get_usd_to_inr_rate, convert_usd_to_inr, get_rate_to_inr
 from app.models.transaction import Transaction, TransactionType
-from app.services.xirr_service import calculate_asset_xirr
+from app.services.xirr_service import calculate_asset_xirr, clamp_xirr
 from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO)

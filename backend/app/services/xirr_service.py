@@ -18,6 +18,21 @@ logger = logging.getLogger(__name__)
 # Type alias
 CashFlow = Tuple[date, float]
 
+# Reasonable XIRR bounds — anything beyond ±1000% is almost certainly a
+# numerical artefact (e.g. annualising a 2-day holding) and will poison
+# weighted-average calculations and UI rendering.
+XIRR_CAP = 1000.0  # percent
+
+
+def clamp_xirr(value: Optional[float]) -> Optional[float]:
+    """Clamp an XIRR percentage to [-XIRR_CAP, +XIRR_CAP].
+
+    Returns None for None input (preserves "not available" semantics).
+    """
+    if value is None:
+        return None
+    return round(max(-XIRR_CAP, min(XIRR_CAP, value)), 2)
+
 # Transaction types that represent outflows (money leaving user's pocket)
 OUTFLOW_TYPES = {
     TransactionType.BUY,
@@ -121,7 +136,7 @@ def calculate_xirr(
     # Try primary guess
     result = _try_newton(amounts, years, guess, max_iterations, tolerance)
     if result is not None:
-        return result
+        return clamp_xirr(result)
 
     # Retry with alternative guesses
     for alt_guess in [-0.5, 0.0, 0.5, 1.0, 2.0, 5.0]:
@@ -129,7 +144,7 @@ def calculate_xirr(
             continue
         result = _try_newton(amounts, years, alt_guess, max_iterations, tolerance)
         if result is not None:
-            return result
+            return clamp_xirr(result)
 
     logger.warning("XIRR calculation failed to converge")
     return None

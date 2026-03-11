@@ -16,7 +16,7 @@ from app.models.bank_account import BankAccount
 from app.models.demat_account import DematAccount
 from app.models.crypto_account import CryptoAccount
 from app.models.asset_attribute import AssetAttribute, AssetAttributeValue, AssetAttributeAssignment
-from app.services.xirr_service import build_cash_flows_from_transactions, calculate_xirr
+from app.services.xirr_service import build_cash_flows_from_transactions, calculate_xirr, clamp_xirr
 
 router = APIRouter()
 
@@ -72,7 +72,8 @@ async def get_category_allocation_xirr(
         bucket["current_value"] += asset.current_value or 0
         bucket["asset_count"] += 1
 
-        if asset.xirr is not None:
+        clamped = clamp_xirr(asset.xirr)
+        if clamped is not None:
             weight = (
                 asset.total_invested
                 if asset.total_invested and asset.total_invested > 0
@@ -83,13 +84,13 @@ async def get_category_allocation_xirr(
                 )
             )
             if weight > 0:
-                bucket["weighted_xirr_sum"] += asset.xirr * weight
+                bucket["weighted_xirr_sum"] += clamped * weight
                 bucket["xirr_weight_total"] += weight
 
     result = []
     for cat, data in categories.items():
         xirr_val = (
-            round(data["weighted_xirr_sum"] / data["xirr_weight_total"], 2)
+            clamp_xirr(round(data["weighted_xirr_sum"] / data["xirr_weight_total"], 2))
             if data["xirr_weight_total"] > 0
             else None
         )

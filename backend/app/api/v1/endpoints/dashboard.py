@@ -12,7 +12,7 @@ from app.models.crypto_account import CryptoAccount
 from app.models.transaction import Transaction, TransactionType
 from app.models.alert import Alert
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
-from app.services.xirr_service import calculate_asset_xirr
+from app.services.xirr_service import calculate_asset_xirr, clamp_xirr
 from datetime import datetime, timedelta, date
 
 router = APIRouter()
@@ -144,13 +144,14 @@ async def get_dashboard_overview(
     xirr_weighted_sum = 0.0
     xirr_weight_total = 0.0
     for asset in assets:
-        if asset.xirr is not None:
+        clamped = clamp_xirr(asset.xirr)
+        if clamped is not None:
             weight = (asset.total_invested if (asset.total_invested or 0) > 0
                       else (asset.current_value if (asset.current_value or 0) > 0 else 0))
             if weight > 0:
-                xirr_weighted_sum += asset.xirr * weight
+                xirr_weighted_sum += clamped * weight
                 xirr_weight_total += weight
-    portfolio_xirr = round(xirr_weighted_sum / xirr_weight_total, 2) if xirr_weight_total > 0 else None
+    portfolio_xirr = clamp_xirr(round(xirr_weighted_sum / xirr_weight_total, 2)) if xirr_weight_total > 0 else None
 
     return {
         "portfolio_summary": {
@@ -473,15 +474,16 @@ async def get_asset_type_xirr(
     weighted_sum = 0.0
     weight_total = 0.0
     for asset in assets:
-        if asset.xirr is not None:
+        clamped = clamp_xirr(asset.xirr)
+        if clamped is not None:
             weight = (asset.total_invested if asset.total_invested and asset.total_invested > 0
                       else (asset.current_value if asset.current_value and asset.current_value > 0
                             else 0))
             if weight > 0:
-                weighted_sum += asset.xirr * weight
+                weighted_sum += clamped * weight
                 weight_total += weight
 
-    xirr_value = round(weighted_sum / weight_total, 2) if weight_total > 0 else None
+    xirr_value = clamp_xirr(round(weighted_sum / weight_total, 2)) if weight_total > 0 else None
 
     return {
         "asset_type": asset_type.value,

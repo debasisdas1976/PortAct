@@ -27,7 +27,7 @@ from app.models.alert import Alert
 from app.models.portfolio_snapshot import AssetSnapshot
 from app.models.mutual_fund_holding import MutualFundHolding
 from app.models.transaction import Transaction, TransactionType
-from app.services.xirr_service import calculate_asset_xirr
+from app.services.xirr_service import calculate_asset_xirr, clamp_xirr
 
 router = APIRouter()
 
@@ -386,8 +386,9 @@ async def update_asset(
             if 'total_invested' in update_data and update_data['total_invested']:
                 update_data['total_invested'] = convert_usd_to_inr(update_data['total_invested'])
 
-    # If user explicitly sets XIRR, mark it as manual
+    # If user explicitly sets XIRR, mark it as manual and clamp the value
     if 'xirr' in update_data and update_data['xirr'] is not None:
+        update_data['xirr'] = clamp_xirr(update_data['xirr'])
         update_data['xirr_manual'] = True
     elif 'xirr' in update_data and update_data['xirr'] is None and 'xirr_manual' not in update_data:
         update_data['xirr_manual'] = False

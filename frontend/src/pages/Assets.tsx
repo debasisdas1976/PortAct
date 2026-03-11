@@ -47,6 +47,7 @@ import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import CryptoAssetDialog, { type CryptoAccountOption } from '../components/CryptoAssetDialog';
 import BulkAttributeAssignDialog from '../components/BulkAttributeAssignDialog';
 import DayChangeCard from '../components/DayChangeCard';
+import { clampXirr } from '../utils/xirrUtils';
 
 const ASSET_TYPE_ROUTES: Record<string, string> = {
   stock: '/stocks',
@@ -453,12 +454,13 @@ const Assets: React.FC = () => {
       let xirrWeightedSum = 0;
       let xirrWeightTotal = 0;
       group.instances.forEach((inst) => {
-        if (inst.xirr != null) {
+        const clamped = clampXirr(inst.xirr);
+        if (clamped != null) {
           const weight = (inst.total_invested || 0) > 0
             ? inst.total_invested!
             : (inst.current_value || 0) > 0 ? inst.current_value! : 0;
           if (weight > 0) {
-            xirrWeightedSum += inst.xirr * weight;
+            xirrWeightedSum += clamped * weight;
             xirrWeightTotal += weight;
           }
         }
@@ -580,12 +582,13 @@ const Assets: React.FC = () => {
     let xirrWeightTotal = 0;
     currentTabAssets.forEach((group) => {
       group.instances.forEach((inst) => {
-        if (inst.xirr != null) {
+        const clamped = clampXirr(inst.xirr);
+        if (clamped != null) {
           const weight = (inst.total_invested || 0) > 0
             ? inst.total_invested!
             : (inst.current_value || 0) > 0 ? inst.current_value! : 0;
           if (weight > 0) {
-            xirrWeightedSum += inst.xirr * weight;
+            xirrWeightedSum += clamped * weight;
             xirrWeightTotal += weight;
           }
         }
