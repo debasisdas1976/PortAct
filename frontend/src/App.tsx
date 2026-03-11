@@ -74,6 +74,7 @@ const AttributeInsight = React.lazy(() => import('./pages/AttributeInsight'));
 const SIPCreator = React.lazy(() => import('./pages/SIPCreator'));
 const SuperAdmin = React.lazy(() => import('./pages/SuperAdmin'));
 const AssetAttributesMaster = React.lazy(() => import('./pages/AssetAttributesMaster'));
+const MaturityTimeline = React.lazy(() => import('./pages/MaturityTimeline'));
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -139,6 +140,7 @@ window.location.href = '/login?session_expired=true';
             <Route path="alerts" element={<AlertsWithProgress />} />
             <Route path="asset-insight" element={<AssetInsight />} />
             <Route path="attribute-insight" element={<AttributeInsight />} />
+            <Route path="maturity-timeline" element={<MaturityTimeline />} />
             <Route path="sip-creator" element={<SIPCreator />} />
             <Route path="bank-accounts" element={<BankAccounts />} />
             <Route path="demat-accounts" element={<DematAccounts />} />

@@ -339,6 +339,97 @@ async def get_category_xirr_trend(
     return {"period_days": days, "data": data}
 
 
+MATURITY_ASSET_TYPES = [
+    AssetType.FIXED_DEPOSIT, AssetType.RECURRING_DEPOSIT,
+    AssetType.CORPORATE_BOND, AssetType.RBI_BOND, AssetType.TAX_SAVING_BOND,
+    AssetType.NSC, AssetType.KVP, AssetType.SCSS, AssetType.MIS,
+    AssetType.INSURANCE_POLICY, AssetType.SOVEREIGN_GOLD_BOND,
+    AssetType.PPF, AssetType.SSY,
+]
+
+
+@router.get("/maturity-timeline")
+async def get_maturity_timeline(
+    portfolio_id: Optional[int] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns assets with maturity dates, sorted chronologically.
+    Includes current value, interest rate, and calculated maturity amount.
+    """
+    query = db.query(Asset).filter(
+        Asset.user_id == current_user.id,
+        Asset.is_active == True,
+        Asset.asset_type.in_([t.value for t in MATURITY_ASSET_TYPES]),
+    )
+    if portfolio_id is not None:
+        query = query.filter(Asset.portfolio_id == portfolio_id)
+    assets = query.all()
+
+    today = date.today()
+    items = []
+
+    for asset in assets:
+        asset.calculate_metrics()
+        details = asset.details or {}
+        if not isinstance(details, dict):
+            continue
+
+        maturity_str = details.get("maturity_date") or details.get("policy_end_date")
+        if not maturity_str:
+            continue
+
+        try:
+            maturity_dt = date.fromisoformat(str(maturity_str))
+        except (ValueError, TypeError):
+            continue
+
+        days_remaining = (maturity_dt - today).days
+        interest_rate = details.get("interest_rate")
+        current_val = asset.current_value or 0
+
+        # Estimate maturity amount
+        # For insurance: use sum_assured as the maturity payout
+        # For others: compound interest estimate from current value
+        sum_assured = details.get("sum_assured")
+        if sum_assured and asset.asset_type == AssetType.INSURANCE_POLICY:
+            maturity_amount = round(sum_assured, 2)
+        elif interest_rate and days_remaining > 0 and current_val > 0:
+            years_left = days_remaining / 365.25
+            maturity_amount = round(current_val * ((1 + interest_rate / 100) ** years_left), 2)
+        else:
+            maturity_amount = current_val
+
+        # Determine status
+        if days_remaining < 0:
+            status = "Matured"
+        elif days_remaining <= 180:
+            status = "Maturing Soon"
+        elif days_remaining <= 365:
+            status = "Approaching"
+        else:
+            status = "On Track"
+
+        items.append({
+            "asset_id": asset.id,
+            "asset_name": asset.name,
+            "asset_type": asset.asset_type.value if hasattr(asset.asset_type, 'value') else asset.asset_type,
+            "maturity_date": maturity_str,
+            "days_remaining": days_remaining,
+            "current_value": round(current_val, 2),
+            "total_invested": round(asset.total_invested or 0, 2),
+            "interest_rate": interest_rate,
+            "maturity_amount": maturity_amount,
+            "status": status,
+        })
+
+    # Sort: upcoming first, then matured at the end
+    items.sort(key=lambda x: (x["days_remaining"] < 0, abs(x["days_remaining"])))
+
+    return {"items": items, "total_count": len(items)}
+
+
 @router.get("/attribute-allocation")
 async def get_attribute_allocation(
     portfolio_id: Optional[int] = None,

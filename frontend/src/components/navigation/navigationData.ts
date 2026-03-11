@@ -58,6 +58,7 @@ import {
   Token as TokenIcon,
   Build as BuildIcon,
   Label as LabelIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 
 // ── Constants ──
@@ -188,6 +189,7 @@ const insightsItems: NavItem[] = [
   { text: 'Attribute Insight', icon: React.createElement(LabelIcon), path: '/attribute-insight' },
   { text: 'Alerts', icon: React.createElement(NotificationsIcon), path: '/alerts' },
   { text: 'MF Holdings', icon: React.createElement(InsightsIcon), path: '/mutual-fund-holdings' },
+  { text: 'Maturity Timeline', icon: React.createElement(TimelineIcon), path: '/maturity-timeline' },
 ];
 
 const utilitiesItems: NavItem[] = [

@@ -591,6 +591,13 @@ export const insightsAPI = {
     const response = await api.get('/insights/attribute-allocation', { params });
     return response.data;
   },
+
+  getMaturityTimeline: async (portfolioId?: number | null) => {
+    const params: any = {};
+    if (portfolioId) params.portfolio_id = portfolioId;
+    const response = await api.get('/insights/maturity-timeline', { params });
+    return response.data;
+  },
 };
 
 // Asset Attributes API
