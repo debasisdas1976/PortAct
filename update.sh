@@ -88,10 +88,24 @@ fi
 # ── Step 1: Stop running servers ─────────────────────────────────────────────
 
 print_step $STEP $TOTAL_STEPS "Stopping running servers"
-pkill -f "uvicorn app.main:app" 2>/dev/null && print_success "Backend stopped" || print_warning "Backend was not running"
-pkill -f "react-scripts start" 2>/dev/null && print_success "Frontend stopped" || print_warning "Frontend was not running"
-pkill -f "node.*frontend" 2>/dev/null || true
-sleep 2
+# Helper: kill by port — catches --reload child processes that pkill misses
+_kill_port() {
+    local port="$1"
+    local pids
+    pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+    [[ -z "$pids" ]] && return 0
+    echo "$pids" | xargs kill 2>/dev/null || true
+    local w=0
+    while lsof -ti :"$port" &>/dev/null && [[ $w -lt 6 ]]; do sleep 1; ((w++)); done
+    pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+    [[ -n "$pids" ]] && echo "$pids" | xargs kill -9 2>/dev/null || true
+    sleep 1
+}
+pkill -f "uvicorn app.main:app" 2>/dev/null || true
+pkill -f "react-scripts start"  2>/dev/null || true
+pkill -f "node.*frontend"       2>/dev/null || true
+_kill_port 8000 && print_success "Backend stopped (port 8000 cleared)" || print_warning "Could not clear port 8000"
+_kill_port 3000 && print_success "Frontend stopped (port 3000 cleared)" || print_warning "Could not clear port 3000"
 ((STEP++))
 
 # ── Step 2: Create database backup ──────────────────────────────────────────
@@ -194,9 +208,21 @@ cd "$BACKEND_DIR"
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 nohup uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > "$PROJECT_DIR/backend.log" 2>&1 &
-print_success "Backend started (PID: $!)"
+BACKEND_PID=$!
+print_success "Backend started (PID: $BACKEND_PID)"
 
-sleep 3
+# Poll /health until the app finishes its lifespan startup (up to 45s)
+print_info "Waiting for backend to be ready..."
+_retries=0
+while [[ $_retries -lt 45 ]]; do
+    curl -sf http://localhost:8000/health &>/dev/null && break
+    sleep 1; ((_retries++))
+done
+if curl -sf http://localhost:8000/health &>/dev/null; then
+    print_success "Backend is healthy"
+else
+    print_warning "Backend did not respond within 45s — check backend.log"
+fi
 
 cd "$FRONTEND_DIR"
 BROWSER=none nohup npm start > "$PROJECT_DIR/frontend.log" 2>&1 &

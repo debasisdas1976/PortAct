@@ -271,4 +271,29 @@ DEFAULT_APP_SETTINGS = [
         "label": "Monthly Contribution Minute",
         "description": "Minute (0-59) for the monthly PF/Gratuity job.",
     },
+    # ── Market Data API Keys ──
+    {
+        "key": "cmc_api_key",
+        "value": "",
+        "value_type": "secret",
+        "category": "api_keys",
+        "label": "CoinMarketCap API Key",
+        "description": "API key for CoinMarketCap (pro-api.coinmarketcap.com). Used for Bitcoin Fear & Greed Index. Free tier available at coinmarketcap.com/api.",
+    },
+    {
+        "key": "alpha_vantage_api_key",
+        "value": "",
+        "value_type": "secret",
+        "category": "api_keys",
+        "label": "Alpha Vantage API Key",
+        "description": "API key for Alpha Vantage (alphavantage.co). Used for US stock market data. Free tier available at alphavantage.co/support/#api-key.",
+    },
+    {
+        "key": "rapidapi_key",
+        "value": "",
+        "value_type": "secret",
+        "category": "api_keys",
+        "label": "RapidAPI Key",
+        "description": "API key for RapidAPI (rapidapi.com). Used for various market data endpoints.",
+    },
 ]

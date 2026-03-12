@@ -6,7 +6,7 @@ Financial Events Service — provides:
 """
 
 from calendar import timegm
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from html import unescape
 from typing import List, Dict, Any, Tuple
 import asyncio
@@ -14,6 +14,7 @@ import feedparser
 import httpx
 import logging
 import re
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -485,6 +486,12 @@ async def get_global_financial_news(count: int = 8) -> List[Dict[str, Any]]:
                         pub_dt = datetime.utcfromtimestamp(timegm(t)).isoformat() + "Z"
                         break
 
+                # Skip articles older than 24 hours
+                if pub_dt:
+                    pub_datetime = datetime.fromisoformat(pub_dt.replace("Z", "+00:00"))
+                    if pub_datetime < datetime.now(timezone.utc) - timedelta(hours=24):
+                        continue
+
                 score, category = _score_and_categorize(title, summary)
                 if score < 0:
                     continue  # filter irrelevant
@@ -575,3 +582,44 @@ async def get_global_financial_news(count: int = 8) -> List[Dict[str, Any]]:
         return []
 
 
+# ── 30-minute news cache ───────────────────────────────────────────────────────
+
+_NEWS_CACHE_TTL_MINUTES = 30
+_news_cache_lock = threading.Lock()
+_news_cache_data: List[Dict[str, Any]] = []
+_news_cache_expires_at: datetime = datetime.min.replace(tzinfo=timezone.utc)
+
+
+async def get_cached_global_financial_news(count: int = 8) -> List[Dict[str, Any]]:
+    """Return news from the in-memory cache if fresh; otherwise fetch and refresh."""
+    global _news_cache_data, _news_cache_expires_at
+    now = datetime.now(timezone.utc)
+    with _news_cache_lock:
+        if _news_cache_data and now < _news_cache_expires_at:
+            return _news_cache_data[:count]
+
+    # Fetch outside the lock to avoid blocking other requests
+    fresh = await get_global_financial_news(count=count)
+
+    with _news_cache_lock:
+        _news_cache_data = fresh
+        _news_cache_expires_at = datetime.now(timezone.utc) + timedelta(minutes=_NEWS_CACHE_TTL_MINUTES)
+
+    return fresh
+
+
+def refresh_news_cache() -> None:
+    """Synchronously warm / refresh the news cache. Called by the scheduler every 30 min."""
+    global _news_cache_data, _news_cache_expires_at
+    try:
+        loop = asyncio.new_event_loop()
+        try:
+            fresh = loop.run_until_complete(get_global_financial_news(count=8))
+        finally:
+            loop.close()
+        with _news_cache_lock:
+            _news_cache_data = fresh
+            _news_cache_expires_at = datetime.now(timezone.utc) + timedelta(minutes=_NEWS_CACHE_TTL_MINUTES)
+        logger.info("News cache refreshed: %d articles", len(fresh))
+    except Exception as exc:
+        logger.warning("News cache refresh failed: %s", exc)

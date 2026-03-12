@@ -1,183 +1,201 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# PortAct — Restart Script
+# Cleanly stops everything, runs pending migrations, and starts fresh.
+#
+# Usage:  ./scripts/restart_app.sh
+#
 
-# PortAct - Application Restart Script
-# This script cleanly stops and restarts both backend and frontend
-
-set -e
-
-# Resolve project root (scripts live in <project>/scripts/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_DIR"
+BACKEND_DIR="$PROJECT_DIR/backend"
+FRONTEND_DIR="$PROJECT_DIR/frontend"
 
-echo "======================================"
-echo "PortAct Application Restart"
-echo "======================================"
-echo ""
+# Locate venv (prefer backend/venv, fallback to project-root .venv)
+VENV_DIR="$BACKEND_DIR/venv"
+[[ ! -d "$VENV_DIR" ]] && VENV_DIR="$PROJECT_DIR/.venv"
+[[ ! -d "$VENV_DIR" ]] && { echo "ERROR: Python venv not found. Run install.sh first."; exit 1; }
 
-# Colors for output
-RED='\033[0;31m'
+# ── Colors ───────────────────────────────────────────────────────────────────
+BOLD='\033[1m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+print_success() { echo -e "  ${GREEN}✓${NC} $1"; }
+print_warning() { echo -e "  ${YELLOW}!${NC} $1"; }
+print_error()   { echo -e "  ${RED}✗${NC} $1"; }
+print_info()    { echo -e "  ${CYAN}→${NC} $1"; }
 
-# Function to print colored output
-print_status() {
-    echo -e "${GREEN}[✓]${NC} $1"
+echo ""
+echo -e "${BOLD}======================================"
+echo    "  PortAct — Restart"
+echo -e "======================================${NC}"
+echo ""
+
+# ── Helper: kill everything on a port, wait until it's free ─────────────────
+kill_port() {
+    local port="$1"
+    local pids
+    pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+    [[ -z "$pids" ]] && return 0
+
+    # Graceful SIGTERM first
+    echo "$pids" | xargs kill 2>/dev/null || true
+    local waited=0
+    while lsof -ti :"$port" &>/dev/null && [[ $waited -lt 6 ]]; do
+        sleep 1; ((waited++))
+    done
+
+    # Force-kill any stragglers
+    pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+    [[ -n "$pids" ]] && echo "$pids" | xargs kill -9 2>/dev/null || true
+
+    # Final confirmation
+    waited=0
+    while lsof -ti :"$port" &>/dev/null && [[ $waited -lt 4 ]]; do
+        sleep 1; ((waited++))
+    done
+    if lsof -ti :"$port" &>/dev/null; then
+        print_error "Port $port is still in use! Cannot continue safely."
+        return 1
+    fi
+    return 0
 }
 
-print_error() {
-    echo -e "${RED}[✗]${NC} $1"
+# ── Helper: poll a URL until it responds ─────────────────────────────────────
+wait_for_url() {
+    local url="$1" max="$2" waited=0
+    while ! curl -sf "$url" &>/dev/null; do
+        sleep 1; ((waited++))
+        [[ $waited -ge $max ]] && return 1
+    done
+    return 0
 }
 
-print_warning() {
-    echo -e "${YELLOW}[!]${NC} $1"
+# ── Helper: wait for a port to open ──────────────────────────────────────────
+wait_for_port_open() {
+    local port="$1" max="$2" waited=0
+    while ! lsof -ti :"$port" &>/dev/null; do
+        sleep 1; ((waited++))
+        [[ $waited -ge $max ]] && return 1
+    done
+    return 0
 }
 
-# Step 1: Stop running processes
-echo "Step 1: Stopping running processes..."
-echo "--------------------------------------"
+# ── Step 1: Stop all existing processes ──────────────────────────────────────
+echo "Step 1: Stopping existing processes..."
 
-# Stop backend (uvicorn)
-print_status "Stopping backend server..."
-pkill -f "uvicorn app.main:app" || print_warning "Backend not running or already stopped"
+pkill -f "uvicorn app.main:app" 2>/dev/null || true
+pkill -f "react-scripts start"  2>/dev/null || true
+pkill -f "node.*portact"        2>/dev/null || true
 
-# Stop frontend (npm/react)
-print_status "Stopping frontend server..."
-pkill -f "react-scripts start" || print_warning "Frontend not running or already stopped"
-pkill -f "node.*frontend" || true
+# Kill by port — catches --reload child processes and anything pkill missed
+kill_port 8000 && print_success "Port 8000 is free" || exit 1
+kill_port 3000 && print_success "Port 3000 is free" || exit 1
 
-# Wait a moment for processes to stop
-sleep 2
-
-# Step 2: Ensure PostgreSQL is running
+# ── Step 2: Ensure PostgreSQL is running ─────────────────────────────────────
 echo ""
 echo "Step 2: Checking PostgreSQL..."
-echo "--------------------------------------"
 
-if pg_isready -q 2>/dev/null; then
-    print_status "PostgreSQL is already running"
-else
-    print_warning "PostgreSQL is not running. Starting it..."
-
+if ! pg_isready -q 2>/dev/null; then
+    print_warning "PostgreSQL not ready — attempting to start..."
     OS_TYPE="$(uname -s)"
-    PG_STARTED=false
-
-    if [ "$OS_TYPE" = "Darwin" ]; then
-        # macOS: start via brew services (try 17, 16, 15 in order)
-        for pg_ver in 17 16 15; do
-            if brew list "postgresql@$pg_ver" &>/dev/null; then
-                print_status "Starting PostgreSQL @$pg_ver via Homebrew..."
-                brew services start "postgresql@$pg_ver" 2>/dev/null || true
-                PG_STARTED=true
-                break
+    if [[ "$OS_TYPE" == "Darwin" ]]; then
+        started=false
+        for ver in 17 16 15; do
+            if brew list "postgresql@$ver" &>/dev/null 2>&1; then
+                brew services start "postgresql@$ver" 2>/dev/null || true
+                started=true; break
             fi
         done
-        # Fallback: plain "postgresql" formula
-        if [ "$PG_STARTED" = false ] && brew list postgresql &>/dev/null; then
-            print_status "Starting PostgreSQL via Homebrew..."
+        if [[ "$started" == false ]] && brew list postgresql &>/dev/null 2>&1; then
             brew services start postgresql 2>/dev/null || true
-            PG_STARTED=true
         fi
     else
-        # Linux: start via systemctl
-        if command -v systemctl &>/dev/null; then
-            print_status "Starting PostgreSQL via systemctl..."
-            sudo systemctl start postgresql 2>/dev/null || true
-            PG_STARTED=true
-        fi
+        sudo systemctl start postgresql 2>/dev/null || true
     fi
 
-    # Fallback: pg_ctl with auto-detected data dir
-    if [ "$PG_STARTED" = false ]; then
-        PG_DATA_DIR=""
-        for d in /usr/local/var/postgres /opt/homebrew/var/postgres /var/lib/postgresql/*/main; do
-            if [ -d "$d" ]; then
-                PG_DATA_DIR="$d"
-                break
-            fi
-        done
-        if [ -n "$PG_DATA_DIR" ]; then
-            print_status "Starting PostgreSQL via pg_ctl (data dir: $PG_DATA_DIR)..."
-            pg_ctl -D "$PG_DATA_DIR" -l /tmp/pg_restart.log start 2>/dev/null || true
-            PG_STARTED=true
-        fi
-    fi
-
-    # Wait for PostgreSQL to be ready
-    sleep 3
-    if pg_isready -q 2>/dev/null; then
-        print_status "PostgreSQL started successfully"
-    else
-        print_error "Could not start PostgreSQL. Please start it manually and run this script again."
-        exit 1
-    fi
+    pg_waited=0
+    while ! pg_isready -q 2>/dev/null && [[ $pg_waited -lt 15 ]]; do
+        sleep 1; ((pg_waited++))
+    done
+    pg_isready -q 2>/dev/null || { print_error "PostgreSQL did not start. Please start it manually."; exit 1; }
 fi
+print_success "PostgreSQL is ready"
 
-# Step 3: Run database migrations (if any pending)
+# ── Step 3: Run pending migrations ───────────────────────────────────────────
 echo ""
 echo "Step 3: Running database migrations..."
-echo "--------------------------------------"
 
-cd backend
-source ../.venv/bin/activate || source venv/bin/activate
-if alembic upgrade head 2>&1 | grep -q "overlaps"; then
-    print_warning "Migration conflict detected, database is already up to date"
-elif alembic upgrade head; then
-    print_status "Database migrations completed"
+cd "$BACKEND_DIR"
+source "$VENV_DIR/bin/activate" || { print_error "Cannot activate venv at $VENV_DIR"; exit 1; }
+
+MIGRATION_OUT="$(alembic upgrade head 2>&1)"
+MIGRATION_STATUS=$?
+APPLIED="$(echo "$MIGRATION_OUT" | grep -c "Running upgrade" || true)"
+
+if [[ $MIGRATION_STATUS -ne 0 ]]; then
+    print_error "Migration failed:"
+    echo "$MIGRATION_OUT"
+    exit 1
+elif [[ "$APPLIED" -gt 0 ]]; then
+    print_success "$APPLIED migration(s) applied"
 else
-    print_warning "Migration check completed (may already be at head)"
+    print_success "Database already at latest migration"
 fi
-cd ..
 
-# Step 4: Start backend
+# ── Step 4: Start backend ─────────────────────────────────────────────────────
 echo ""
-echo "Step 4: Starting backend server..."
-echo "--------------------------------------"
+echo "Step 4: Starting backend..."
 
-cd backend
-source ../.venv/bin/activate || source venv/bin/activate
-nohup uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
+cd "$BACKEND_DIR"
+nohup uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 \
+    > "$PROJECT_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
-print_status "Backend started (PID: $BACKEND_PID)"
-cd ..
+print_info "Backend PID: $BACKEND_PID"
 
-# Wait for backend to be ready
-sleep 3
+# Poll /health — waits for the full lifespan startup to complete (up to 45s)
+print_info "Waiting for backend to be ready..."
+if wait_for_url "http://localhost:8000/health" 45; then
+    print_success "Backend is healthy"
+else
+    print_error "Backend did not respond within 45s — check backend.log:"
+    echo ""
+    tail -30 "$PROJECT_DIR/backend.log" 2>/dev/null | cat
+    exit 1
+fi
 
-# Step 5: Start frontend
+# ── Step 5: Start frontend ────────────────────────────────────────────────────
 echo ""
-echo "Step 5: Starting frontend server..."
-echo "--------------------------------------"
+echo "Step 5: Starting frontend..."
 
-cd frontend
-nohup npm start > ../frontend.log 2>&1 &
+cd "$FRONTEND_DIR"
+BROWSER=none nohup npm start > "$PROJECT_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
-print_status "Frontend started (PID: $FRONTEND_PID)"
-cd ..
+print_info "Frontend PID: $FRONTEND_PID"
 
-# Wait for frontend to be ready
-sleep 3
+# Webpack compilation takes 20-60 seconds; wait up to 90s
+print_info "Waiting for frontend to compile (up to 90s)..."
+if wait_for_port_open 3000 90; then
+    print_success "Frontend is ready"
+else
+    print_warning "Frontend is taking longer than expected — check frontend.log"
+fi
 
-echo ""
-echo "======================================"
-echo "Application Restarted Successfully!"
-echo "======================================"
-echo ""
-echo "Backend API: http://localhost:8000"
-echo "API Documentation: http://localhost:8000/docs"
-echo "Frontend: http://localhost:3000"
-echo ""
-echo "Backend PID: $BACKEND_PID (logs: backend.log)"
-echo "Frontend PID: $FRONTEND_PID (logs: frontend.log)"
-echo ""
-echo "To view logs:"
-echo "  Backend:  tail -f backend.log"
-echo "  Frontend: tail -f frontend.log"
-echo ""
-echo "To stop servers:"
-echo "  kill $BACKEND_PID $FRONTEND_PID"
-echo "  or run: pkill -f 'uvicorn app.main:app' && pkill -f 'react-scripts start'"
-echo ""
+deactivate 2>/dev/null || true
+cd "$PROJECT_DIR"
 
-# Made with Bob
+# ── Summary ───────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${GREEN}${BOLD}======================================"
+echo    "  PortAct is running!"
+echo -e "======================================${NC}"
+echo ""
+echo -e "  Frontend:  ${CYAN}http://localhost:3000${NC}"
+echo -e "  API:       ${CYAN}http://localhost:8000${NC}"
+echo -e "  API Docs:  ${CYAN}http://localhost:8000/docs${NC}"
+echo ""
+echo    "  Logs:  tail -f backend.log  |  tail -f frontend.log"
+echo ""

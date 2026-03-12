@@ -14,11 +14,13 @@ import asyncio
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_active_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User
 from app.services.macro_data_service import get_macro_indicators
+from app.services.mmi_service import get_mmi, get_btc_fng, get_us_fng
 from app.services.reference_rates_service import get_reference_rates
-from app.services.financial_events_service import get_upcoming_financial_events, get_global_financial_news
+from app.services.financial_events_service import get_upcoming_financial_events, get_cached_global_financial_news
 from app.services.nse_holidays_service import get_nse_holidays
 
 router = APIRouter()
@@ -109,6 +111,46 @@ async def get_bitcoin_price(
     return result
 
 
+@router.get("/mmi")
+async def get_market_mood_index(
+    _current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return today's India Market Mood Index (MMI).
+    Checks DB first — if today's value is already cached, returns it instantly.
+    Otherwise scrapes Tickertape's SSR page, stores the result, then returns it.
+    Falls back gracefully — frontend uses computed estimate when source == "error".
+    """
+    return await asyncio.to_thread(get_mmi, db)
+
+
+@router.get("/btc-fng")
+async def get_btc_fear_greed(
+    _current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return today's Bitcoin Fear & Greed Index from Alternative.me.
+    Checks DB first; fetches and caches on miss.
+    Response: { "value": float|None, "sentiment": str|None, "source": str, "date": str }
+    """
+    return await asyncio.to_thread(get_btc_fng, db)
+
+
+@router.get("/us-fng")
+async def get_us_fear_greed(
+    _current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return today's US Fear & Greed Index from CNN.
+    Checks DB first; fetches and caches on miss.
+    Response: { "value": float|None, "sentiment": str|None, "source": str, "date": str }
+    """
+    return await asyncio.to_thread(get_us_fng, db)
+
+
 @router.get("/macro-indicators")
 async def get_macro_indicator_data(
     _current_user: User = Depends(get_current_active_user),
@@ -159,7 +201,7 @@ async def get_upcoming_events(
 
     calendar_events, global_news = await asyncio.gather(
         asyncio.to_thread(get_upcoming_financial_events, 25),
-        get_global_financial_news(count=8),
+        get_cached_global_financial_news(count=8),
     )
     market_holidays = get_nse_holidays(db, years)
     return {

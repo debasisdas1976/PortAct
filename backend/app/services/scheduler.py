@@ -16,7 +16,9 @@ from app.services.eod_snapshot_service import EODSnapshotService
 from app.services.monthly_contribution_service import MonthlyContributionService
 from app.services.forex_refresh_service import refresh_foreign_currency_values
 from app.services.macro_data_service import refresh_macro_data, refresh_rbi_rate_only
+from app.services.mmi_service import refresh_mmi, refresh_btc_fng, refresh_us_fng
 from app.services.reference_rates_service import refresh_bank_fd_rates, refresh_govt_scheme_rates
+from app.services.financial_events_service import refresh_news_cache
 from app.services.nse_holidays_service import ensure_holidays
 
 # Use a larger thread pool so that multiple I/O-bound jobs (HTTP scrapes, price
@@ -47,7 +49,10 @@ def _get_setting(db: Optional[Session], key: str, default):
 
 def _eod_with_forex_refresh():
     """Run forex refresh immediately before EOD snapshot for fresh INR values."""
-    refresh_foreign_currency_values()
+    try:
+        refresh_foreign_currency_values()
+    except Exception as exc:
+        logger.error(f"Forex refresh failed before EOD snapshot (snapshot will still run): {exc}")
     EODSnapshotService.capture_all_users_snapshots()
 
 
@@ -88,7 +93,7 @@ def _bank_fd_refresh():
 
 
 def _govt_scheme_refresh():
-    """Quarterly scrape of government savings scheme rates from BankBazaar."""
+    """Monthly scrape of government savings scheme rates from BankBazaar."""
     from app.core.database import SessionLocal
     db = SessionLocal()
     try:
@@ -99,6 +104,14 @@ def _govt_scheme_refresh():
         db.close()
 
 
+def _news_cache_refresh():
+    """Refresh the financial news cache every 30 minutes."""
+    try:
+        refresh_news_cache()
+    except Exception as exc:
+        logger.error(f"News cache refresh failed: {exc}")
+
+
 def _nse_holidays_refresh():
     """Annual refresh of NSE trading holidays (Dec 1 — seeds next year's data)."""
     from app.core.database import SessionLocal
@@ -107,6 +120,42 @@ def _nse_holidays_refresh():
         ensure_holidays(db)
     except Exception as exc:
         logger.error(f"NSE holidays refresh failed: {exc}")
+    finally:
+        db.close()
+
+
+def _mmi_refresh():
+    """Daily scrape of India MMI from Tickertape and upsert into DB."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        refresh_mmi(db)
+    except Exception as exc:
+        logger.error(f"MMI refresh failed: {exc}")
+    finally:
+        db.close()
+
+
+def _btc_fng_refresh():
+    """Daily fetch of Bitcoin Fear & Greed Index from Alternative.me and upsert into DB."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        refresh_btc_fng(db)
+    except Exception as exc:
+        logger.error(f"BTC F&G refresh failed: {exc}")
+    finally:
+        db.close()
+
+
+def _us_fng_refresh():
+    """Daily fetch of US Fear & Greed Index from CNN and upsert into DB."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        refresh_us_fng(db)
+    except Exception as exc:
+        logger.error(f"US F&G refresh failed: {exc}")
     finally:
         db.close()
 
@@ -160,12 +209,13 @@ def start_scheduler(db: Optional[Session] = None):
         replace_existing=True,
     )
 
-    # Daily macro data refresh — BLS (US CPI + Unemployment) and World Bank (India CPI)
+    # Monthly macro data refresh — runs on 1st of each month at 06:00 UTC
+    # Picks up newly published CPI, GDP, VIX, PE, FII/DII, SIP figures
     scheduler.add_job(
         func=_macro_data_refresh,
-        trigger=CronTrigger(hour=6, minute=0, timezone="UTC"),
+        trigger=CronTrigger(day=1, hour=6, minute=0, timezone="UTC"),
         id="macro_data_refresh_job",
-        name="Daily Macro-Economic Data Refresh (BLS + World Bank)",
+        name="Monthly Macro-Economic Data Refresh",
         replace_existing=True,
     )
 
@@ -188,13 +238,22 @@ def start_scheduler(db: Optional[Session] = None):
         replace_existing=True,
     )
 
-    # Quarterly govt scheme rate scrape — 1st of Jan/Apr/Jul/Oct at 07:00 UTC
-    # (Govt announces new rates for each quarter around the last day of previous quarter)
+    # Monthly govt scheme rate scrape — 1st of every month at 07:30 UTC
+    # Rates can change monthly (declared quarterly, but checking monthly ensures we catch it)
     scheduler.add_job(
         func=_govt_scheme_refresh,
-        trigger=CronTrigger(month="1,4,7,10", day=1, hour=7, minute=0, timezone="UTC"),
+        trigger=CronTrigger(day=1, hour=7, minute=30, timezone="UTC"),
         id="govt_scheme_refresh_job",
-        name="Quarterly Govt Savings Scheme Rate Scrape",
+        name="Monthly Govt Savings Scheme Rate Scrape",
+        replace_existing=True,
+    )
+
+    # Financial news cache refresh — every 30 minutes
+    scheduler.add_job(
+        func=_news_cache_refresh,
+        trigger=IntervalTrigger(minutes=30),
+        id="news_cache_refresh_job",
+        name="Financial News Cache Refresh (30 min)",
         replace_existing=True,
     )
 
@@ -204,6 +263,48 @@ def start_scheduler(db: Optional[Session] = None):
         trigger=CronTrigger(month=12, day=1, hour=1, minute=0, timezone="UTC"),
         id="nse_holidays_refresh_job",
         name="Annual NSE Trading Holidays Refresh",
+        replace_existing=True,
+    )
+
+    # Daily MMI refresh — 3:45 AM UTC (9:15 AM IST, just after NSE market open)
+    # A second run at 10:00 AM UTC (3:30 PM IST) catches intraday updates.
+    scheduler.add_job(
+        func=_mmi_refresh,
+        trigger=CronTrigger(hour=3, minute=45, timezone="UTC"),
+        id="mmi_refresh_job_morning",
+        name="Daily India MMI Refresh (morning)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        func=_mmi_refresh,
+        trigger=CronTrigger(hour=10, minute=0, timezone="UTC"),
+        id="mmi_refresh_job_afternoon",
+        name="Daily India MMI Refresh (afternoon)",
+        replace_existing=True,
+    )
+
+    # BTC Fear & Greed — Alternative.me updates once daily (midnight UTC)
+    scheduler.add_job(
+        func=_btc_fng_refresh,
+        trigger=CronTrigger(hour=0, minute=30, timezone="UTC"),
+        id="btc_fng_refresh_job",
+        name="Daily Bitcoin Fear & Greed Index Refresh",
+        replace_existing=True,
+    )
+
+    # US Fear & Greed (CNN) — updates throughout the trading day; refresh at market open + close
+    scheduler.add_job(
+        func=_us_fng_refresh,
+        trigger=CronTrigger(hour=14, minute=45, timezone="UTC"),  # ~9:45 AM ET (market open)
+        id="us_fng_refresh_job_open",
+        name="Daily US Fear & Greed Refresh (market open)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        func=_us_fng_refresh,
+        trigger=CronTrigger(hour=21, minute=0, timezone="UTC"),   # ~4:00 PM ET (market close)
+        id="us_fng_refresh_job_close",
+        name="Daily US Fear & Greed Refresh (market close)",
         replace_existing=True,
     )
 
@@ -238,6 +339,9 @@ def start_scheduler(db: Optional[Session] = None):
     # Ensure NSE holidays are in DB for the current year (and next year if >= November).
     # Runs in a background thread so it never blocks startup.
     threading.Thread(target=_nse_holidays_refresh, daemon=True, name="nse-holidays-startup").start()
+
+    # Warm the news cache immediately at startup so first page load doesn't wait
+    threading.Thread(target=_news_cache_refresh, daemon=True, name="news-cache-startup").start()
 
 
 def stop_scheduler():

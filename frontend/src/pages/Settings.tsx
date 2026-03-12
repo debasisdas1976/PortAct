@@ -64,6 +64,24 @@ const API_KEY_FIELDS = [
   { key: 'finnhub_api_key', label: 'Finnhub API Key (Free)', provider: 'finnhub' },
 ];
 
+const MARKET_API_KEY_FIELDS = [
+  {
+    key: 'cmc_api_key',
+    label: 'CoinMarketCap API Key',
+    helperText: 'Used for Bitcoin Fear & Greed Index. Free tier at coinmarketcap.com/api',
+  },
+  {
+    key: 'alpha_vantage_api_key',
+    label: 'Alpha Vantage API Key',
+    helperText: 'Used for US stock market data. Free tier at alphavantage.co',
+  },
+  {
+    key: 'rapidapi_key',
+    label: 'RapidAPI Key',
+    helperText: 'Used for various market data endpoints via RapidAPI hub.',
+  },
+];
+
 /* ─────────────────── component ─────────────────── */
 
 const Settings: React.FC = () => {
@@ -646,6 +664,40 @@ const Settings: React.FC = () => {
                   </Grid>
                 </AccordionDetails>
               </Accordion>
+            </CardContent>
+          </Card>
+
+          {/* Market Data API Keys */}
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 1 }}>API Keys</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                API keys for external market data providers. Leave blank to use keys from the server .env file.
+                Existing keys are masked for security.
+              </Typography>
+              <Grid container spacing={2}>
+                {MARKET_API_KEY_FIELDS.map(({ key, label, helperText }) => (
+                  <Grid item xs={12} sm={6} key={key}>
+                    <TextField
+                      fullWidth size="small" label={label}
+                      type={showApiKeys[key] ? 'text' : 'password'}
+                      value={settingsForm[key] ?? ''}
+                      onChange={e => setSettingsForm({ ...settingsForm, [key]: e.target.value })}
+                      placeholder="Enter API key or leave blank for .env"
+                      helperText={helperText}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton size="small" onClick={() => toggleApiKeyVisibility(key)} edge="end">
+                              {showApiKeys[key] ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
             </CardContent>
           </Card>
 

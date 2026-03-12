@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import GaugeComponent from 'react-gauge-component';
 import {
   Box, Paper, Typography,
   Chip, IconButton, Tooltip, Stack,
@@ -32,14 +33,18 @@ interface LiveQuote {
 }
 
 interface MacroData {
-  rbi_repo_rate: Array<{ date: string; rate: number }>;
-  india_cpi: Array<{ month: string; value: number }>;
+  rbi_repo_rate: Array<{ date: string; rate: number }> | null;
+  india_cpi: Array<{ month: string; value: number }> | null;
+  india_gdp_growth: Array<{ month: string; value: number }> | null;
   us_cpi: Array<{ month: string; value: number }> | null;
   us_unemployment: Array<{ month: string; value: number }> | null;
   us_fed_rate: Array<{ month: string; value: number }> | null;
   us_10y_yield: Array<{ month: string; value: number }> | null;
   nifty_pe: Array<{ month: string; value: number }> | null;
   india_vix: Array<{ month: string; value: number }> | null;
+  fii_equity_flow: Array<{ month: string; value: number }> | null;
+  dii_equity_flow: Array<{ month: string; value: number }> | null;
+  india_sip_inflow: Array<{ month: string; value: number }> | null;
 }
 
 interface ReferenceRateItem {
@@ -161,24 +166,6 @@ const BANK_FD_DISPLAY = [
   { key: 'yesbank',  displayName: 'Yes Bank',   gradient: 'linear-gradient(135deg,#003d4a,#006b80)' },
 ];
 
-const RBI_REPO_RATE_HISTORY = [
-  { date: "Jan'19", rate: 6.50 },
-  { date: "Feb'19", rate: 6.25 },
-  { date: "Apr'19", rate: 6.00 },
-  { date: "Jun'19", rate: 5.75 },
-  { date: "Aug'19", rate: 5.40 },
-  { date: "Oct'19", rate: 5.15 },
-  { date: "Mar'20", rate: 4.40 },
-  { date: "May'20", rate: 4.00 },
-  { date: "May'22", rate: 4.40 },
-  { date: "Jun'22", rate: 4.90 },
-  { date: "Aug'22", rate: 5.40 },
-  { date: "Sep'22", rate: 5.90 },
-  { date: "Dec'22", rate: 6.25 },
-  { date: "Feb'23", rate: 6.50 },
-  { date: "Feb'25", rate: 6.25 },
-  { date: "Apr'25", rate: 6.00 },
-];
 
 
 // Static display config for govt schemes — rates come from API (/market/reference-rates)
@@ -193,139 +180,8 @@ const GOVT_SCHEME_DISPLAY = [
   { key: 'mis',      displayName: 'MIS',      gradient: 'linear-gradient(135deg,#2a1a16,#5d4037)' },
 ];
 
-// ── Chart Data ─────────────────────────────────────────────────────────────────
 
-const INDIA_INFLATION_DATA = [
-  { month: "Jan'23", value: 6.52 }, { month: "Mar'23", value: 5.66 },
-  { month: "May'23", value: 4.25 }, { month: "Jul'23", value: 7.44 },
-  { month: "Sep'23", value: 5.02 }, { month: "Nov'23", value: 5.55 },
-  { month: "Jan'24", value: 5.69 }, { month: "Mar'24", value: 4.85 },
-  { month: "May'24", value: 4.75 }, { month: "Jul'24", value: 3.54 },
-  { month: "Sep'24", value: 5.49 }, { month: "Nov'24", value: 5.48 },
-  { month: "Jan'25", value: 4.26 }, { month: "Mar'25", value: 3.34 },
-  { month: "May'25", value: 3.60 }, { month: "Jul'25", value: 3.96 },
-  { month: "Sep'25", value: 3.73 }, { month: "Nov'25", value: 3.82 },
-];
 
-const INDIA_GDP_DATA = [
-  { year: 'FY17', value: 8.3 }, { year: 'FY18', value: 6.8 },
-  { year: 'FY19', value: 6.5 }, { year: 'FY20', value: 5.0 },
-  { year: 'FY21', value: -5.8 }, { year: 'FY22', value: 9.1 },
-  { year: 'FY23', value: 7.2 }, { year: 'FY24', value: 8.2 },
-  { year: 'FY25', value: 6.4 }, { year: 'FY26*', value: 6.8 },
-];
-
-const US_INFLATION_DATA = [
-  { month: "Jan'23", value: 6.4 }, { month: "Mar'23", value: 5.0 },
-  { month: "May'23", value: 4.0 }, { month: "Jul'23", value: 3.2 },
-  { month: "Sep'23", value: 3.7 }, { month: "Nov'23", value: 3.1 },
-  { month: "Jan'24", value: 3.1 }, { month: "Mar'24", value: 3.5 },
-  { month: "May'24", value: 3.3 }, { month: "Jul'24", value: 2.9 },
-  { month: "Sep'24", value: 2.4 }, { month: "Nov'24", value: 2.7 },
-  { month: "Jan'25", value: 3.0 }, { month: "Mar'25", value: 2.6 },
-  { month: "May'25", value: 2.4 }, { month: "Jul'25", value: 2.9 },
-  { month: "Sep'25", value: 2.6 }, { month: "Nov'25", value: 2.7 },
-];
-
-const US_UNEMPLOYMENT_DATA = [
-  { month: "Jan'23", value: 3.4 }, { month: "Mar'23", value: 3.5 },
-  { month: "May'23", value: 3.7 }, { month: "Jul'23", value: 3.5 },
-  { month: "Sep'23", value: 3.8 }, { month: "Nov'23", value: 3.7 },
-  { month: "Jan'24", value: 3.7 }, { month: "Mar'24", value: 3.8 },
-  { month: "May'24", value: 4.0 }, { month: "Jul'24", value: 4.3 },
-  { month: "Sep'24", value: 4.1 }, { month: "Nov'24", value: 4.2 },
-  { month: "Jan'25", value: 4.0 }, { month: "Mar'25", value: 4.2 },
-  { month: "May'25", value: 4.0 }, { month: "Jul'25", value: 4.0 },
-  { month: "Sep'25", value: 4.0 }, { month: "Nov'25", value: 4.0 },
-];
-
-const US_FED_RATE_DATA = [
-  { month: "Jan'23", value: 4.33 }, { month: "Feb'23", value: 4.57 },
-  { month: "Mar'23", value: 4.79 }, { month: "Apr'23", value: 4.83 },
-  { month: "May'23", value: 5.06 }, { month: "Jun'23", value: 5.08 },
-  { month: "Jul'23", value: 5.12 }, { month: "Aug'23", value: 5.33 },
-  { month: "Sep'23", value: 5.33 }, { month: "Oct'23", value: 5.33 },
-  { month: "Nov'23", value: 5.33 }, { month: "Dec'23", value: 5.33 },
-  { month: "Jan'24", value: 5.33 }, { month: "Feb'24", value: 5.33 },
-  { month: "Mar'24", value: 5.33 }, { month: "Apr'24", value: 5.33 },
-  { month: "May'24", value: 5.33 }, { month: "Jun'24", value: 5.33 },
-  { month: "Jul'24", value: 5.33 }, { month: "Aug'24", value: 5.33 },
-  { month: "Sep'24", value: 5.13 }, { month: "Oct'24", value: 4.83 },
-  { month: "Nov'24", value: 4.64 }, { month: "Dec'24", value: 4.48 },
-  { month: "Jan'25", value: 4.33 }, { month: "Feb'25", value: 4.33 },
-  { month: "Mar'25", value: 4.33 }, { month: "Apr'25", value: 4.33 },
-  { month: "May'25", value: 4.33 }, { month: "Jun'25", value: 4.33 },
-  { month: "Jul'25", value: 4.08 }, { month: "Aug'25", value: 3.83 },
-  { month: "Sep'25", value: 3.83 }, { month: "Oct'25", value: 3.58 },
-  { month: "Nov'25", value: 3.33 }, { month: "Dec'25", value: 3.33 },
-  { month: "Jan'26", value: 3.33 }, { month: "Feb'26", value: 3.33 },
-];
-
-const US_10Y_YIELD_DATA = [
-  { month: "Jan'23", value: 3.53 }, { month: "Feb'23", value: 3.82 },
-  { month: "Mar'23", value: 3.96 }, { month: "Apr'23", value: 3.57 },
-  { month: "May'23", value: 3.57 }, { month: "Jun'23", value: 3.84 },
-  { month: "Jul'23", value: 3.97 }, { month: "Aug'23", value: 4.26 },
-  { month: "Sep'23", value: 4.57 }, { month: "Oct'23", value: 4.93 },
-  { month: "Nov'23", value: 4.47 }, { month: "Dec'23", value: 4.02 },
-  { month: "Jan'24", value: 4.05 }, { month: "Feb'24", value: 4.29 },
-  { month: "Mar'24", value: 4.20 }, { month: "Apr'24", value: 4.67 },
-  { month: "May'24", value: 4.49 }, { month: "Jun'24", value: 4.36 },
-  { month: "Jul'24", value: 4.26 }, { month: "Aug'24", value: 3.94 },
-  { month: "Sep'24", value: 3.65 }, { month: "Oct'24", value: 4.06 },
-  { month: "Nov'24", value: 4.42 }, { month: "Dec'24", value: 4.25 },
-  { month: "Jan'25", value: 4.69 }, { month: "Feb'25", value: 4.51 },
-  { month: "Mar'25", value: 4.27 }, { month: "Apr'25", value: 4.29 },
-  { month: "May'25", value: 4.48 }, { month: "Jun'25", value: 4.32 },
-  { month: "Jul'25", value: 4.20 }, { month: "Aug'25", value: 3.99 },
-  { month: "Sep'25", value: 3.73 }, { month: "Oct'25", value: 4.15 },
-  { month: "Nov'25", value: 4.41 }, { month: "Dec'25", value: 4.54 },
-  { month: "Jan'26", value: 4.60 }, { month: "Feb'26", value: 4.43 },
-];
-
-const NIFTY_PE_DATA = [
-  { month: "Jan'23", value: 22.5 }, { month: "Feb'23", value: 21.3 },
-  { month: "Mar'23", value: 21.8 }, { month: "Apr'23", value: 23.6 },
-  { month: "May'23", value: 22.3 }, { month: "Jun'23", value: 23.1 },
-  { month: "Jul'23", value: 23.9 }, { month: "Aug'23", value: 22.2 },
-  { month: "Sep'23", value: 23.3 }, { month: "Oct'23", value: 22.5 },
-  { month: "Nov'23", value: 24.6 }, { month: "Dec'23", value: 24.7 },
-  { month: "Jan'24", value: 23.4 }, { month: "Feb'24", value: 21.6 },
-  { month: "Mar'24", value: 22.2 }, { month: "Apr'24", value: 22.8 },
-  { month: "May'24", value: 22.5 }, { month: "Jun'24", value: 23.1 },
-  { month: "Jul'24", value: 24.0 }, { month: "Aug'24", value: 24.2 },
-  { month: "Sep'24", value: 23.5 }, { month: "Oct'24", value: 22.5 },
-  { month: "Nov'24", value: 22.2 }, { month: "Dec'24", value: 22.4 },
-  { month: "Jan'25", value: 21.5 }, { month: "Feb'25", value: 20.2 },
-  { month: "Mar'25", value: 19.8 }, { month: "Apr'25", value: 21.3 },
-  { month: "May'25", value: 21.8 }, { month: "Jun'25", value: 22.5 },
-  { month: "Jul'25", value: 23.1 }, { month: "Aug'25", value: 22.6 },
-  { month: "Sep'25", value: 23.2 }, { month: "Oct'25", value: 22.8 },
-  { month: "Nov'25", value: 21.6 }, { month: "Dec'25", value: 22.1 },
-  { month: "Jan'26", value: 21.9 }, { month: "Feb'26", value: 20.3 },
-];
-
-const INDIA_VIX_DATA = [
-  { month: "Jan'23", value: 13.82 }, { month: "Feb'23", value: 13.25 },
-  { month: "Mar'23", value: 11.59 }, { month: "Apr'23", value: 11.68 },
-  { month: "May'23", value: 11.52 }, { month: "Jun'23", value: 10.89 },
-  { month: "Jul'23", value: 10.83 }, { month: "Aug'23", value: 11.57 },
-  { month: "Sep'23", value: 10.92 }, { month: "Oct'23", value: 12.78 },
-  { month: "Nov'23", value: 12.14 }, { month: "Dec'23", value: 13.01 },
-  { month: "Jan'24", value: 14.11 }, { month: "Feb'24", value: 14.52 },
-  { month: "Mar'24", value: 13.46 }, { month: "Apr'24", value: 15.83 },
-  { month: "May'24", value: 20.38 }, { month: "Jun'24", value: 14.07 },
-  { month: "Jul'24", value: 14.33 }, { month: "Aug'24", value: 15.28 },
-  { month: "Sep'24", value: 13.56 }, { month: "Oct'24", value: 14.90 },
-  { month: "Nov'24", value: 15.17 }, { month: "Dec'24", value: 14.62 },
-  { month: "Jan'25", value: 16.04 }, { month: "Feb'25", value: 15.62 },
-  { month: "Mar'25", value: 14.85 }, { month: "Apr'25", value: 17.23 },
-  { month: "May'25", value: 16.44 }, { month: "Jun'25", value: 14.18 },
-  { month: "Jul'25", value: 13.72 }, { month: "Aug'25", value: 14.39 },
-  { month: "Sep'25", value: 13.15 }, { month: "Oct'25", value: 14.86 },
-  { month: "Nov'25", value: 15.33 }, { month: "Dec'25", value: 14.27 },
-  { month: "Jan'26", value: 15.81 }, { month: "Feb'26", value: 16.44 },
-];
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
@@ -381,6 +237,24 @@ const fetchBtcProxy = async (): Promise<{ price: number; changePercent: number }
   );
   if (!res.data.ok) throw new Error('BTC fetch failed');
   return { price: res.data.price, changePercent: res.data.change_pct };
+};
+
+const fetchMMI = async (): Promise<{ value: number | null; sentiment: string | null; source: string }> => {
+  const token = getToken();
+  const res = await axios.get('/api/v1/market/mmi', { headers: { Authorization: `Bearer ${token}` } });
+  return res.data;
+};
+
+const fetchBtcFng = async (): Promise<{ value: number | null; sentiment: string | null; source: string }> => {
+  const token = getToken();
+  const res = await axios.get('/api/v1/market/btc-fng', { headers: { Authorization: `Bearer ${token}` } });
+  return res.data;
+};
+
+const fetchUsFng = async (): Promise<{ value: number | null; sentiment: string | null; source: string }> => {
+  const token = getToken();
+  const res = await axios.get('/api/v1/market/us-fng', { headers: { Authorization: `Bearer ${token}` } });
+  return res.data;
 };
 
 const fetchMacroIndicators = async (): Promise<MacroData> => {
@@ -675,7 +549,170 @@ const ChartTip: React.FC<{ active?: boolean; payload?: Array<{ value: number }>;
     );
   };
 
-// Colorful stat card for charts section header
+// SIP inflow tooltip — formats value as ₹ X,XXX cr
+const SipTooltip: React.FC<{ active?: boolean; payload?: Array<{ value: number }>; label?: string }> =
+  ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <Paper sx={{ p: 1, fontSize: 12 }}>
+        <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>{label}</Typography>
+        <Typography variant="caption">
+          ₹ {new Intl.NumberFormat('en-IN').format(payload[0].value)} cr
+        </Typography>
+      </Paper>
+    );
+  };
+
+// ── Market Mood Index ─────────────────────────────────────────────────────────
+
+/** Derive an MMI-style score (0–100) from India VIX and Nifty 50 P/E. */
+function computeMMI(
+  vixArr: Array<{ month: string; value: number }> | null | undefined,
+  peArr:  Array<{ month: string; value: number }> | null | undefined,
+): number {
+  const v = vixArr?.length ? vixArr[vixArr.length - 1].value : null;
+  const p = peArr?.length  ? peArr[peArr.length  - 1].value  : null;
+
+  // VIX → score (higher VIX = more fear = lower score)
+  let vs = 50;
+  if (v !== null) {
+    if      (v >= 30) vs = Math.max(0, 8 - (v - 30));
+    else if (v >= 25) vs = 8  + (30 - v) * 2;
+    else if (v >= 20) vs = 18 + (25 - v) * 2.4;
+    else if (v >= 17) vs = 30 + (20 - v) * 3.3;
+    else if (v >= 14) vs = 40 + (17 - v) * 7;
+    else if (v >= 11) vs = 61 + (14 - v) * 6.3;
+    else              vs = Math.min(100, 80 + (11 - v) * 10);
+  }
+
+  // P/E → score (higher PE = more greed = higher score)
+  let ps = 50;
+  if (p !== null) {
+    if      (p <= 15) ps = Math.max(0, p * 1.5);
+    else if (p <= 18) ps = 15 + (p - 15) * 5;
+    else if (p <= 21) ps = 30 + (p - 18) * 5;
+    else if (p <= 24) ps = 45 + (p - 21) * 5;
+    else if (p <= 28) ps = 60 + (p - 24) * 5;
+    else              ps = Math.min(100, 80 + (p - 28) * 5);
+  }
+
+  return Math.round(0.6 * vs + 0.4 * ps);
+}
+
+// ── Shared zone type ─────────────────────────────────────────────────────────
+type ZoneConfig = { limit: number; color: string; label: string; desc: string };
+
+const MMI_ZONES: ZoneConfig[] = [
+  { limit: 30,  color: '#1b5e20', label: 'Extreme Fear',  desc: 'Market deeply oversold — investors fearful'    },
+  { limit: 50,  color: '#e65100', label: 'Fear',          desc: 'Bearish sentiment below neutral'               },
+  { limit: 70,  color: '#b71c1c', label: 'Greed',         desc: 'Positive sentiment — some overconfidence'      },
+  { limit: 100, color: '#7b003c', label: 'Extreme Greed', desc: 'Market overbought — investors exuberant'       },
+];
+
+const BTC_FNG_ZONES: ZoneConfig[] = [
+  { limit: 25,  color: '#1b5e20', label: 'Extreme Fear',  desc: 'Panic selling — historically a buy signal'     },
+  { limit: 45,  color: '#e65100', label: 'Fear',          desc: 'Bearish sentiment — investors cautious'        },
+  { limit: 55,  color: '#f57f17', label: 'Neutral',       desc: 'Balanced market sentiment'                     },
+  { limit: 75,  color: '#b71c1c', label: 'Greed',         desc: 'Bullish momentum — FOMO building'              },
+  { limit: 100, color: '#7b003c', label: 'Extreme Greed', desc: 'Market overbought — correction risk elevated'  },
+];
+
+function zoneFor(value: number, zones: ZoneConfig[]): ZoneConfig {
+  return zones.find((z) => value < z.limit) ?? zones[zones.length - 1];
+}
+
+// ── Generic SentimentGauge ────────────────────────────────────────────────────
+const SentimentGauge: React.FC<{
+  value: number;
+  zones: ZoneConfig[];
+  unavailable: boolean;
+  sourceChip: React.ReactNode;
+  extraChips?: React.ReactNode;
+}> = ({ value, zones, unavailable, sourceChip, extraChips }) => {
+  const theme  = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const greyMid  = isDark ? '#555' : '#bdbdbd';
+  const greyDark = isDark ? '#444' : '#9e9e9e';
+
+  const clamped  = unavailable ? 50 : Math.max(0, Math.min(100, value));
+  const zone     = zoneFor(clamped, zones);
+  const valColor = unavailable ? greyMid : zone.color;
+
+  const subArcs = zones.map((z) => ({ limit: z.limit, color: z.color, showTick: false }));
+  const tickValues = zones.length === 4
+    ? [{ v: 15, lbl: 'Ext. Fear', col: '#2e7d32' }, { v: 40, lbl: 'Fear', col: '#e65100' },
+       { v: 60, lbl: 'Greed', col: '#b71c1c' },     { v: 85, lbl: 'Ext. Greed', col: '#7b003c' }]
+    : [{ v: 12, lbl: 'Ext. Fear', col: '#2e7d32' }, { v: 35, lbl: 'Fear', col: '#e65100' },
+       { v: 50, lbl: 'Neutral', col: '#f57f17' },   { v: 65, lbl: 'Greed', col: '#b71c1c' },
+       { v: 88, lbl: 'Ext. Greed', col: '#7b003c' }];
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5, width: '100%' }}>
+      <Box sx={{ position: 'relative', width: '100%' }}>
+        <GaugeComponent
+          key={unavailable ? 'unavailable' : Math.round(clamped)}
+          value={clamped}
+          minValue={0} maxValue={100}
+          type="semicircle"
+          arc={{
+            width: 0.25, padding: 0.02, cornerRadius: 2,
+            subArcs: unavailable ? [{ limit: 100, color: greyDark, showTick: false }] : subArcs,
+          }}
+          pointer={{ color: valColor, length: 0.75, width: 10, elastic: false }}
+          labels={{
+            valueLabel: { formatTextValue: () => '', style: { fontSize: '0px', display: 'none' } },
+            tickLabels: {
+              type: 'outer',
+              hideMinMax: true,
+              ticks: unavailable ? [] : tickValues.map((t) => ({
+                value: t.v,
+                valueConfig: { formatTextValue: () => t.lbl, style: { fontSize: '8px', fill: t.col } },
+              })),
+            },
+          }}
+          style={{ width: '100%', opacity: unavailable ? 0.4 : 1 }}
+        />
+        {unavailable && (
+          <Box sx={{
+            position: 'absolute', top: '28%', left: 0, right: 0,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5,
+          }}>
+            <Typography sx={{ fontSize: 24, lineHeight: 1 }}>📡</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 600, color: greyMid, textAlign: 'center', px: 1 }}>
+              Data unavailable
+            </Typography>
+          </Box>
+        )}
+      </Box>
+
+      {!unavailable && (
+        <>
+          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mt: -1 }}>
+            <Typography sx={{ fontWeight: 900, fontSize: '2.4rem', lineHeight: 1, color: valColor }}>
+              {clamped.toFixed(1)}
+            </Typography>
+            <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', letterSpacing: 1.2,
+              textTransform: 'uppercase', color: valColor }}>
+              {zone.label}
+            </Typography>
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', px: 1 }}>
+            {zone.desc}
+          </Typography>
+        </>
+      )}
+
+      <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap', justifyContent: 'center' }}>
+        {unavailable
+          ? <Chip size="small" label="Unavailable — retry later"
+              sx={{ fontSize: 10, bgcolor: isDark ? '#1e1e1e' : '#f5f5f5',
+                color: greyMid, border: `1px solid ${greyDark}44` }} />
+          : <>{sourceChip}{extraChips}</>}
+      </Stack>
+    </Box>
+  );
+};
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 const MarketInsight: React.FC = () => {
@@ -694,37 +731,23 @@ const MarketInsight: React.FC = () => {
   const [, setLastRefreshBtc] = useState<Date | null>(null);
 
   const [macroData, setMacroData] = useState<MacroData>({
-    rbi_repo_rate: RBI_REPO_RATE_HISTORY,
-    india_cpi: INDIA_INFLATION_DATA,
-    us_cpi: US_INFLATION_DATA,
-    us_unemployment: US_UNEMPLOYMENT_DATA,
-    us_fed_rate: US_FED_RATE_DATA,
-    us_10y_yield: US_10Y_YIELD_DATA,
-    nifty_pe: NIFTY_PE_DATA,
-    india_vix: INDIA_VIX_DATA,
+    rbi_repo_rate: null,
+    india_cpi: null,
+    india_gdp_growth: null,
+    us_cpi: null,
+    us_unemployment: null,
+    us_fed_rate: null,
+    us_10y_yield: null,
+    nifty_pe: null,
+    india_vix: null,
+    fii_equity_flow: null,
+    dii_equity_flow: null,
+    india_sip_inflow: null,
   });
 
   const [referenceRates, setReferenceRates] = useState<ReferenceRatesData>({
-    bank_fd: [
-      { name: 'sbi',      rate: 6.05, sub_info: null, updated_at: '' },
-      { name: 'hdfc',     rate: 6.15, sub_info: null, updated_at: '' },
-      { name: 'icici',    rate: 6.50, sub_info: null, updated_at: '' },
-      { name: 'axis',     rate: 6.45, sub_info: null, updated_at: '' },
-      { name: 'kotak',    rate: 6.25, sub_info: null, updated_at: '' },
-      { name: 'bob',      rate: 6.00, sub_info: null, updated_at: '' },
-      { name: 'indusind', rate: 6.50, sub_info: null, updated_at: '' },
-      { name: 'yesbank',  rate: 6.75, sub_info: null, updated_at: '' },
-    ],
-    govt_schemes: [
-      { name: 'ppf',      rate: 7.10, sub_info: null, updated_at: '' },
-      { name: 'epf',      rate: 8.25, sub_info: 'FY 24-25', updated_at: '' },
-      { name: 'ssy',      rate: 8.20, sub_info: null, updated_at: '' },
-      { name: 'kvp',      rate: 7.50, sub_info: null, updated_at: '' },
-      { name: 'scss',     rate: 8.20, sub_info: null, updated_at: '' },
-      { name: 'rbi_bond', rate: 8.05, sub_info: null, updated_at: '' },
-      { name: 'nsc',      rate: 7.70, sub_info: null, updated_at: '' },
-      { name: 'mis',      rate: 7.40, sub_info: null, updated_at: '' },
-    ],
+    bank_fd: [],
+    govt_schemes: [],
   });
 
   const setLoading = (ids: string[]) => {
@@ -801,16 +824,20 @@ const MarketInsight: React.FC = () => {
   useEffect(() => {
     fetchMacroIndicators().then((data) => {
       setMacroData((prev) => ({
-        rbi_repo_rate:   data.rbi_repo_rate?.length  ? data.rbi_repo_rate   : prev.rbi_repo_rate,
-        india_cpi:       data.india_cpi?.length      ? data.india_cpi       : prev.india_cpi,
-        us_cpi:          data.us_cpi                 ? data.us_cpi          : prev.us_cpi,
-        us_unemployment: data.us_unemployment        ? data.us_unemployment : prev.us_unemployment,
-        us_fed_rate:     data.us_fed_rate            ? data.us_fed_rate     : prev.us_fed_rate,
-        us_10y_yield:    data.us_10y_yield           ? data.us_10y_yield    : prev.us_10y_yield,
-        nifty_pe:        data.nifty_pe               ? data.nifty_pe        : prev.nifty_pe,
-        india_vix:       data.india_vix              ? data.india_vix       : prev.india_vix,
+        rbi_repo_rate:    data.rbi_repo_rate?.length  ? data.rbi_repo_rate    : prev.rbi_repo_rate,
+        india_cpi:        data.india_cpi?.length      ? data.india_cpi        : prev.india_cpi,
+        india_gdp_growth: data.india_gdp_growth       ? data.india_gdp_growth : prev.india_gdp_growth,
+        us_cpi:           data.us_cpi                 ? data.us_cpi           : prev.us_cpi,
+        us_unemployment:  data.us_unemployment        ? data.us_unemployment  : prev.us_unemployment,
+        us_fed_rate:      data.us_fed_rate            ? data.us_fed_rate      : prev.us_fed_rate,
+        us_10y_yield:     data.us_10y_yield           ? data.us_10y_yield     : prev.us_10y_yield,
+        nifty_pe:         data.nifty_pe               ? data.nifty_pe         : prev.nifty_pe,
+        india_vix:        data.india_vix              ? data.india_vix        : prev.india_vix,
+        fii_equity_flow:  data.fii_equity_flow        ? data.fii_equity_flow  : prev.fii_equity_flow,
+        dii_equity_flow:  data.dii_equity_flow        ? data.dii_equity_flow  : prev.dii_equity_flow,
+        india_sip_inflow: data.india_sip_inflow       ? data.india_sip_inflow : prev.india_sip_inflow,
       }));
-    }).catch(() => { /* keep hardcoded fallback */ });
+    }).catch(() => { /* keep DB-loaded data on API error */ });
   }, []);
 
   useEffect(() => {
@@ -824,18 +851,61 @@ const MarketInsight: React.FC = () => {
     fetchUpcomingEvents().then(setUpcomingEvents).catch(() => { /* silently ignore */ });
   }, []);
 
+  type SentimentData = { value: number | null; sentiment: string | null; source: string };
+  const [mmiData, setMmiData] = useState<SentimentData>({ value: null, sentiment: null, source: 'loading' });
+  useEffect(() => {
+    fetchMMI().then(setMmiData).catch(() => setMmiData({ value: null, sentiment: null, source: 'error' }));
+  }, []);
+
+  const [btcFngData, setBtcFngData] = useState<SentimentData>({ value: null, sentiment: null, source: 'loading' });
+  useEffect(() => {
+    fetchBtcFng().then(setBtcFngData).catch(() => setBtcFngData({ value: null, sentiment: null, source: 'error' }));
+  }, []);
+
+  const [usFngData, setUsFngData] = useState<SentimentData>({ value: null, sentiment: null, source: 'loading' });
+  useEffect(() => {
+    fetchUsFng().then(setUsFngData).catch(() => setUsFngData({ value: null, sentiment: null, source: 'error' }));
+  }, []);
+
   const [calendarOffset, setCalendarOffset] = useState(0);
 
   const btc = quotes['btc'];
 
   // Derived from live macro data
-  const latestRbi = macroData.rbi_repo_rate[macroData.rbi_repo_rate.length - 1];
-  const rbiRate    = latestRbi?.rate ?? 6.00;
+  const latestRbi = macroData.rbi_repo_rate?.[macroData.rbi_repo_rate.length - 1] ?? null;
+  const rbiRate    = latestRbi?.rate ?? null;
   const rbiDate    = latestRbi?.date ?? '';
-  const sdfRate    = (rbiRate - 0.25).toFixed(2) + '%';
-  const msfRate    = (rbiRate + 0.25).toFixed(2) + '%';
-  const chartRange = (data: Array<{ month: string }>) =>
-    data.length ? `${data[0].month} – ${data[data.length - 1].month}` : '';
+  const sdfRate    = rbiRate != null ? (rbiRate - 0.25).toFixed(2) + '%' : '—';
+  const msfRate    = rbiRate != null ? (rbiRate + 0.25).toFixed(2) + '%' : '—';
+  const chartRange = (data: Array<{ month: string }> | null) =>
+    data?.length ? `${data[0].month} – ${data[data.length - 1].month}` : '';
+
+  // Pad monthly chart data with null entries up to the current month so the
+  // X-axis always extends to today even when the source data lags.
+  const _ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const _parseMonthLabel = (lbl: string): { y: number; m: number } | null => {
+    const match = lbl.match(/^([A-Za-z]{3})'(\d{2})$/);
+    if (!match) return null;
+    const m = _ABBR.indexOf(match[1]) + 1;
+    return m > 0 ? { y: 2000 + parseInt(match[2]), m } : null;
+  };
+  const _monthLabel = (y: number, m: number) => `${_ABBR[m - 1]}'${String(y).slice(2)}`;
+  const padToCurrentMonth = (
+    data: Array<{ month: string; value: number }> | null | undefined
+  ): Array<{ month: string; value: number | null }> => {
+    if (!data?.length) return data ?? [];
+    const now = new Date();
+    const cy = now.getFullYear(), cm = now.getMonth() + 1;
+    const last = _parseMonthLabel(data[data.length - 1].month);
+    if (!last) return data;
+    const result: Array<{ month: string; value: number | null }> = [...data];
+    let { y, m } = last;
+    while (y < cy || (y === cy && m < cm)) {
+      m++; if (m > 12) { m = 1; y++; }
+      result.push({ month: _monthLabel(y, m), value: null });
+    }
+    return result;
+  };
 
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 }, maxWidth: 1600, mx: 'auto' }}>
@@ -1112,6 +1182,131 @@ const MarketInsight: React.FC = () => {
         )}
       </Paper>
 
+      {/* ── Section 2d: India Market Mood Index ─────────────────────────── */}
+      {(() => {
+        const vixArr      = macroData.india_vix;
+        const peArr       = macroData.nifty_pe;
+        const latestVix   = vixArr?.length ? vixArr[vixArr.length - 1] : null;
+        const latestPe    = peArr?.length  ? peArr[peArr.length  - 1]  : null;
+        const isUnavail   = mmiData.source === 'error' || mmiData.source === 'loading';
+        const isLive      = !isUnavail && mmiData.value !== null;
+        const mmiValue    = isLive ? mmiData.value! : computeMMI(vixArr, peArr);
+
+        // BTC Fear & Greed
+        const isBtcUnavail = btcFngData.source === 'error' || btcFngData.source === 'loading';
+        const btcValue     = btcFngData.value ?? 50;
+
+        // US Fear & Greed
+        const isUsUnavail  = usFngData.source === 'error' || usFngData.source === 'loading';
+        const usValue      = usFngData.value ?? 50;
+
+        const isDark = theme.palette.mode === 'dark';
+
+        // Source chips
+        const mmiSourceChip = isLive
+          ? <Chip size="small" label="Tickertape"
+              sx={{ fontSize: 10, bgcolor: isDark ? '#0a180d' : '#e8f5e9', color: '#2e7d32', border: '1px solid #2e7d3233' }} />
+          : <Chip size="small" label="Estimated (VIX + P/E)"
+              sx={{ fontSize: 10, bgcolor: isDark ? '#1a1200' : '#fffde7', color: '#f57f17', border: '1px solid #f57f1733' }} />;
+
+        const mmiExtraChips = !isLive && !isUnavail ? (
+          <>
+            {latestVix && <Chip size="small" label={`VIX ${latestVix.value.toFixed(1)}`}
+              sx={{ fontSize: 10, bgcolor: isDark ? '#0a180d' : '#e8f5e9', color: '#2e7d32', border: '1px solid #2e7d3233' }} />}
+            {latestPe && <Chip size="small" label={`P/E ${latestPe.value.toFixed(1)}×`}
+              sx={{ fontSize: 10, bgcolor: isDark ? '#190c00' : '#fff3e0', color: '#e65100', border: '1px solid #e6510033' }} />}
+          </>
+        ) : undefined;
+
+        const btcSourceLabel = btcFngData.source === 'coinmarketcap' ? 'CoinMarketCap' : 'Alternative.me';
+        const btcSourceChip = <Chip size="small"
+          label={isBtcUnavail ? 'Unavailable' : btcSourceLabel}
+          sx={{ fontSize: 10, bgcolor: isDark ? '#100520' : '#f3e8ff', color: '#7b1fa2', border: '1px solid #7b1fa233' }} />;
+
+        const usSourceChip = <Chip size="small"
+          label={isUsUnavail ? 'Unavailable' : 'CNN'}
+          sx={{ fontSize: 10, bgcolor: isDark ? '#0a0f1f' : '#e8eaf6', color: '#1a237e', border: '1px solid #1a237e33' }} />;
+
+        return (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2, mb: 2.5 }}>
+
+            {/* India MMI card */}
+            <Paper elevation={0} sx={{
+              p: { xs: 2, sm: 3 }, borderRadius: 3,
+              background: isDark
+                ? 'linear-gradient(135deg,#080f18 0%,#0c1622 100%)'
+                : 'linear-gradient(135deg,#f0f7f0 0%,#f8f9fc 100%)',
+              border: `1px solid ${theme.palette.divider}`,
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, gap: 1 }}>
+                <Typography sx={{ fontSize: 20, lineHeight: 1.2 }}>🌡️</Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>India Market Mood Index</Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, textAlign: 'center' }}>
+                {isLive ? 'Live from Tickertape' : 'Derived from VIX & Nifty P/E'} · 0 = Extreme Fear · 100 = Extreme Greed
+              </Typography>
+              <SentimentGauge
+                value={mmiValue}
+                zones={MMI_ZONES}
+                unavailable={isUnavail}
+                sourceChip={mmiSourceChip}
+                extraChips={mmiExtraChips}
+              />
+            </Paper>
+
+            {/* BTC Fear & Greed card */}
+            <Paper elevation={0} sx={{
+              p: { xs: 2, sm: 3 }, borderRadius: 3,
+              background: isDark
+                ? 'linear-gradient(135deg,#100520 0%,#0c0818 100%)'
+                : 'linear-gradient(135deg,#f3e8ff 0%,#faf5ff 100%)',
+              border: `1px solid ${theme.palette.divider}`,
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, gap: 1 }}>
+                <Typography sx={{ fontSize: 20, lineHeight: 1.2 }}>₿</Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Bitcoin Fear & Greed Index</Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, textAlign: 'center' }}>
+                Live from {btcSourceLabel} · 0 = Extreme Fear · 100 = Extreme Greed
+              </Typography>
+              <SentimentGauge
+                value={btcValue}
+                zones={BTC_FNG_ZONES}
+                unavailable={isBtcUnavail}
+                sourceChip={btcSourceChip}
+              />
+            </Paper>
+
+            {/* US Fear & Greed card */}
+            <Paper elevation={0} sx={{
+              p: { xs: 2, sm: 3 }, borderRadius: 3,
+              background: isDark
+                ? 'linear-gradient(135deg,#000d1f 0%,#001533 100%)'
+                : 'linear-gradient(135deg,#e8eaf6 0%,#f5f5ff 100%)',
+              border: `1px solid ${theme.palette.divider}`,
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, gap: 1 }}>
+                <Typography sx={{ fontSize: 20, lineHeight: 1.2 }}>🦅</Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>US Fear & Greed Index</Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, textAlign: 'center' }}>
+                Live from CNN · 0 = Extreme Fear · 100 = Extreme Greed
+              </Typography>
+              <SentimentGauge
+                value={usValue}
+                zones={BTC_FNG_ZONES}
+                unavailable={isUsUnavail}
+                sourceChip={usSourceChip}
+              />
+            </Paper>
+
+          </Box>
+        );
+      })()}
+
       {/* ── Section 3: Macro Charts ──────────────────────────────────────── */}
       <Paper
         elevation={0}
@@ -1132,6 +1327,7 @@ const MarketInsight: React.FC = () => {
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
 
         {/* India CPI */}
+        {macroData.india_cpi?.length ? (
         <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#1a0a00,#2a1100)' : 'linear-gradient(145deg,#fff8f4,#fff)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#ff6b35,#f7c59f)', mr: 0.5 }}>
@@ -1143,7 +1339,7 @@ const MarketInsight: React.FC = () => {
             </Box>
           </Box>
           <ResponsiveContainer width="100%" height={190}>
-            <AreaChart data={macroData.india_cpi} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <AreaChart data={padToCurrentMonth(macroData.india_cpi)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradIndia" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#ff6b35" stopOpacity={0.4} />
@@ -1152,16 +1348,18 @@ const MarketInsight: React.FC = () => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
-              <YAxis tick={{ fontSize: 10 }} domain={[2, 9]} unit="%" />
+              <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <ReferenceLine y={4} stroke="#4caf50" strokeDasharray="4 2" label={{ value: '4% target', fontSize: 9, fill: '#4caf50' }} />
               <Area type="monotone" dataKey="value" stroke="#ff6b35" fill="url(#gradIndia)" strokeWidth={2.5} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
-          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: MoSPI / RBI</Typography>
+          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: MoSPI / World Bank</Typography>
         </Paper>
+        ) : null}
 
         {/* India GDP */}
+        {macroData.india_gdp_growth?.length ? (
         <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#000d1a,#001a33)' : 'linear-gradient(145deg,#f0f6ff,#fff)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#0052cc,#4c9aff)', mr: 0.5 }}>
@@ -1169,27 +1367,154 @@ const MarketInsight: React.FC = () => {
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>India GDP Growth</Typography>
-              <Typography variant="caption" color="text.secondary">Annual Real GDP % · FY17 – FY26</Typography>
+              <Typography variant="caption" color="text.secondary">Annual Real GDP % · {chartRange(macroData.india_gdp_growth)}</Typography>
             </Box>
           </Box>
           <ResponsiveContainer width="100%" height={190}>
-            <BarChart data={INDIA_GDP_DATA} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <BarChart data={macroData.india_gdp_growth} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-              <XAxis dataKey="year" tick={{ fontSize: 10 }} />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <ReferenceLine y={0} stroke={theme.palette.divider} />
               <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-                {INDIA_GDP_DATA.map((entry, i) => (
-                  <Cell key={i} fill={entry.value < 0 ? '#f44336' : entry.year.includes('*') ? '#90caf9' : '#2196f3'} />
+                {macroData.india_gdp_growth.map((entry, i) => (
+                  <Cell key={i} fill={entry.value < 0 ? '#f44336' : '#2196f3'} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>* FY26 estimate · Source: NSO / World Bank</Typography>
+          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSO / World Bank</Typography>
         </Paper>
+        ) : null}
+
+        {/* India SIP Net Inflows */}
+        {(() => {
+          const sipData = macroData.india_sip_inflow;
+          if (!sipData?.length) return null;
+          const sipLatest = sipData[sipData.length - 1];
+          const sipPadded = padToCurrentMonth(sipData);
+          const isDark = theme.palette.mode === 'dark';
+          return (
+            <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, gridColumn: { xs: '1', md: 'span 2' }, background: isDark ? 'linear-gradient(145deg,#001a0d,#002e1a)' : 'linear-gradient(145deg,#f0fdf6,#fff)' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#00695c,#26a69a)', mr: 0.5 }}>
+                  <Typography sx={{ fontSize: 16 }}>🇮🇳</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>India SIP Net Inflows</Typography>
+                  <Typography variant="caption" color="text.secondary">Monthly · ₹ Crore · {sipData[0].month} – {sipLatest.month}</Typography>
+                </Box>
+                <Chip label={`Latest ₹ ${new Intl.NumberFormat('en-IN').format(sipLatest.value)} cr`} size="small" sx={{ ml: 'auto', fontSize: 10, bgcolor: isDark ? '#002e1a' : '#e8f5e9', color: '#2e7d32', border: '1px solid #2e7d3233' }} />
+              </Box>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={sipPadded} margin={{ top: 4, right: 8, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 9 }} interval={3} />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                  />
+                  <RechartTooltip content={<SipTooltip />} />
+                  <ReferenceLine y={20000} stroke="#f59e0b" strokeDasharray="4 2" label={{ value: '₹20k cr', fontSize: 9, fill: '#f59e0b', position: 'insideTopRight' }} />
+                  <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+                    {sipData.map((entry, i) => (
+                      <Cell key={i} fill={entry.value >= 25000 ? '#00897b' : entry.value >= 20000 ? '#26a69a' : '#4db6ac'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: AMFI</Typography>
+            </Paper>
+          );
+        })()}
+
+        {/* FII Net Equity Flows */}
+        {(() => {
+          const fiiData = macroData.fii_equity_flow;
+          if (!fiiData?.length) return null;
+          const fiiLatest = fiiData[fiiData.length - 1];
+          const fiiPadded = padToCurrentMonth(fiiData);
+          const isDark = theme.palette.mode === 'dark';
+          return (
+            <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, gridColumn: { xs: '1', md: 'span 2' }, background: isDark ? 'linear-gradient(145deg,#0d0020,#1a0040)' : 'linear-gradient(145deg,#f3f0ff,#fff)' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#4a148c,#7b1fa2)', mr: 0.5 }}>
+                  <Typography sx={{ fontSize: 16 }}>🌐</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>FII Net Equity Flows</Typography>
+                  <Typography variant="caption" color="text.secondary">Foreign Institutional Investors · Monthly · ₹ Crore · {fiiData[0].month} – {fiiLatest.month}</Typography>
+                </Box>
+                <Chip
+                  label={`Latest ${fiiLatest.value >= 0 ? '+' : ''}₹ ${new Intl.NumberFormat('en-IN').format(fiiLatest.value)} cr`}
+                  size="small"
+                  sx={{ ml: 'auto', fontSize: 10, bgcolor: isDark ? (fiiLatest.value >= 0 ? '#0a180d' : '#1a0000') : (fiiLatest.value >= 0 ? '#e8f5e9' : '#ffebee'), color: fiiLatest.value >= 0 ? '#2e7d32' : '#c62828', border: `1px solid ${fiiLatest.value >= 0 ? '#2e7d3233' : '#c6282833'}` }}
+                />
+              </Box>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={fiiPadded} margin={{ top: 4, right: 8, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 9 }} interval={3} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <RechartTooltip content={<SipTooltip />} />
+                  <ReferenceLine y={0} stroke={theme.palette.divider} strokeWidth={1.5} />
+                  <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+                    {fiiPadded.map((entry, i) => (
+                      <Cell key={i} fill={(entry.value ?? 0) >= 0 ? '#7b1fa2' : '#d32f2f'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSE · Equity segment · Live via daily refresh</Typography>
+            </Paper>
+          );
+        })()}
+
+        {/* DII Net Equity Flows */}
+        {(() => {
+          const diiData = macroData.dii_equity_flow;
+          if (!diiData?.length) return null;
+          const diiLatest = diiData[diiData.length - 1];
+          const diiPadded = padToCurrentMonth(diiData);
+          const isDark = theme.palette.mode === 'dark';
+          return (
+            <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, gridColumn: { xs: '1', md: 'span 2' }, background: isDark ? 'linear-gradient(145deg,#001433,#002766)' : 'linear-gradient(145deg,#e8f0ff,#fff)' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#003087,#1565c0)', mr: 0.5 }}>
+                  <Typography sx={{ fontSize: 16 }}>🇮🇳</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>DII Net Equity Flows</Typography>
+                  <Typography variant="caption" color="text.secondary">Domestic Institutional Investors · Monthly · ₹ Crore · {diiData[0].month} – {diiLatest.month}</Typography>
+                </Box>
+                <Chip
+                  label={`Latest ${diiLatest.value >= 0 ? '+' : ''}₹ ${new Intl.NumberFormat('en-IN').format(diiLatest.value)} cr`}
+                  size="small"
+                  sx={{ ml: 'auto', fontSize: 10, bgcolor: isDark ? (diiLatest.value >= 0 ? '#001433' : '#1a0000') : (diiLatest.value >= 0 ? '#e8f0ff' : '#ffebee'), color: diiLatest.value >= 0 ? '#1565c0' : '#c62828', border: `1px solid ${diiLatest.value >= 0 ? '#1565c033' : '#c6282833'}` }}
+                />
+              </Box>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={diiPadded} margin={{ top: 4, right: 8, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 9 }} interval={3} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <RechartTooltip content={<SipTooltip />} />
+                  <ReferenceLine y={0} stroke={theme.palette.divider} strokeWidth={1.5} />
+                  <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+                    {diiPadded.map((entry, i) => (
+                      <Cell key={i} fill={(entry.value ?? 0) >= 0 ? '#1565c0' : '#d32f2f'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSE · Equity segment · Live via daily refresh</Typography>
+            </Paper>
+          );
+        })()}
 
         {/* Nifty 50 P/E Ratio */}
+        {macroData.nifty_pe?.length ? (
         <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#1a0a00,#331500)' : 'linear-gradient(145deg,#fff8f0,#fff)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#e65100,#ff8f00)', mr: 0.5 }}>
@@ -1197,14 +1522,14 @@ const MarketInsight: React.FC = () => {
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Nifty 50 P/E Ratio</Typography>
-              <Typography variant="caption" color="text.secondary">Price-to-Earnings · {chartRange(macroData.nifty_pe ?? NIFTY_PE_DATA)} · Live via NSE</Typography>
+              <Typography variant="caption" color="text.secondary">Price-to-Earnings · {chartRange(macroData.nifty_pe)} · Live via NSE</Typography>
             </Box>
           </Box>
           <ResponsiveContainer width="100%" height={190}>
-            <LineChart data={macroData.nifty_pe ?? NIFTY_PE_DATA} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <LineChart data={padToCurrentMonth(macroData.nifty_pe)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
-              <YAxis tick={{ fontSize: 10 }} domain={[15, 28]} />
+              <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
               <RechartTooltip content={<ChartTip unit="x" />} />
               <ReferenceLine y={20} stroke="#f59e0b" strokeDasharray="4 2" label={{ value: '20x avg', fontSize: 9, fill: '#f59e0b' }} />
               <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2.5} dot={{ r: 2, fill: '#f97316' }} />
@@ -1212,8 +1537,10 @@ const MarketInsight: React.FC = () => {
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSE India</Typography>
         </Paper>
+        ) : null}
 
         {/* India VIX */}
+        {macroData.india_vix?.length ? (
         <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#15001a,#2a0035)' : 'linear-gradient(145deg,#fdf4ff,#fff)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#4a0072,#9c27b0)', mr: 0.5 }}>
@@ -1221,11 +1548,11 @@ const MarketInsight: React.FC = () => {
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>India VIX</Typography>
-              <Typography variant="caption" color="text.secondary">Fear Index · {chartRange(macroData.india_vix ?? INDIA_VIX_DATA)} · Live via NSE</Typography>
+              <Typography variant="caption" color="text.secondary">Fear Index · {chartRange(macroData.india_vix)} · Live via NSE</Typography>
             </Box>
           </Box>
           <ResponsiveContainer width="100%" height={190}>
-            <AreaChart data={macroData.india_vix ?? INDIA_VIX_DATA} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <AreaChart data={padToCurrentMonth(macroData.india_vix)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradVix" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#9c27b0" stopOpacity={0.4} />
@@ -1234,7 +1561,7 @@ const MarketInsight: React.FC = () => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
-              <YAxis tick={{ fontSize: 10 }} domain={[8, 26]} />
+              <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
               <RechartTooltip content={<ChartTip unit="" />} />
               <ReferenceLine y={20} stroke="#ef5350" strokeDasharray="4 2" label={{ value: 'High fear', fontSize: 9, fill: '#ef5350' }} />
               <Area type="monotone" dataKey="value" stroke="#9c27b0" fill="url(#gradVix)" strokeWidth={2.5} dot={false} />
@@ -1242,8 +1569,10 @@ const MarketInsight: React.FC = () => {
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSE India / Yahoo Finance</Typography>
         </Paper>
+        ) : null}
 
         {/* US CPI */}
+        {macroData.us_cpi?.length ? (
         <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#0d0020,#1a0040)' : 'linear-gradient(145deg,#f8f4ff,#fff)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#7c4dff,#b47cff)', mr: 0.5 }}>
@@ -1251,11 +1580,11 @@ const MarketInsight: React.FC = () => {
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>US CPI Inflation</Typography>
-              <Typography variant="caption" color="text.secondary">YoY % · {macroData.us_cpi ? chartRange(macroData.us_cpi) : chartRange(US_INFLATION_DATA)} · Live via BLS</Typography>
+              <Typography variant="caption" color="text.secondary">YoY % · {chartRange(macroData.us_cpi)} · Live via BLS</Typography>
             </Box>
           </Box>
           <ResponsiveContainer width="100%" height={190}>
-            <AreaChart data={macroData.us_cpi ?? US_INFLATION_DATA} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <AreaChart data={padToCurrentMonth(macroData.us_cpi)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradUS" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#7c4dff" stopOpacity={0.4} />
@@ -1264,7 +1593,7 @@ const MarketInsight: React.FC = () => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
-              <YAxis tick={{ fontSize: 10 }} domain={[1, 8]} unit="%" />
+              <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <ReferenceLine y={2} stroke="#4caf50" strokeDasharray="4 2" label={{ value: '2% target', fontSize: 9, fill: '#4caf50' }} />
               <Area type="monotone" dataKey="value" stroke="#7c4dff" fill="url(#gradUS)" strokeWidth={2.5} dot={false} />
@@ -1272,8 +1601,10 @@ const MarketInsight: React.FC = () => {
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: BLS</Typography>
         </Paper>
+        ) : null}
 
         {/* US Unemployment */}
+        {macroData.us_unemployment?.length ? (
         <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#001a1a,#003333)' : 'linear-gradient(145deg,#f0ffff,#fff)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#006064,#26c6da)', mr: 0.5 }}>
@@ -1281,22 +1612,24 @@ const MarketInsight: React.FC = () => {
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>US Unemployment Rate</Typography>
-              <Typography variant="caption" color="text.secondary">Seasonally Adjusted % · {macroData.us_unemployment ? chartRange(macroData.us_unemployment) : chartRange(US_UNEMPLOYMENT_DATA)} · Live via BLS</Typography>
+              <Typography variant="caption" color="text.secondary">Seasonally Adjusted % · {chartRange(macroData.us_unemployment)} · Live via BLS</Typography>
             </Box>
           </Box>
           <ResponsiveContainer width="100%" height={190}>
-            <LineChart data={macroData.us_unemployment ?? US_UNEMPLOYMENT_DATA} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <LineChart data={padToCurrentMonth(macroData.us_unemployment)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
-              <YAxis tick={{ fontSize: 10 }} domain={[2.5, 5.5]} unit="%" />
+              <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <Line type="monotone" dataKey="value" stroke="#00bcd4" strokeWidth={2.5} dot={{ r: 2, fill: '#00bcd4' }} />
             </LineChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: BLS</Typography>
         </Paper>
+        ) : null}
 
         {/* US Fed Funds Rate */}
+        {macroData.us_fed_rate?.length ? (
         <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#001433,#002766)' : 'linear-gradient(145deg,#f0f4ff,#fff)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#003087,#0052cc)', mr: 0.5 }}>
@@ -1304,11 +1637,11 @@ const MarketInsight: React.FC = () => {
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>US Fed Funds Rate</Typography>
-              <Typography variant="caption" color="text.secondary">Effective Rate % · {chartRange(macroData.us_fed_rate ?? US_FED_RATE_DATA)} · Live via FRED</Typography>
+              <Typography variant="caption" color="text.secondary">Effective Rate % · {chartRange(macroData.us_fed_rate)} · Live via FRED</Typography>
             </Box>
           </Box>
           <ResponsiveContainer width="100%" height={190}>
-            <AreaChart data={macroData.us_fed_rate ?? US_FED_RATE_DATA} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <AreaChart data={padToCurrentMonth(macroData.us_fed_rate)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradFed" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#1565c0" stopOpacity={0.4} />
@@ -1317,15 +1650,17 @@ const MarketInsight: React.FC = () => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
-              <YAxis tick={{ fontSize: 10 }} domain={[2, 6]} unit="%" />
+              <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <Area type="stepAfter" dataKey="value" stroke="#1565c0" fill="url(#gradFed)" strokeWidth={2.5} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: FRED (FEDFUNDS)</Typography>
         </Paper>
+        ) : null}
 
         {/* US 10Y Treasury Yield */}
+        {macroData.us_10y_yield?.length ? (
         <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#0a1a00,#1a3300)' : 'linear-gradient(145deg,#f4fff0,#fff)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#1b5e20,#43a047)', mr: 0.5 }}>
@@ -1333,11 +1668,11 @@ const MarketInsight: React.FC = () => {
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>US 10Y Treasury Yield</Typography>
-              <Typography variant="caption" color="text.secondary">Monthly Avg % · {chartRange(macroData.us_10y_yield ?? US_10Y_YIELD_DATA)} · Live via FRED</Typography>
+              <Typography variant="caption" color="text.secondary">Monthly Avg % · {chartRange(macroData.us_10y_yield)} · Live via FRED</Typography>
             </Box>
           </Box>
           <ResponsiveContainer width="100%" height={190}>
-            <AreaChart data={macroData.us_10y_yield ?? US_10Y_YIELD_DATA} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <AreaChart data={padToCurrentMonth(macroData.us_10y_yield)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradTreasury" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#2e7d32" stopOpacity={0.4} />
@@ -1346,13 +1681,14 @@ const MarketInsight: React.FC = () => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
-              <YAxis tick={{ fontSize: 10 }} domain={[2.5, 5.5]} unit="%" />
+              <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <Area type="monotone" dataKey="value" stroke="#2e7d32" fill="url(#gradTreasury)" strokeWidth={2.5} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: FRED (GS10)</Typography>
         </Paper>
+        ) : null}
 
         </Box>
       </Paper>
@@ -1375,6 +1711,7 @@ const MarketInsight: React.FC = () => {
         </Box>
 
         {/* RBI Repo Rate — historical chart */}
+        {macroData.rbi_repo_rate?.length ? (
         <Paper
           elevation={2}
           sx={{
@@ -1388,11 +1725,11 @@ const MarketInsight: React.FC = () => {
                 <BankIcon sx={{ color: '#1e88e5' }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>RBI Repo Rate — Historical</Typography>
               </Box>
-              <Typography variant="caption" color="text.secondary">Reserve Bank of India · Jan 2019 – present</Typography>
+              <Typography variant="caption" color="text.secondary">Reserve Bank of India · {macroData.rbi_repo_rate[0].date} – present</Typography>
             </Box>
             <Box sx={{ textAlign: 'right' }}>
               <Typography sx={{ fontWeight: 900, fontSize: 36, color: '#1e88e5', fontFamily: 'monospace', lineHeight: 1 }}>
-                {rbiRate.toFixed(2)}<Typography component="span" sx={{ fontSize: 18, fontWeight: 700, color: '#1e88e5' }}>%</Typography>
+                {rbiRate != null ? rbiRate.toFixed(2) : '—'}<Typography component="span" sx={{ fontSize: 18, fontWeight: 700, color: '#1e88e5' }}>%</Typography>
               </Typography>
               <Typography variant="caption" color="text.secondary">Current · Effective {rbiDate}</Typography>
             </Box>
@@ -1407,9 +1744,11 @@ const MarketInsight: React.FC = () => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-              <YAxis domain={[3.5, 7.0]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} width={42} />
+              <YAxis domain={['auto', 'auto']} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} width={42} />
               <RechartTooltip formatter={(v: number) => [`${v.toFixed(2)}%`, 'Repo Rate']} />
-              <ReferenceLine y={rbiRate} stroke="#1e88e5" strokeDasharray="4 3" label={{ value: `Current ${rbiRate.toFixed(2)}%`, position: 'insideTopRight', fontSize: 11, fill: '#1e88e5' }} />
+              {rbiRate != null && (
+                <ReferenceLine y={rbiRate} stroke="#1e88e5" strokeDasharray="4 3" label={{ value: `Current ${rbiRate.toFixed(2)}%`, position: 'insideTopRight', fontSize: 11, fill: '#1e88e5' }} />
+              )}
               <Area type="stepAfter" dataKey="rate" stroke="#1e88e5" strokeWidth={2.5} fill="url(#rbiGrad)" dot={{ r: 3, fill: '#1e88e5' }} activeDot={{ r: 5 }} />
             </AreaChart>
           </ResponsiveContainer>
@@ -1423,6 +1762,7 @@ const MarketInsight: React.FC = () => {
           </Box>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 1, textAlign: 'right' }}>Source: RBI</Typography>
         </Paper>
+        ) : null}
 
         {/* Bank FD Rates */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)', md: 'repeat(8, 1fr)' }, gap: 1.5 }}>

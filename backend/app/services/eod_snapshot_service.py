@@ -295,18 +295,44 @@ class EODSnapshotService:
         This runs when the application starts up.
         """
         logger.info("Checking for missed EOD snapshots...")
-        
+
+        # Determine how far to catch up.
+        # If the scheduled EOD time has already passed today, include today in the
+        # window so a cron that fired-and-failed is recovered without waiting for midnight.
+        eod_hour, eod_minute = 13, 30  # defaults (13:30 UTC = 7 PM IST)
+        try:
+            from app.core.config import settings as _cfg
+            from app.models.app_settings import AppSettings as _AS
+            _db_tmp = SessionLocal()
+            try:
+                row_h = _db_tmp.query(_AS).filter(_AS.key == "eod_snapshot_hour").first()
+                row_m = _db_tmp.query(_AS).filter(_AS.key == "eod_snapshot_minute").first()
+                eod_hour = int(row_h.value) if (row_h and row_h.value) else _cfg.EOD_SNAPSHOT_HOUR
+                eod_minute = int(row_m.value) if (row_m and row_m.value) else _cfg.EOD_SNAPSHOT_MINUTE
+            except Exception:
+                pass
+            finally:
+                _db_tmp.close()
+        except Exception:
+            pass
+
+        from datetime import timezone as _tz
+        import datetime as _dt
+        now_utc = _dt.datetime.now(_tz.utc)
+        eod_passed_today = now_utc.hour > eod_hour or (now_utc.hour == eod_hour and now_utc.minute >= eod_minute)
+        catchup_end = date.today() if eod_passed_today else date.today() - timedelta(days=1)
+
         db = SessionLocal()
         try:
             # Get all active users
             users = db.query(User).filter(User.is_active == True).all()
-            
+
             for user in users:
                 # Get the last snapshot date for this user
                 last_snapshot = db.query(PortfolioSnapshot).filter(
                     PortfolioSnapshot.user_id == user.id
                 ).order_by(PortfolioSnapshot.snapshot_date.desc()).first()
-                
+
                 if last_snapshot:
                     last_date = last_snapshot.snapshot_date
                 else:
@@ -322,13 +348,12 @@ class EODSnapshotService:
                     # Start from the day before the user was created
                     # so that the loop begins at the user's creation date
                     last_date = user.created_at.date() - timedelta(days=1)
-                
-                # Check for missing dates between last snapshot and yesterday
-                yesterday = date.today() - timedelta(days=1)
+
+                # Check for missing dates between last snapshot and catchup_end
                 current_date = last_date + timedelta(days=1)
                 
                 missed_dates = []
-                while current_date <= yesterday:
+                while current_date <= catchup_end:
                     # Check if snapshot exists for this date
                     exists = db.query(PortfolioSnapshot).filter(
                         PortfolioSnapshot.user_id == user.id,
