@@ -75,6 +75,7 @@ frontend/
   - Total Investment
   - Total Gain/Loss with percentage
   - Asset Count
+  - Day Change — Portfolio-level daily change vs. previous EOD snapshot
 - **Portfolio Performance Chart** - Line chart showing value over time
 - **Asset Allocation Chart** - Pie chart showing distribution by asset type
 - **Portfolio Value Chart** - Area chart comparing current value vs invested amount
@@ -123,7 +124,7 @@ frontend/
   - Bonds (Corporate, RBI, Tax-Saving)
   - Real Estate (Land, Farm Land, House, REITs, InvITs)
   - Crypto (Accounts, Assets)
-  - Insights (Asset Insight, Attribute Insight, Alerts, MF Holdings, Cash)
+  - Insights (Asset Insight, Attribute Insight, Maturity Timeline, Alerts, MF Holdings, Cash)
   - Expenses (Dashboard, Expenses)
   - Statements
   - Utilities (SIP Creator)
@@ -379,7 +380,9 @@ The frontend has grown significantly beyond the initial pages listed above. The 
 - **Price Updates** — Real-time price refresh with progress tracking (stocks, MFs, crypto, commodities, US stocks with forex)
 - **EOD Snapshots** — Daily portfolio snapshots with historical performance charts (7d to 1y views)
 - **AI News & Alerts** — Automated market news analysis via OpenAI/Grok with severity levels
-- **Insights** — Asset insights, attribute insights, mutual fund holdings analysis
+- **Insights** — Asset insights, attribute insights, maturity timeline, mutual fund holdings analysis
+- **Day Change % Tracking** — Daily price change percentage on Dashboard, Assets Overview, and all 30+ asset pages via DayChangeCard component
+- **Maturity Timeline** — Custom SVG timeline chart showing upcoming maturity dates for FDs, RDs, bonds, government schemes, insurance, and SGBs with status badges and summary cards
 - **Statements** — Upload bank/broker/tradebook statements with bank-specific parsers
 - **SIP Creator** — Generate SIP transactions for mutual funds
 - **Master Data** — Asset types, attributes, banks, brokers, crypto exchanges, expense categories

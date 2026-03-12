@@ -28,6 +28,7 @@ import {
   Tooltip,
   Typography,
   InputAdornment,
+  Alert,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -308,6 +309,7 @@ const DematAccountDetail: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [statementType, setStatementType] = useState('tradebook_statement');
   const [uploading, setUploading] = useState(false);
+  const [showUploadWarning, setShowUploadWarning] = useState(false);
 
   // Asset type change state
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -474,13 +476,26 @@ const DematAccountDetail: React.FC = () => {
     }
   };
 
-  const handleUploadStatement = async () => {
+  const handleUploadStatement = () => {
     if (!selectedFile || !id) {
       notify.error('Please select a file');
       return;
     }
 
+    // If there are existing holdings, show warning before proceeding
+    if (holdings.length > 0 || transactions.length > 0) {
+      setOpenUploadDialog(false);
+      setShowUploadWarning(true);
+    } else {
+      doUploadStatement();
+    }
+  };
+
+  const doUploadStatement = async () => {
+    if (!selectedFile || !id) return;
+
     try {
+      setShowUploadWarning(false);
       setUploading(true);
       const formData = new FormData();
       formData.append('file', selectedFile);
@@ -492,7 +507,6 @@ const DematAccountDetail: React.FC = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      setOpenUploadDialog(false);
       setSelectedFile(null);
       setStatementType('tradebook_statement');
       notify.success(response.data?.message || 'Statement uploaded and processed successfully');
@@ -502,6 +516,11 @@ const DematAccountDetail: React.FC = () => {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleCancelUploadWarning = () => {
+    setShowUploadWarning(false);
+    setOpenUploadDialog(true); // Go back to upload dialog
   };
 
   const handlePriceUpdate = async (asset: HoldingAsset) => {
@@ -858,6 +877,70 @@ const DematAccountDetail: React.FC = () => {
             startIcon={uploading ? <CircularProgress size={20} /> : <UploadIcon />}
           >
             {uploading ? 'Uploading...' : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Upload Warning Confirmation Dialog */}
+      <Dialog open={showUploadWarning} onClose={handleCancelUploadWarning} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ color: 'warning.main' }}>
+          Warning: Existing Data Will Be Replaced
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Uploading a new statement will <strong>delete all existing holdings of the same type</strong> in this account and replace them with the data from the new statement.
+          </Alert>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            The following data in <strong>{account?.broker_name} ({account?.account_id})</strong> will be affected:
+          </Typography>
+          <Box sx={{ pl: 2, mb: 2 }}>
+            {(() => {
+              const stockCount = holdings.filter(h => ['stock', 'us_stock'].includes(h.asset_type)).length;
+              const mfCount = holdings.filter(h => h.asset_type === 'mutual_fund').length;
+              const otherCount = holdings.length - stockCount - mfCount;
+              const txnCount = transactions.length;
+              return (
+                <>
+                  {stockCount > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      &bull; {stockCount} stock{stockCount !== 1 ? 's' : ''} will be deleted
+                    </Typography>
+                  )}
+                  {mfCount > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      &bull; {mfCount} mutual fund{mfCount !== 1 ? 's' : ''} will be deleted
+                    </Typography>
+                  )}
+                  {otherCount > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      &bull; {otherCount} other asset{otherCount !== 1 ? 's' : ''} will be deleted
+                    </Typography>
+                  )}
+                  {txnCount > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      &bull; {txnCount} transaction{txnCount !== 1 ? 's' : ''} will be deleted
+                    </Typography>
+                  )}
+                </>
+              );
+            })()}
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            This action cannot be undone. Are you sure you want to proceed?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelUploadWarning}>
+            Cancel
+          </Button>
+          <Button
+            onClick={doUploadStatement}
+            variant="contained"
+            color="warning"
+            disabled={uploading}
+            startIcon={uploading ? <CircularProgress size={20} /> : <UploadIcon />}
+          >
+            {uploading ? 'Uploading...' : 'Proceed with Upload'}
           </Button>
         </DialogActions>
       </Dialog>

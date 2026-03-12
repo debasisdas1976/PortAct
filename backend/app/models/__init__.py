@@ -18,6 +18,9 @@ from app.models.asset_category_master import AssetCategoryMaster
 from app.models.asset_type_master import AssetTypeMaster
 from app.models.institution import InstitutionMaster
 from app.models.asset_attribute import AssetAttribute, AssetAttributeValue, AssetAttributeAssignment
+from app.models.macro_data import MacroDataPoint
+from app.models.reference_rate import ReferenceRate
+from app.models.nse_holiday import NseHoliday
 
 __all__ = [
     "User",
@@ -53,6 +56,9 @@ __all__ = [
     "AssetAttribute",
     "AssetAttributeValue",
     "AssetAttributeAssignment",
+    "MacroDataPoint",
+    "ReferenceRate",
+    "NseHoliday",
 ]
 
 # Made with Bob

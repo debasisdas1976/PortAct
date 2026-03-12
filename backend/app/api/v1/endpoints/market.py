@@ -1,6 +1,9 @@
 """
 Market data proxy — fetches live prices from Yahoo Finance & CoinGecko
 server-side to avoid browser CORS restrictions.
+
+Also serves macro-economic indicators (RBI repo rate, India CPI, US CPI,
+US Unemployment) via get_macro_indicators(), with US data live from BLS.
 """
 
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -8,8 +11,15 @@ from typing import List
 import httpx
 import asyncio
 
+from sqlalchemy.orm import Session
+
 from app.api.dependencies import get_current_active_user
+from app.core.database import get_db
 from app.models.user import User
+from app.services.macro_data_service import get_macro_indicators
+from app.services.reference_rates_service import get_reference_rates
+from app.services.financial_events_service import get_upcoming_financial_events, get_global_financial_news
+from app.services.nse_holidays_service import get_nse_holidays
 
 router = APIRouter()
 
@@ -97,3 +107,63 @@ async def get_bitcoin_price(
     async with httpx.AsyncClient() as client:
         result = await _fetch_bitcoin(client)
     return result
+
+
+@router.get("/macro-indicators")
+async def get_macro_indicator_data(
+    _current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return macro-economic indicator data from the database:
+    - rbi_repo_rate  : RBI repo rate history
+    - india_cpi      : India CPI YoY %
+    - us_cpi         : US CPI YoY %
+    - us_unemployment: US Unemployment rate %
+    Data is refreshed daily by the macro_data_refresh scheduler job.
+    """
+    return get_macro_indicators(db)
+
+
+@router.get("/reference-rates")
+async def get_reference_rate_data(
+    _current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return current bank FD and government savings scheme rates from the DB.
+    - bank_fd      : highest FD rate per bank (general public)
+    - govt_schemes : government small savings scheme rates
+    Refreshed monthly (bank FD) and quarterly (govt schemes) by the scheduler.
+    """
+    return get_reference_rates(db)
+
+
+@router.get("/upcoming-events")
+async def get_upcoming_events(
+    _current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return upcoming financial calendar events (India + Global), top global
+    financial news headlines, and Indian market (NSE) trading holidays.
+    - calendar_events  : list of upcoming scheduled events sorted by date
+    - global_news      : top 5 current financial news from Yahoo Finance
+    - market_holidays  : NSE trading holidays from DB (current + next year)
+    """
+    from datetime import date as _date
+    today = _date.today()
+    # Always return current year; include next year so the calendar shows it
+    # when navigating 1–2 months ahead (especially in November–December).
+    years = [today.year, today.year + 1]
+
+    calendar_events, global_news = await asyncio.gather(
+        asyncio.to_thread(get_upcoming_financial_events, 25),
+        get_global_financial_news(count=8),
+    )
+    market_holidays = get_nse_holidays(db, years)
+    return {
+        "calendar_events": calendar_events,
+        "global_news": global_news,
+        "market_holidays": market_holidays,
+    }

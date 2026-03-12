@@ -1,7 +1,9 @@
 """
 Background scheduler for periodic tasks (price updates, EOD snapshots).
 """
+import threading
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from typing import Optional
@@ -13,8 +15,16 @@ from app.services.price_updater import update_all_prices
 from app.services.eod_snapshot_service import EODSnapshotService
 from app.services.monthly_contribution_service import MonthlyContributionService
 from app.services.forex_refresh_service import refresh_foreign_currency_values
+from app.services.macro_data_service import refresh_macro_data, refresh_rbi_rate_only
+from app.services.reference_rates_service import refresh_bank_fd_rates, refresh_govt_scheme_rates
+from app.services.nse_holidays_service import ensure_holidays
 
-scheduler = BackgroundScheduler()
+# Use a larger thread pool so that multiple I/O-bound jobs (HTTP scrapes, price
+# updates, EOD snapshots) can run concurrently without exhausting workers.
+scheduler = BackgroundScheduler(
+    executors={"default": ThreadPoolExecutor(max_workers=20)},
+    job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 300},
+)
 
 
 def _get_setting(db: Optional[Session], key: str, default):
@@ -39,6 +49,66 @@ def _eod_with_forex_refresh():
     """Run forex refresh immediately before EOD snapshot for fresh INR values."""
     refresh_foreign_currency_values()
     EODSnapshotService.capture_all_users_snapshots()
+
+
+def _macro_data_refresh():
+    """Daily fetch of US CPI, US Unemployment (BLS) and India CPI (World Bank)."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        refresh_macro_data(db)
+    except Exception as exc:
+        logger.error(f"Macro data refresh failed: {exc}")
+    finally:
+        db.close()
+
+
+def _rbi_rate_refresh():
+    """Bimonthly scrape of RBI repo rate from BankBazaar (runs on MPC meeting months)."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        refresh_rbi_rate_only(db)
+    except Exception as exc:
+        logger.error(f"RBI rate refresh failed: {exc}")
+    finally:
+        db.close()
+
+
+def _bank_fd_refresh():
+    """Monthly scrape of bank FD rates from BankBazaar."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        refresh_bank_fd_rates(db)
+    except Exception as exc:
+        logger.error(f"Bank FD rates refresh failed: {exc}")
+    finally:
+        db.close()
+
+
+def _govt_scheme_refresh():
+    """Quarterly scrape of government savings scheme rates from BankBazaar."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        refresh_govt_scheme_rates(db)
+    except Exception as exc:
+        logger.error(f"Govt scheme rates refresh failed: {exc}")
+    finally:
+        db.close()
+
+
+def _nse_holidays_refresh():
+    """Annual refresh of NSE trading holidays (Dec 1 — seeds next year's data)."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        ensure_holidays(db)
+    except Exception as exc:
+        logger.error(f"NSE holidays refresh failed: {exc}")
+    finally:
+        db.close()
 
 
 def start_scheduler(db: Optional[Session] = None):
@@ -90,28 +160,84 @@ def start_scheduler(db: Optional[Session] = None):
         replace_existing=True,
     )
 
+    # Daily macro data refresh — BLS (US CPI + Unemployment) and World Bank (India CPI)
+    scheduler.add_job(
+        func=_macro_data_refresh,
+        trigger=CronTrigger(hour=6, minute=0, timezone="UTC"),
+        id="macro_data_refresh_job",
+        name="Daily Macro-Economic Data Refresh (BLS + World Bank)",
+        replace_existing=True,
+    )
+
+    # Bimonthly RBI repo rate scrape — runs on the 10th of each MPC meeting month
+    # MPC meetings: Feb, Apr, Jun, Aug, Oct, Dec (results typically on 6th-8th)
+    scheduler.add_job(
+        func=_rbi_rate_refresh,
+        trigger=CronTrigger(month="2,4,6,8,10,12", day=10, hour=9, minute=0, timezone="UTC"),
+        id="rbi_rate_refresh_job",
+        name="Bimonthly RBI Repo Rate Scrape",
+        replace_existing=True,
+    )
+
+    # Monthly bank FD rate scrape — 1st of every month at 07:00 UTC
+    scheduler.add_job(
+        func=_bank_fd_refresh,
+        trigger=CronTrigger(day=1, hour=7, minute=0, timezone="UTC"),
+        id="bank_fd_refresh_job",
+        name="Monthly Bank FD Rate Scrape",
+        replace_existing=True,
+    )
+
+    # Quarterly govt scheme rate scrape — 1st of Jan/Apr/Jul/Oct at 07:00 UTC
+    # (Govt announces new rates for each quarter around the last day of previous quarter)
+    scheduler.add_job(
+        func=_govt_scheme_refresh,
+        trigger=CronTrigger(month="1,4,7,10", day=1, hour=7, minute=0, timezone="UTC"),
+        id="govt_scheme_refresh_job",
+        name="Quarterly Govt Savings Scheme Rate Scrape",
+        replace_existing=True,
+    )
+
+    # Annual NSE holiday refresh — Dec 1 at 01:00 UTC (seeds next year's holiday list)
+    scheduler.add_job(
+        func=_nse_holidays_refresh,
+        trigger=CronTrigger(month=12, day=1, hour=1, minute=0, timezone="UTC"),
+        id="nse_holidays_refresh_job",
+        name="Annual NSE Trading Holidays Refresh",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info(
         f"Background scheduler started. "
         f"Price updates every {price_interval} min. "
         f"EOD snapshots at {eod_hour:02d}:{eod_minute:02d} UTC. "
         f"Monthly contributions on day {mc_day} at {mc_hour:02d}:{mc_minute:02d} UTC. "
-        f"Forex refresh daily at 09:00 UTC + before EOD."
+        f"Forex refresh daily at 09:00 UTC + before EOD. "
+        f"Macro data (BLS+WB) daily at 06:00 UTC. "
+        f"RBI rate on 10th of Feb/Apr/Jun/Aug/Oct/Dec at 09:00 UTC."
     )
 
-    # Catch up on any missed snapshots from previous downtime
-    logger.info("Checking for missed EOD snapshots…")
-    try:
-        EODSnapshotService.check_and_run_missed_snapshots()
-    except Exception as exc:
-        logger.error(f"Error checking missed snapshots: {exc}")
+    # Run missed-snapshot and missed-contribution catch-up in background threads
+    # so they never block the async event loop during startup (which would make
+    # the API unresponsive until they complete).
+    def _catchup():
+        logger.info("Checking for missed EOD snapshots…")
+        try:
+            EODSnapshotService.check_and_run_missed_snapshots()
+        except Exception as exc:
+            logger.error(f"Error checking missed snapshots: {exc}")
+        logger.info("Checking for missed monthly contributions…")
+        try:
+            MonthlyContributionService.check_and_run_missed_contributions()
+        except Exception as exc:
+            logger.error(f"Error checking missed contributions: {exc}")
 
-    # Catch up on any missed monthly contributions
-    logger.info("Checking for missed monthly contributions…")
-    try:
-        MonthlyContributionService.check_and_run_missed_contributions()
-    except Exception as exc:
-        logger.error(f"Error checking missed contributions: {exc}")
+    threading.Thread(target=_catchup, daemon=True, name="startup-catchup").start()
+
+    # Ensure NSE holidays are in DB for the current year (and next year if >= November).
+    # Runs in a background thread so it never blocks startup.
+    threading.Thread(target=_nse_holidays_refresh, daemon=True, name="nse-holidays-startup").start()
 
 
 def stop_scheduler():

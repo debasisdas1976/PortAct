@@ -4,7 +4,7 @@
 
 PortAct is a comprehensive, privacy-first personal finance portfolio tracking application that enables users to manage and monitor their investments across 30+ asset classes. It runs entirely on your local machine — no third-party data sharing required.
 
-**Current Version**: 1.8.0+ | **Export Version**: 5.0 (backward compatible to v1.0)
+**Current Version**: 1.9.0 | **Export Version**: 5.0 (backward compatible to v1.0)
 
 [![Watch the Introduction Video](https://img.shields.io/badge/YouTube-Watch%20Introduction-red?logo=youtube)](https://www.youtube.com/watch?v=hoEDYFW2LZs)
 
@@ -93,6 +93,7 @@ PortAct is a comprehensive, privacy-first personal finance portfolio tracking ap
 **Insights & Analytics**
 - Asset-level insights with detailed performance
 - Attribute-based insights (performance grouped by tags)
+- Maturity Timeline — visual timeline of upcoming maturity dates for FDs, RDs, bonds, government schemes, insurance, and SGBs with status badges and projected values
 - Mutual fund holdings — top stocks across MF portfolio
 - XIRR calculations using transaction history
 
@@ -136,7 +137,7 @@ PortAct is a comprehensive, privacy-first personal finance portfolio tracking ap
 - **Asset Overview** — All assets in one page with type-based tabs and price refresh
 - **30+ Asset Management Pages** — Dedicated page per asset type (stocks, MFs, FDs, real estate, etc.)
 - **Account Pages** — Bank, demat, and crypto account management
-- **Insights** — Asset insights, attribute insights, mutual fund holdings
+- **Insights** — Asset insights, attribute insights, maturity timeline, mutual fund holdings
 - **Expenses** — Expense dashboard, expense list, category management
 - **Statements** — Upload and manage bank/broker/tradebook statements
 - **Alerts** — AI-powered market news and portfolio alerts
@@ -216,6 +217,14 @@ PortAct is a comprehensive, privacy-first personal finance portfolio tracking ap
 - Bulk attribute assignment
 - Attribute-based performance analytics
 - Asset-level insights
+- Maturity Timeline for assets with maturity dates (13 asset types)
+
+### 7a. Day Change % Tracking
+- Real-time daily price change percentage for every asset
+- Weighted-average Day Change % for asset groups on the Assets Overview page
+- Day Change summary card on all 30+ asset type pages and the main Dashboard
+- Data sourced from Yahoo Finance, NSE, CoinGecko, and other market APIs
+- Fallback to EOD snapshot price when API data is unavailable
 
 ### 8. Multi-Portfolio Management
 - Create separate portfolios per person or purpose
@@ -224,7 +233,7 @@ PortAct is a comprehensive, privacy-first personal finance portfolio tracking ap
 - Covers: assets, transactions, accounts, snapshots, expenses, alerts
 
 ### 9. Dashboard & Visualization
-- Portfolio summary cards (total value, invested, gain/loss, asset count)
+- Portfolio summary cards (total value, invested, gain/loss, asset count, day change)
 - Performance charts: invested vs. current value over time
 - Asset allocation pie chart with drill-down
 - Top/bottom performers

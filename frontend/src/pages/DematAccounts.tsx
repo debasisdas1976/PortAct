@@ -94,6 +94,8 @@ const DematAccounts: React.FC = () => {
   const [unmatchedDialogOpen, setUnmatchedDialogOpen] = useState(false);
   const [unmatchedStatementId, setUnmatchedStatementId] = useState<number | null>(null);
   const [gettingStartedOpen, setGettingStartedOpen] = useState(false);
+  const [showUploadWarning, setShowUploadWarning] = useState(false);
+  const [affectedAccounts, setAffectedAccounts] = useState<DematAccount[]>([]);
 
   const statementTypes = [
     { value: 'broker_statement', label: 'Broker Statement' },
@@ -213,16 +215,32 @@ const DematAccounts: React.FC = () => {
     }
   };
 
-  const handleUploadStatement = async () => {
+  const handleUploadStatement = () => {
     if (!selectedFile || !uploadBroker || !statementType) {
       notify.error('Please fill all fields and select a file');
       return;
     }
 
+    // Check if any existing accounts for this broker have assets
+    const brokerAccounts = accounts.filter(
+      a => a.broker_name.toLowerCase() === uploadBroker.toLowerCase() && (a.asset_count || 0) > 0
+    );
+
+    if (brokerAccounts.length > 0) {
+      setAffectedAccounts(brokerAccounts);
+      setOpenUploadDialog(false);
+      setShowUploadWarning(true);
+    } else {
+      doUploadStatement();
+    }
+  };
+
+  const doUploadStatement = async () => {
     try {
+      setShowUploadWarning(false);
       setUploading(true);
       const formData = new FormData();
-      formData.append('file', selectedFile);
+      formData.append('file', selectedFile!);
       formData.append('institution_name', uploadBroker);
       formData.append('statement_type', statementType);
       if (password) {
@@ -238,7 +256,6 @@ const DematAccounts: React.FC = () => {
         },
       });
 
-      setOpenUploadDialog(false);
       setSelectedFile(null);
       setUploadBroker('');
       setStatementType('broker_statement');
@@ -256,6 +273,11 @@ const DematAccounts: React.FC = () => {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleCancelUploadWarning = () => {
+    setShowUploadWarning(false);
+    setOpenUploadDialog(true); // Go back to upload dialog
   };
 
   const formatCurrency = (amount: number) => {
@@ -595,6 +617,45 @@ const DematAccounts: React.FC = () => {
             startIcon={uploading ? <CircularProgress size={20} /> : <UploadIcon />}
           >
             {uploading ? 'Uploading...' : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Upload Warning Confirmation Dialog */}
+      <Dialog open={showUploadWarning} onClose={handleCancelUploadWarning} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ color: 'warning.main' }}>
+          Warning: Existing Data Will Be Replaced
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Uploading a new statement will <strong>delete all existing holdings</strong> in the matching demat account(s) and replace them with the data from the new statement.
+          </Alert>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            The following existing account(s) for <strong>{brokerNames.find(b => b.value === uploadBroker)?.label || uploadBroker}</strong> will be affected:
+          </Typography>
+          <Box sx={{ pl: 2, mb: 2 }}>
+            {affectedAccounts.map(acc => (
+              <Typography key={acc.id} variant="body2" color="text.secondary">
+                &bull; {acc.account_id}{acc.nickname ? ` (${acc.nickname})` : ''} &mdash; {acc.asset_count} asset{acc.asset_count !== 1 ? 's' : ''} will be deleted along with their transactions
+              </Typography>
+            ))}
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            This action cannot be undone. Are you sure you want to proceed?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelUploadWarning}>
+            Cancel
+          </Button>
+          <Button
+            onClick={doUploadStatement}
+            variant="contained"
+            color="warning"
+            disabled={uploading}
+            startIcon={uploading ? <CircularProgress size={20} /> : <UploadIcon />}
+          >
+            {uploading ? 'Uploading...' : 'Proceed with Upload'}
           </Button>
         </DialogActions>
       </Dialog>

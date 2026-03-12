@@ -50,10 +50,26 @@ Upload statements and let PortAct do the rest:
 
 ### Portfolio Dashboard
 - Total portfolio valuation with gain/loss metrics
+- **Day Change tracking** — Portfolio-level daily change vs. previous EOD snapshot
 - Performance charts (invested vs. current value over time)
 - Asset allocation with drill-down pie charts
 - Top and bottom performers
 - Recent transactions
+
+### Day Change % Tracking
+- Real-time daily price change percentage for every asset
+- Weighted-average Day Change % for asset groups on the Assets Overview page
+- Day Change summary card on every asset type page and the main Dashboard
+- Data sourced from Yahoo Finance, NSE, CoinGecko, and other market APIs
+- Fallback to EOD snapshot comparison when API data is unavailable
+
+### Maturity Timeline (Insights)
+- Visual timeline of upcoming asset maturity dates with a custom SVG chart
+- Supports 13 asset types: FD, RD, Corporate/RBI/Tax-Saving Bonds, NSC, KVP, SCSS, MIS, SSY, PPF, Insurance, and SGBs
+- Status badges: **Maturing Soon** (≤6 months), **Approaching** (≤1 year), **On Track**, **Matured**
+- Summary cards showing count, current value, estimated maturity value, and items maturing soon
+- Detailed data table with maturity dates, time remaining, interest rates, and projected values
+- Hide/Show toggle to mask sensitive financial numbers
 
 ### End-of-Day (EOD) Snapshots
 - Daily portfolio snapshots captured automatically at 7 PM IST
@@ -90,6 +106,7 @@ Upload statements and let PortAct do the rest:
 - **Multi-Account Support** — Bank, demat, and crypto accounts with independent cash balances
 - **Transaction History** — Complete audit trail with buy, sell, dividend, interest, and more
 - **XIRR Calculations** — Annualized returns using full transaction history
+- **Category Performance** — Chart with filter dropdown for individual category/asset view
 
 ## Technology Stack
 

@@ -38,6 +38,8 @@ import {
   HelpOutline as FAQIcon,
   CheckCircle as CheckIcon,
   Replay as ReplayIcon,
+  Timeline as TimelineIcon,
+  TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { TOUR_STORAGE_KEY } from '../components/ProductTour';
@@ -202,6 +204,12 @@ const Help: React.FC = () => {
                 secondary="Count of all portfolio assets plus bank accounts."
               />
             </ListItem>
+            <ListItem>
+              <ListItemText
+                primary="Day Change"
+                secondary="Shows the portfolio-level value change compared to the previous End-of-Day snapshot. Displayed as an amount and percentage in green (positive) or red (negative)."
+              />
+            </ListItem>
           </List>
 
           <Divider sx={{ my: 2 }} />
@@ -295,6 +303,11 @@ const Help: React.FC = () => {
             The Assets page (sidebar: Assets &gt; Overview) shows a consolidated view of all your assets grouped by symbol. Filter by asset type using tabs (All, Stocks, US Stocks, Equity MF, Hybrid MF, Debt MF, Commodities, Crypto, Cash, Other, Bank Accounts). Each tab shows the total count of individual assets. You can reclassify an asset's type by clicking the type chip, and manually trigger price updates per asset or for the entire portfolio.
           </Typography>
 
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Day Change %</Typography>
+          <Typography variant="body2" paragraph>
+            Each asset row in the Assets Overview displays a Day Change % column showing the daily price movement. Assets are color-coded green (up) or red (down) with trending icons. When assets are grouped by symbol, the table shows a value-weighted average Day Change % for the group. Every individual asset type page (Stocks, Fixed Deposits, etc.) also displays a Day Change summary card at the top showing the weighted-average day change across all assets on that page.
+          </Typography>
+
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Automatic Price Updates</Typography>
           <Typography variant="body2" paragraph>
             Stocks, mutual funds, crypto, commodities, and US stocks get their prices updated automatically by a background scheduler. The default interval is every 30 minutes. You can change this in Application Settings. You can also manually refresh prices using the "Update All Prices" button on the Assets page.
@@ -336,6 +349,9 @@ const Help: React.FC = () => {
           <Typography variant="body2" paragraph>
             You can upload broker-specific statements (NSDL CAS, individual broker statements) from the Statements page. Select the correct broker and statement type; the parser will extract holdings and link them to the appropriate demat account.
           </Typography>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            When a new broker statement is uploaded for a demat account, the system deletes all existing stocks and/or mutual funds linked to that account and recreates them from the new statement. Always take a JSON backup from Portfolio Admin before uploading a new statement to safeguard your data.
+          </Alert>
 
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Cash Balance</Typography>
           <Typography variant="body2" paragraph>
@@ -679,7 +695,101 @@ const Help: React.FC = () => {
         </AccordionDetails>
       </Accordion>
 
-      {/* ─── Section 11: Application Settings ─── */}
+      {/* ─── Section 11: Insights ─── */}
+      <Accordion expanded={expanded === 'insights'} onChange={handleChange('insights')} sx={sectionSx}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <TrendingUpIcon color="primary" />
+            <Typography variant="h6">Insights</Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Typography variant="body2" paragraph>
+            The Insights section provides analytical views across your portfolio, accessible from the sidebar under Insights.
+          </Typography>
+
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Asset Insight</Typography>
+          <Typography variant="body2" paragraph>
+            Detailed per-asset performance analysis including category allocation, XIRR calculations, and performance charts. Use this to drill into individual asset performance over time.
+          </Typography>
+
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Attribute Insight</Typography>
+          <Typography variant="body2" paragraph>
+            Performance analytics grouped by your custom asset attributes (tags like "Long-term", "Index Fund", "US Holdings"). See how different groupings of assets are performing relative to each other.
+          </Typography>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Box display="flex" alignItems="center" gap={1} sx={{ mb: 1 }}>
+            <TimelineIcon color="primary" fontSize="small" />
+            <Typography variant="subtitle1" fontWeight="bold">Maturity Timeline</Typography>
+          </Box>
+          <Typography variant="body2" paragraph>
+            A visual timeline showing when your fixed-income and maturity-bearing assets will mature. The page displays a custom SVG chart with horizontal bars positioned proportionally on a time axis from today to the final maturity date.
+          </Typography>
+
+          <Typography variant="subtitle2" fontWeight="bold" sx={{ mt: 1 }}>Supported Asset Types (13)</Typography>
+          <Typography variant="body2" paragraph>
+            Fixed Deposit, Recurring Deposit, Corporate Bond, RBI Bond, Tax-Saving Bond, NSC, KVP, SCSS, MIS, SSY, PPF, Insurance Policy, and Sovereign Gold Bonds.
+          </Typography>
+
+          <Typography variant="subtitle2" fontWeight="bold">Status Badges</Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+            <Chip label="Maturing Soon — within 6 months" color="error" size="small" />
+            <Chip label="Approaching — within 1 year" color="warning" size="small" />
+            <Chip label="On Track — more than 1 year away" color="success" size="small" />
+            <Chip label="Matured — past maturity date" size="small" />
+          </Box>
+
+          <Typography variant="subtitle2" fontWeight="bold">Summary Cards</Typography>
+          <Typography variant="body2" paragraph>
+            Four summary cards at the top show: total upcoming maturities count, current value of maturing assets, estimated maturity value (projected using interest rate compounding), and the number of items maturing within 6 months.
+          </Typography>
+
+          <Typography variant="subtitle2" fontWeight="bold">Data Table</Typography>
+          <Typography variant="body2" paragraph>
+            Below the timeline chart, a detailed table lists every asset with its maturity date, time remaining, interest rate, current value, and estimated maturity amount. Use the hide/show toggle to mask financial numbers when sharing your screen.
+          </Typography>
+
+          <Alert severity="info" sx={{ mt: 1 }}>
+            Maturity dates are sourced from the asset's details (maturity_date or policy_end_date). Assets without a maturity date will not appear on this page. Ensure you set the maturity date when adding or editing fixed-income assets.
+          </Alert>
+        </AccordionDetails>
+      </Accordion>
+
+      {/* ─── Section 12: Day Change % Tracking ─── */}
+      <Accordion expanded={expanded === 'day-change'} onChange={handleChange('day-change')} sx={sectionSx}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <TrendingUpIcon color="primary" />
+            <Typography variant="h6">Day Change % Tracking</Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Typography variant="body2" paragraph>
+            Day Change % shows how much each asset's price has moved during the current trading day. This feature is available across the entire application.
+          </Typography>
+
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Where It Appears</Typography>
+          <List dense>
+            <ListItem><ListItemText primary="Dashboard — A summary card showing portfolio-level day change vs. the previous EOD snapshot" /></ListItem>
+            <ListItem><ListItemText primary="Assets Overview — A sortable Day Change % column with value-weighted averages for grouped assets" /></ListItem>
+            <ListItem><ListItemText primary="All 30+ Asset Type Pages — A Day Change card at the top showing the weighted-average day change for that category" /></ListItem>
+          </List>
+
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Data Sources</Typography>
+          <Typography variant="body2" paragraph>
+            Day change percentages are fetched from market data APIs during each price update cycle: Yahoo Finance and NSE for Indian/US stocks, AMFI for mutual funds, CoinGecko for crypto (24-hour change), and MCX for commodities. When the API does not provide a previous close price, the system falls back to comparing the current price against the last EOD snapshot value.
+          </Typography>
+
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>How It's Calculated</Typography>
+          <Typography variant="body2" paragraph>
+            For individual assets, the day change is the percentage difference between the current price and the previous close. For asset groups (on the Assets Overview page) and category-level cards, the system computes a value-weighted average — assets with higher current value contribute proportionally more to the group's day change percentage.
+          </Typography>
+        </AccordionDetails>
+      </Accordion>
+
+      {/* ─── Section 13: Application Settings ─── */}
       <Accordion expanded={expanded === 'settings'} onChange={handleChange('settings')} sx={sectionSx}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Box display="flex" alignItems="center" gap={1}>
@@ -758,7 +868,7 @@ const Help: React.FC = () => {
         </AccordionDetails>
       </Accordion>
 
-      {/* ─── Section 12: Tips & Productivity ─── */}
+      {/* ─── Section 14: Tips & Productivity ─── */}
       <Accordion expanded={expanded === 'tips'} onChange={handleChange('tips')} sx={sectionSx}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Box display="flex" alignItems="center" gap={1}>
@@ -804,7 +914,7 @@ const Help: React.FC = () => {
         </AccordionDetails>
       </Accordion>
 
-      {/* ─── Section 13: Troubleshooting & FAQ ─── */}
+      {/* ─── Section 15: Troubleshooting & FAQ ─── */}
       <Accordion expanded={expanded === 'troubleshooting'} onChange={handleChange('troubleshooting')} sx={sectionSx}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Box display="flex" alignItems="center" gap={1}>

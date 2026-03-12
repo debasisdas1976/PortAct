@@ -19,6 +19,8 @@ import app.models.expense_category as _expense_category_model  # noqa: F401 – 
 import app.models.broker as _broker_model  # noqa: F401 – register for create_all
 import app.models.bank as _bank_model  # noqa: F401 – register for create_all
 import app.models.asset_type_master as _asset_type_model  # noqa: F401 – register for create_all
+import app.models.macro_data as _macro_data_model  # noqa: F401 – register for create_all
+import app.models.reference_rate as _reference_rate_model  # noqa: F401 – register for create_all
 
 
 def _fix_null_portfolio_ids(db):
