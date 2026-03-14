@@ -60,6 +60,7 @@ import {
   Label as LabelIcon,
   Timeline as TimelineIcon,
   Public as MarketInsightIcon,
+  Water as LiquidityIcon,
 } from '@mui/icons-material';
 
 // ── Constants ──
@@ -192,6 +193,7 @@ const insightsItems: NavItem[] = [
   { text: 'MF Holdings', icon: React.createElement(InsightsIcon), path: '/mutual-fund-holdings' },
   { text: 'Maturity Timeline', icon: React.createElement(TimelineIcon), path: '/maturity-timeline' },
   { text: 'Market Insight', icon: React.createElement(MarketInsightIcon), path: '/market-insight' },
+  { text: 'Liquidity Insight', icon: React.createElement(LiquidityIcon), path: '/liquidity-insight' },
 ];
 
 const utilitiesItems: NavItem[] = [

@@ -16,7 +16,7 @@ import {
 } from '@mui/icons-material';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, CartesianGrid,
+  XAxis, YAxis, CartesianGrid, Brush,
   Tooltip as RechartTooltip, ResponsiveContainer, ReferenceLine,
   Cell,
 } from 'recharts';
@@ -908,7 +908,7 @@ const MarketInsight: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 }, maxWidth: 1600, mx: 'auto' }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 } }}>
 
       {/* ── Page Header ─────────────────────────────────────────────────── */}
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
@@ -1324,7 +1324,7 @@ const MarketInsight: React.FC = () => {
           <Typography sx={{ fontSize: 22 }}>📊</Typography>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>Macroeconomic Indicators</Typography>
         </Box>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
 
         {/* India CPI */}
         {macroData.india_cpi?.length ? (
@@ -1338,7 +1338,7 @@ const MarketInsight: React.FC = () => {
               <Typography variant="caption" color="text.secondary">YoY % · {chartRange(macroData.india_cpi)}</Typography>
             </Box>
           </Box>
-          <ResponsiveContainer width="100%" height={190}>
+          <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={padToCurrentMonth(macroData.india_cpi)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradIndia" x1="0" y1="0" x2="0" y2="1">
@@ -1347,11 +1347,12 @@ const MarketInsight: React.FC = () => {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} minTickGap={80} />
               <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <ReferenceLine y={4} stroke="#4caf50" strokeDasharray="4 2" label={{ value: '4% target', fontSize: 9, fill: '#4caf50' }} />
               <Area type="monotone" dataKey="value" stroke="#ff6b35" fill="url(#gradIndia)" strokeWidth={2.5} dot={false} />
+              <Brush dataKey="month" height={24} stroke="#ff6b35" fill={theme.palette.mode === 'dark' ? '#1a0a00' : '#fff3ee'} travellerWidth={6} />
             </AreaChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: MoSPI / World Bank</Typography>
@@ -1370,7 +1371,7 @@ const MarketInsight: React.FC = () => {
               <Typography variant="caption" color="text.secondary">Annual Real GDP % · {chartRange(macroData.india_gdp_growth)}</Typography>
             </Box>
           </Box>
-          <ResponsiveContainer width="100%" height={190}>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={macroData.india_gdp_growth} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
               <XAxis dataKey="month" tick={{ fontSize: 10 }} />
@@ -1382,6 +1383,7 @@ const MarketInsight: React.FC = () => {
                   <Cell key={i} fill={entry.value < 0 ? '#f44336' : '#2196f3'} />
                 ))}
               </Bar>
+              <Brush dataKey="month" height={24} stroke="#2196f3" fill={theme.palette.mode === 'dark' ? '#000d1a' : '#f0f6ff'} travellerWidth={6} />
             </BarChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSO / World Bank</Typography>
@@ -1396,7 +1398,7 @@ const MarketInsight: React.FC = () => {
           const sipPadded = padToCurrentMonth(sipData);
           const isDark = theme.palette.mode === 'dark';
           return (
-            <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, gridColumn: { xs: '1', md: 'span 2' }, background: isDark ? 'linear-gradient(145deg,#001a0d,#002e1a)' : 'linear-gradient(145deg,#f0fdf6,#fff)' }}>
+            <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: isDark ? 'linear-gradient(145deg,#001a0d,#002e1a)' : 'linear-gradient(145deg,#f0fdf6,#fff)' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                 <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#00695c,#26a69a)', mr: 0.5 }}>
                   <Typography sx={{ fontSize: 16 }}>🇮🇳</Typography>
@@ -1407,7 +1409,7 @@ const MarketInsight: React.FC = () => {
                 </Box>
                 <Chip label={`Latest ₹ ${new Intl.NumberFormat('en-IN').format(sipLatest.value)} cr`} size="small" sx={{ ml: 'auto', fontSize: 10, bgcolor: isDark ? '#002e1a' : '#e8f5e9', color: '#2e7d32', border: '1px solid #2e7d3233' }} />
               </Box>
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={sipPadded} margin={{ top: 4, right: 8, left: 10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
                   <XAxis dataKey="month" tick={{ fontSize: 9 }} interval={3} />
@@ -1422,6 +1424,7 @@ const MarketInsight: React.FC = () => {
                       <Cell key={i} fill={entry.value >= 25000 ? '#00897b' : entry.value >= 20000 ? '#26a69a' : '#4db6ac'} />
                     ))}
                   </Bar>
+                  <Brush dataKey="month" height={24} stroke="#26a69a" fill={theme.palette.mode === 'dark' ? '#001a0d' : '#f0fdf6'} travellerWidth={6} />
                 </BarChart>
               </ResponsiveContainer>
               <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: AMFI</Typography>
@@ -1437,7 +1440,7 @@ const MarketInsight: React.FC = () => {
           const fiiPadded = padToCurrentMonth(fiiData);
           const isDark = theme.palette.mode === 'dark';
           return (
-            <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, gridColumn: { xs: '1', md: 'span 2' }, background: isDark ? 'linear-gradient(145deg,#0d0020,#1a0040)' : 'linear-gradient(145deg,#f3f0ff,#fff)' }}>
+            <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: isDark ? 'linear-gradient(145deg,#0d0020,#1a0040)' : 'linear-gradient(145deg,#f3f0ff,#fff)' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                 <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#4a148c,#7b1fa2)', mr: 0.5 }}>
                   <Typography sx={{ fontSize: 16 }}>🌐</Typography>
@@ -1452,7 +1455,7 @@ const MarketInsight: React.FC = () => {
                   sx={{ ml: 'auto', fontSize: 10, bgcolor: isDark ? (fiiLatest.value >= 0 ? '#0a180d' : '#1a0000') : (fiiLatest.value >= 0 ? '#e8f5e9' : '#ffebee'), color: fiiLatest.value >= 0 ? '#2e7d32' : '#c62828', border: `1px solid ${fiiLatest.value >= 0 ? '#2e7d3233' : '#c6282833'}` }}
                 />
               </Box>
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={fiiPadded} margin={{ top: 4, right: 8, left: 10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
                   <XAxis dataKey="month" tick={{ fontSize: 9 }} interval={3} />
@@ -1464,6 +1467,7 @@ const MarketInsight: React.FC = () => {
                       <Cell key={i} fill={(entry.value ?? 0) >= 0 ? '#7b1fa2' : '#d32f2f'} />
                     ))}
                   </Bar>
+                  <Brush dataKey="month" height={24} stroke="#7b1fa2" fill={theme.palette.mode === 'dark' ? '#0d0020' : '#f3f0ff'} travellerWidth={6} />
                 </BarChart>
               </ResponsiveContainer>
               <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSE · Equity segment · Live via daily refresh</Typography>
@@ -1479,7 +1483,7 @@ const MarketInsight: React.FC = () => {
           const diiPadded = padToCurrentMonth(diiData);
           const isDark = theme.palette.mode === 'dark';
           return (
-            <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, gridColumn: { xs: '1', md: 'span 2' }, background: isDark ? 'linear-gradient(145deg,#001433,#002766)' : 'linear-gradient(145deg,#e8f0ff,#fff)' }}>
+            <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: isDark ? 'linear-gradient(145deg,#001433,#002766)' : 'linear-gradient(145deg,#e8f0ff,#fff)' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                 <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#003087,#1565c0)', mr: 0.5 }}>
                   <Typography sx={{ fontSize: 16 }}>🇮🇳</Typography>
@@ -1494,7 +1498,7 @@ const MarketInsight: React.FC = () => {
                   sx={{ ml: 'auto', fontSize: 10, bgcolor: isDark ? (diiLatest.value >= 0 ? '#001433' : '#1a0000') : (diiLatest.value >= 0 ? '#e8f0ff' : '#ffebee'), color: diiLatest.value >= 0 ? '#1565c0' : '#c62828', border: `1px solid ${diiLatest.value >= 0 ? '#1565c033' : '#c6282833'}` }}
                 />
               </Box>
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={diiPadded} margin={{ top: 4, right: 8, left: 10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
                   <XAxis dataKey="month" tick={{ fontSize: 9 }} interval={3} />
@@ -1506,6 +1510,7 @@ const MarketInsight: React.FC = () => {
                       <Cell key={i} fill={(entry.value ?? 0) >= 0 ? '#1565c0' : '#d32f2f'} />
                     ))}
                   </Bar>
+                  <Brush dataKey="month" height={24} stroke="#1565c0" fill={theme.palette.mode === 'dark' ? '#001433' : '#e8f0ff'} travellerWidth={6} />
                 </BarChart>
               </ResponsiveContainer>
               <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSE · Equity segment · Live via daily refresh</Typography>
@@ -1525,14 +1530,15 @@ const MarketInsight: React.FC = () => {
               <Typography variant="caption" color="text.secondary">Price-to-Earnings · {chartRange(macroData.nifty_pe)} · Live via NSE</Typography>
             </Box>
           </Box>
-          <ResponsiveContainer width="100%" height={190}>
+          <ResponsiveContainer width="100%" height={220}>
             <LineChart data={padToCurrentMonth(macroData.nifty_pe)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} minTickGap={80} />
               <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
               <RechartTooltip content={<ChartTip unit="x" />} />
               <ReferenceLine y={20} stroke="#f59e0b" strokeDasharray="4 2" label={{ value: '20x avg', fontSize: 9, fill: '#f59e0b' }} />
-              <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2.5} dot={{ r: 2, fill: '#f97316' }} />
+              <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2.5} dot={false} activeDot={{ r: 4, fill: '#f97316', strokeWidth: 0 }} />
+              <Brush dataKey="month" height={24} stroke="#f97316" fill={theme.palette.mode === 'dark' ? '#1a0a00' : '#fff8f0'} travellerWidth={6} />
             </LineChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSE India</Typography>
@@ -1551,7 +1557,7 @@ const MarketInsight: React.FC = () => {
               <Typography variant="caption" color="text.secondary">Fear Index · {chartRange(macroData.india_vix)} · Live via NSE</Typography>
             </Box>
           </Box>
-          <ResponsiveContainer width="100%" height={190}>
+          <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={padToCurrentMonth(macroData.india_vix)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradVix" x1="0" y1="0" x2="0" y2="1">
@@ -1560,11 +1566,12 @@ const MarketInsight: React.FC = () => {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} minTickGap={80} />
               <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
               <RechartTooltip content={<ChartTip unit="" />} />
               <ReferenceLine y={20} stroke="#ef5350" strokeDasharray="4 2" label={{ value: 'High fear', fontSize: 9, fill: '#ef5350' }} />
               <Area type="monotone" dataKey="value" stroke="#9c27b0" fill="url(#gradVix)" strokeWidth={2.5} dot={false} />
+              <Brush dataKey="month" height={24} stroke="#9c27b0" fill={theme.palette.mode === 'dark' ? '#15001a' : '#fdf4ff'} travellerWidth={6} startIndex={Math.max(0, (macroData.india_vix?.length ?? 0) - 60)} />
             </AreaChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: NSE India / Yahoo Finance</Typography>
@@ -1583,7 +1590,7 @@ const MarketInsight: React.FC = () => {
               <Typography variant="caption" color="text.secondary">YoY % · {chartRange(macroData.us_cpi)} · Live via BLS</Typography>
             </Box>
           </Box>
-          <ResponsiveContainer width="100%" height={190}>
+          <ResponsiveContainer width="100%" height={310}>
             <AreaChart data={padToCurrentMonth(macroData.us_cpi)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradUS" x1="0" y1="0" x2="0" y2="1">
@@ -1592,11 +1599,12 @@ const MarketInsight: React.FC = () => {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} minTickGap={80} />
               <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <ReferenceLine y={2} stroke="#4caf50" strokeDasharray="4 2" label={{ value: '2% target', fontSize: 9, fill: '#4caf50' }} />
               <Area type="monotone" dataKey="value" stroke="#7c4dff" fill="url(#gradUS)" strokeWidth={2.5} dot={false} />
+              <Brush dataKey="month" height={24} stroke="#7c4dff" fill={theme.palette.mode === 'dark' ? '#0d0020' : '#f8f4ff'} travellerWidth={6} startIndex={Math.max(0, (macroData.us_cpi?.length ?? 0) - 60)} />
             </AreaChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: BLS</Typography>
@@ -1615,13 +1623,14 @@ const MarketInsight: React.FC = () => {
               <Typography variant="caption" color="text.secondary">Seasonally Adjusted % · {chartRange(macroData.us_unemployment)} · Live via BLS</Typography>
             </Box>
           </Box>
-          <ResponsiveContainer width="100%" height={190}>
+          <ResponsiveContainer width="100%" height={310}>
             <LineChart data={padToCurrentMonth(macroData.us_unemployment)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} minTickGap={80} />
               <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
-              <Line type="monotone" dataKey="value" stroke="#00bcd4" strokeWidth={2.5} dot={{ r: 2, fill: '#00bcd4' }} />
+              <Line type="monotone" dataKey="value" stroke="#00bcd4" strokeWidth={2.5} dot={false} activeDot={{ r: 4, fill: '#00bcd4', strokeWidth: 0 }} />
+              <Brush dataKey="month" height={24} stroke="#00bcd4" fill={theme.palette.mode === 'dark' ? '#001a1a' : '#f0ffff'} travellerWidth={6} startIndex={Math.max(0, (macroData.us_unemployment?.length ?? 0) - 60)} />
             </LineChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: BLS</Typography>
@@ -1640,7 +1649,7 @@ const MarketInsight: React.FC = () => {
               <Typography variant="caption" color="text.secondary">Effective Rate % · {chartRange(macroData.us_fed_rate)} · Live via FRED</Typography>
             </Box>
           </Box>
-          <ResponsiveContainer width="100%" height={190}>
+          <ResponsiveContainer width="100%" height={310}>
             <AreaChart data={padToCurrentMonth(macroData.us_fed_rate)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradFed" x1="0" y1="0" x2="0" y2="1">
@@ -1649,10 +1658,11 @@ const MarketInsight: React.FC = () => {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} minTickGap={80} />
               <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <Area type="stepAfter" dataKey="value" stroke="#1565c0" fill="url(#gradFed)" strokeWidth={2.5} dot={false} />
+              <Brush dataKey="month" height={24} stroke="#1565c0" fill={theme.palette.mode === 'dark' ? '#001433' : '#f0f4ff'} travellerWidth={6} startIndex={Math.max(0, (macroData.us_fed_rate?.length ?? 0) - 60)} />
             </AreaChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: FRED (FEDFUNDS)</Typography>
@@ -1671,7 +1681,7 @@ const MarketInsight: React.FC = () => {
               <Typography variant="caption" color="text.secondary">Monthly Avg % · {chartRange(macroData.us_10y_yield)} · Live via FRED</Typography>
             </Box>
           </Box>
-          <ResponsiveContainer width="100%" height={190}>
+          <ResponsiveContainer width="100%" height={310}>
             <AreaChart data={padToCurrentMonth(macroData.us_10y_yield)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradTreasury" x1="0" y1="0" x2="0" y2="1">
@@ -1680,10 +1690,11 @@ const MarketInsight: React.FC = () => {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} minTickGap={80} />
               <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} unit="%" />
               <RechartTooltip content={<ChartTip unit="%" />} />
               <Area type="monotone" dataKey="value" stroke="#2e7d32" fill="url(#gradTreasury)" strokeWidth={2.5} dot={false} />
+              <Brush dataKey="month" height={24} stroke="#2e7d32" fill={theme.palette.mode === 'dark' ? '#0a1a00' : '#f4fff0'} travellerWidth={6} startIndex={Math.max(0, (macroData.us_10y_yield?.length ?? 0) - 60)} />
             </AreaChart>
           </ResponsiveContainer>
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>Source: FRED (GS10)</Typography>
@@ -1734,22 +1745,23 @@ const MarketInsight: React.FC = () => {
               <Typography variant="caption" color="text.secondary">Current · Effective {rbiDate}</Typography>
             </Box>
           </Box>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={macroData.rbi_repo_rate} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={310}>
+            <AreaChart data={macroData.rbi_repo_rate} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
               <defs>
                 <linearGradient id="rbiGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#1e88e5" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="#1e88e5" stopOpacity={0.02} />
+                  <stop offset="5%"  stopColor="#1e88e5" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#1e88e5" stopOpacity={0.0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-              <YAxis domain={['auto', 'auto']} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} width={42} />
-              <RechartTooltip formatter={(v: number) => [`${v.toFixed(2)}%`, 'Repo Rate']} />
+              <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={80} tickLine={false} axisLine={false} />
+              <YAxis domain={[0, 'auto']} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} width={42} tickLine={false} axisLine={false} />
+              <RechartTooltip formatter={(v: number) => [`${v.toFixed(2)}%`, 'Repo Rate']} labelStyle={{ fontWeight: 600 }} contentStyle={{ background: theme.palette.background.paper, border: `1px solid ${theme.palette.divider}`, fontSize: 13 }} />
               {rbiRate != null && (
-                <ReferenceLine y={rbiRate} stroke="#1e88e5" strokeDasharray="4 3" label={{ value: `Current ${rbiRate.toFixed(2)}%`, position: 'insideTopRight', fontSize: 11, fill: '#1e88e5' }} />
+                <ReferenceLine y={rbiRate} stroke="#1e88e5" strokeDasharray="5 3" label={{ value: `Current ${rbiRate.toFixed(2)}%`, position: 'insideTopRight', fontSize: 11, fill: '#1e88e5' }} />
               )}
-              <Area type="stepAfter" dataKey="rate" stroke="#1e88e5" strokeWidth={2.5} fill="url(#rbiGrad)" dot={{ r: 3, fill: '#1e88e5' }} activeDot={{ r: 5 }} />
+              <Area type="stepAfter" dataKey="rate" stroke="#1e88e5" strokeWidth={2} fill="url(#rbiGrad)" dot={false} activeDot={{ r: 4, fill: '#1e88e5', strokeWidth: 0 }} />
+              <Brush dataKey="date" height={24} stroke="#1e88e5" fill={theme.palette.mode === 'dark' ? '#071220' : '#f0f7ff'} travellerWidth={6} startIndex={Math.max(0, (macroData.rbi_repo_rate?.length ?? 0) - 60)} />
             </AreaChart>
           </ResponsiveContainer>
           <Box sx={{ display: 'flex', gap: 3, mt: 1.5, flexWrap: 'wrap' }}>

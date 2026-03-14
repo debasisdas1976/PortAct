@@ -271,6 +271,15 @@ DEFAULT_APP_SETTINGS = [
         "label": "Monthly Contribution Minute",
         "description": "Minute (0-59) for the monthly PF/Gratuity job.",
     },
+    # ── FRED API Key ──
+    {
+        "key": "fred_api_key",
+        "value": "",
+        "value_type": "secret",
+        "category": "api_keys",
+        "label": "FRED API Key",
+        "description": "API key for Federal Reserve Economic Data (fred.stlouisfed.org). Used for Global Liquidity Insight (M2 money supply data). Free key at fred.stlouisfed.org/docs/api/api_key.html",
+    },
     # ── Market Data API Keys ──
     {
         "key": "cmc_api_key",

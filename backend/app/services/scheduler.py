@@ -160,6 +160,35 @@ def _us_fng_refresh():
         db.close()
 
 
+def _liquidity_refresh():
+    """Weekly refresh of global M2 (FRED) + asset price history (Yahoo Finance)."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        from app.services.liquidity_service import refresh_liquidity_data
+        refresh_liquidity_data(db)
+    except Exception as exc:
+        logger.error(f"Liquidity data refresh failed: {exc}")
+    finally:
+        db.close()
+
+
+def _liquidity_startup_refresh():
+    """Refresh liquidity cache at startup only if stale (avoids redundant fetches)."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        from app.services.liquidity_service import (
+            _is_cache_fresh, _cache_version_ok, refresh_liquidity_data,
+        )
+        if not _is_cache_fresh(db) or not _cache_version_ok(db):
+            refresh_liquidity_data(db)
+    except Exception as exc:
+        logger.error(f"Startup liquidity refresh failed: {exc}")
+    finally:
+        db.close()
+
+
 def start_scheduler(db: Optional[Session] = None):
     """Start the background scheduler with all periodic tasks."""
     if scheduler.running:
@@ -308,6 +337,16 @@ def start_scheduler(db: Optional[Session] = None):
         replace_existing=True,
     )
 
+    # Weekly global liquidity refresh — every Monday at 02:00 UTC
+    # Fetches M2 money supply from FRED and asset price history from Yahoo Finance
+    scheduler.add_job(
+        func=_liquidity_refresh,
+        trigger=CronTrigger(day_of_week="mon", hour=2, minute=0, timezone="UTC"),
+        id="liquidity_refresh_job",
+        name="Weekly Global Liquidity Data Refresh (FRED + Yahoo Finance)",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info(
         f"Background scheduler started. "
@@ -342,6 +381,9 @@ def start_scheduler(db: Optional[Session] = None):
 
     # Warm the news cache immediately at startup so first page load doesn't wait
     threading.Thread(target=_news_cache_refresh, daemon=True, name="news-cache-startup").start()
+
+    # Refresh liquidity cache at startup if stale (weekly data, low-cost check)
+    threading.Thread(target=_liquidity_startup_refresh, daemon=True, name="liquidity-startup").start()
 
 
 def stop_scheduler():

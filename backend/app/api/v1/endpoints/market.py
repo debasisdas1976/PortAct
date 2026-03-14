@@ -4,12 +4,18 @@ server-side to avoid browser CORS restrictions.
 
 Also serves macro-economic indicators (RBI repo rate, India CPI, US CPI,
 US Unemployment) via get_macro_indicators(), with US data live from BLS.
+
+Indian index data sources (real-time, no 15-min delay):
+  - NIFTY 50 (^NSEI) : NSE allIndices API — real-time, no delay
+  - SENSEX   (^BSESN): BSE SensexData API — real-time, no delay
+  Both fall back to Yahoo Finance if the primary source fails.
 """
 
 from fastapi import APIRouter, Depends, Query, HTTPException
-from typing import List
+from typing import List, Optional
 import httpx
 import asyncio
+import logging
 
 from sqlalchemy.orm import Session
 
@@ -23,6 +29,8 @@ from app.services.reference_rates_service import get_reference_rates
 from app.services.financial_events_service import get_upcoming_financial_events, get_cached_global_financial_news
 from app.services.nse_holidays_service import get_nse_holidays
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 _YF_HEADERS = {
@@ -31,6 +39,15 @@ _YF_HEADERS = {
 }
 
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
+_INDIA_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+}
 
 
 async def _fetch_yahoo_quote(client: httpx.AsyncClient, symbol: str) -> dict:
@@ -62,6 +79,69 @@ async def _fetch_yahoo_quote(client: httpx.AsyncClient, symbol: str) -> dict:
         return {"symbol": symbol, "price": None, "change_pct": None, "currency": None, "ok": False, "error": str(exc)}
 
 
+async def _fetch_nse_nifty(client: httpx.AsyncClient) -> Optional[dict]:
+    """
+    Fetch NIFTY 50 in real-time from NSE's allIndices API (no 15-min delay).
+    Establishes an NSE session by visiting the homepage first to obtain cookies.
+    Returns None on any failure so the caller can fall back to Yahoo Finance.
+    """
+    try:
+        await client.get(
+            "https://www.nseindia.com",
+            headers={**_INDIA_BROWSER_HEADERS, "Accept": "text/html,application/xhtml+xml,*/*"},
+            timeout=_TIMEOUT,
+        )
+        await asyncio.sleep(0.3)
+        r = await client.get(
+            "https://www.nseindia.com/api/allIndices",
+            headers={**_INDIA_BROWSER_HEADERS, "Accept": "application/json, text/plain, */*", "Referer": "https://www.nseindia.com/"},
+            timeout=_TIMEOUT,
+        )
+        r.raise_for_status()
+        for item in r.json().get("data", []):
+            if item.get("indexSymbol") == "NIFTY 50":
+                price = float(item["last"])
+                change_pct = float(item.get("percentChange", 0))
+                return {
+                    "symbol": "^NSEI",
+                    "price": round(price, 2),
+                    "change_pct": round(change_pct, 4),
+                    "currency": "INR",
+                    "ok": True,
+                }
+    except Exception as exc:
+        logger.warning("NSE NIFTY 50 real-time fetch failed, will fall back to Yahoo: %s", exc)
+    return None
+
+
+async def _fetch_bse_sensex(client: httpx.AsyncClient) -> Optional[dict]:
+    """
+    Fetch SENSEX in real-time from BSE's SensexData API (no 15-min delay).
+    Returns None on any failure so the caller can fall back to Yahoo Finance.
+    """
+    try:
+        r = await client.get(
+            "https://api.bseindia.com/BseIndiaAPI/api/SensexData/w",
+            headers={**_INDIA_BROWSER_HEADERS, "Accept": "application/json, text/plain, */*", "Referer": "https://www.bseindia.com/"},
+            timeout=_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        # Response: {"CurrVal":"81234.56","Change":"432.39","PcChange":"0.54",...}
+        curr_val = float(str(data["CurrVal"]).replace(",", ""))
+        change_pct = float(str(data.get("PcChange", "0")).replace(",", "").replace("%", "").strip())
+        return {
+            "symbol": "^BSESN",
+            "price": round(curr_val, 2),
+            "change_pct": round(change_pct, 4),
+            "currency": "INR",
+            "ok": True,
+        }
+    except Exception as exc:
+        logger.warning("BSE SENSEX real-time fetch failed, will fall back to Yahoo: %s", exc)
+    return None
+
+
 async def _fetch_bitcoin(client: httpx.AsyncClient) -> dict:
     """Fetch Bitcoin price from CoinGecko."""
     url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true"
@@ -81,21 +161,42 @@ async def _fetch_bitcoin(client: httpx.AsyncClient) -> dict:
         return {"symbol": "BTC-USD", "price": None, "change_pct": None, "currency": "USD", "ok": False, "error": str(exc)}
 
 
+async def _fetch_quote_for_symbol(client: httpx.AsyncClient, symbol: str) -> dict:
+    """
+    Route a symbol to the best real-time source, falling back to Yahoo Finance.
+    - ^NSEI  (NIFTY 50): NSE allIndices API → Yahoo fallback
+    - ^BSESN (SENSEX)  : BSE SensexData API → Yahoo fallback
+    - All others       : Yahoo Finance v8 chart API
+    """
+    if symbol == "^NSEI":
+        result = await _fetch_nse_nifty(client)
+        if result is not None:
+            return result
+        logger.info("^NSEI falling back to Yahoo Finance")
+    elif symbol == "^BSESN":
+        result = await _fetch_bse_sensex(client)
+        if result is not None:
+            return result
+        logger.info("^BSESN falling back to Yahoo Finance")
+    return await _fetch_yahoo_quote(client, symbol)
+
+
 @router.get("/quotes")
 async def get_market_quotes(
     symbols: str = Query(..., description="Comma-separated Yahoo Finance symbols, e.g. ^NSEI,GC=F"),
     _current_user: User = Depends(get_current_active_user),
 ):
     """
-    Proxy endpoint that fetches live market quotes from Yahoo Finance.
-    Avoids browser CORS restrictions by fetching server-side.
+    Proxy endpoint that fetches live market quotes server-side (avoids CORS).
+    NIFTY 50 and SENSEX use their respective exchange APIs for real-time data
+    (no 15-minute delay); all other symbols use Yahoo Finance.
     """
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
     if not symbol_list:
         raise HTTPException(status_code=400, detail="No symbols provided")
 
     async with httpx.AsyncClient() as client:
-        tasks = [_fetch_yahoo_quote(client, sym) for sym in symbol_list]
+        tasks = [_fetch_quote_for_symbol(client, sym) for sym in symbol_list]
         results = await asyncio.gather(*tasks)
 
     return {"quotes": list(results)}

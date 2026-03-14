@@ -156,7 +156,7 @@ def parse_zerodha_tradebook(file_path: str, file_type: str) -> Tuple[List[Dict[s
                 trade_date = trade_date_raw
             elif isinstance(trade_date_raw, str):
                 trade_date_raw = trade_date_raw.strip()
-                for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%dT%H:%M:%S'):
+                for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d/%m/%y', '%Y-%m-%dT%H:%M:%S'):
                     try:
                         trade_date = datetime.strptime(trade_date_raw, fmt)
                         break

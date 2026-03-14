@@ -66,6 +66,11 @@ const API_KEY_FIELDS = [
 
 const MARKET_API_KEY_FIELDS = [
   {
+    key: 'fred_api_key',
+    label: 'FRED API Key',
+    helperText: 'Federal Reserve Economic Data — used for Global Liquidity Insight (M2 money supply). Free key at fred.stlouisfed.org',
+  },
+  {
     key: 'cmc_api_key',
     label: 'CoinMarketCap API Key',
     helperText: 'Used for Bitcoin Fear & Greed Index. Free tier at coinmarketcap.com/api',

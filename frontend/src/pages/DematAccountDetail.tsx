@@ -482,8 +482,9 @@ const DematAccountDetail: React.FC = () => {
       return;
     }
 
-    // If there are existing holdings, show warning before proceeding
-    if (holdings.length > 0 || transactions.length > 0) {
+    // Only warn for non-tradebook uploads (which replace existing holdings)
+    // Tradebook uploads are additive — they only add missing transactions
+    if (statementType !== 'tradebook_statement' && (holdings.length > 0 || transactions.length > 0)) {
       setOpenUploadDialog(false);
       setShowUploadWarning(true);
     } else {

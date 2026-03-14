@@ -547,13 +547,19 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
                     new_price, previous_close = _extract_batch_price(yf_cache[nse_sym])
                     if new_price:
                         logger.info(f"Batch cache hit for commodity {asset.symbol} ({nse_sym}): ₹{new_price:.2f}")
-            # 2. AMFI NAV (instant cached lookup for INF* ISINs — before slow yfinance)
+            # 2. Live Yahoo chart by NSE symbol (fast, direct HTTP — returns current market price).
+            # This runs before AMFI so intraday refreshes get the live NSE price, not a stale NAV.
+            if not new_price:
+                new_price, previous_close = get_stock_price_yahoo_chart(lookup_symbol)
+                if new_price:
+                    logger.info(f"Fetched commodity price via Yahoo chart for {lookup_symbol}: ₹{new_price:.2f}")
+            # 3. AMFI NAV (fallback when Yahoo is unavailable, e.g. after market close or network error)
             if not new_price and asset.isin and asset.isin.startswith('INF'):
                 result = get_mutual_fund_price(asset.isin)
                 if result and result[0]:
                     new_price = result[0]
                     logger.info(f"Fetched commodity price via MF NAV for {asset.symbol} (ISIN: {asset.isin})")
-            # 3. FMP/US batch cache, then individual US stock API (for US-listed commodities)
+            # 4. FMP/US batch cache, then individual US stock API (for US-listed commodities)
             if not new_price:
                 usd_price, prev_usd = None, None
                 if lookup_symbol in fmp_cache:
@@ -572,7 +578,7 @@ def update_asset_price(asset: Asset, db: Session, price_cache: dict = None) -> b
                     asset.details['last_updated'] = datetime.now(timezone.utc).isoformat()
                     flag_modified(asset, 'details')
                     logger.info(f"Fetched commodity price via US API for {lookup_symbol}: ${usd_price} (₹{new_price:.2f})")
-            # 4. Slow fallbacks: yfinance/NSE (only if all fast paths failed)
+            # 5. Slow fallbacks: yfinance/NSE (only if all fast paths failed)
             if not new_price and asset.isin:
                 new_price = get_stock_price_yfinance(asset.isin)
                 if new_price:

@@ -676,6 +676,19 @@ export const assetAttributesAPI = {
   },
 };
 
+// Liquidity Insight API
+export const liquidityAPI = {
+  getData: async () => {
+    const response = await api.get('/liquidity');
+    return response.data;
+  },
+
+  refresh: async () => {
+    const response = await api.post('/liquidity/refresh');
+    return response.data;
+  },
+};
+
 export default api;
 
 // Made with Bob

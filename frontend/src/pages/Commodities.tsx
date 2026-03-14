@@ -40,6 +40,7 @@ import {
  Warning as WarningIcon,
  Info as InfoIcon,
  Label as LabelIcon,
+ Error as ErrorIcon,
 } from '@mui/icons-material';
 import AssetAttributeTagDialog from '../components/AssetAttributeTagDialog';
 import api, { transactionsAPI } from '../services/api';
@@ -69,6 +70,9 @@ interface CommodityAsset {
   account_id?: string;
   account_holder_name?: string;
   details?: Record<string, any>;
+  price_update_failed?: boolean;
+  price_update_error?: string;
+  last_price_update?: string;
 }
 
 interface DematAccount {
@@ -493,6 +497,11 @@ const Commodities: React.FC = () => {
                               </Box>
                             </TableCell>
                             <TableCell align="center">
+                              {commodity.price_update_failed && (
+                                <Tooltip title={commodity.price_update_error || 'Price update failed'} arrow>
+                                  <ErrorIcon fontSize="small" color="error" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+                                </Tooltip>
+                              )}
                               <IconButton size="small" color="info" title="Refresh Price" onClick={(e) => { e.stopPropagation(); handlePriceUpdate(commodity.id, commodity.symbol || commodity.name); }} disabled={updatingAssetId === commodity.id}>
                                 {updatingAssetId === commodity.id ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                               </IconButton>
