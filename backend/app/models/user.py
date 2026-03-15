@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, Float, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, Float, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -35,7 +35,10 @@ class User(Base):
     date_of_joining = Column(Date, nullable=True)
     pf_employee_pct = Column(Float, nullable=True, default=12)
     pf_employer_pct = Column(Float, nullable=True, default=12)
-    
+
+    # User preferences (JSON dict for per-user UI settings)
+    preferences = Column(JSON, nullable=True, default=dict)
+
     # Relationships
     assets = relationship("Asset", back_populates="owner", cascade="all, delete-orphan")
     statements = relationship("Statement", back_populates="user", cascade="all, delete-orphan")

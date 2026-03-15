@@ -416,25 +416,35 @@ const ExpenseDashboard: React.FC = () => {
             <Typography variant="h6" gutterBottom>
               Category Distribution
             </Typography>
-            <ResponsiveContainer width="100%" height={400}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                  outerRadius={120}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip content={<PieTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <ResponsiveContainer width="55%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={120}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<PieTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '45%' }}>
+                {[...pieData].sort((a, b) => b.value - a.value).map((entry, index) => (
+                  <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: entry.color, flexShrink: 0 }} />
+                    <Typography variant="caption" noWrap>
+                      {entry.name} ({((entry.value / data!.total_expenses) * 100).toFixed(0)}%)
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
           </Paper>
         </Grid>
 

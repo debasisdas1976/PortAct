@@ -23,6 +23,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
+  DialogContentText,
   Link,
 } from '@mui/material';
 import {
@@ -38,13 +40,14 @@ import {
   RocketLaunch as GettingStartedIcon,
   Close as CloseIcon,
   ShowChart,
+  CameraAlt,
 } from '@mui/icons-material';
 import { AppDispatch, RootState } from '../store';
 import { fetchPortfolioSummary, fetchPortfolios, setSelectedPortfolioId } from '../store/slices/portfolioSlice';
 import { fetchAssets } from '../store/slices/assetsSlice';
 import PerformanceChart from '../components/charts/PerformanceChart';
 import AssetAllocationChart from '../components/charts/AssetAllocationChart';
-import api, { assetTypesAPI } from '../services/api';
+import api, { authAPI, assetTypesAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
 import { useSelectedPortfolio } from '../hooks/useSelectedPortfolio';
@@ -196,6 +199,9 @@ const Dashboard: React.FC = () => {
   const [assetTypeMap, setAssetTypeMap] = useState<Record<string, { category: string; displayLabel: string }>>({});
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [gettingStartedOpen, setGettingStartedOpen] = useState(false);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [gettingStartedDismissed, setGettingStartedDismissed] = useState(false);
+  const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
 
   const NavLink = ({ to, children }: { to: string; children: React.ReactNode }) => (
     <Link
@@ -221,6 +227,14 @@ const Dashboard: React.FC = () => {
     };
     fetchData();
   }, [dispatch, selectedPortfolioId]);
+
+  useEffect(() => {
+    authAPI.getCurrentUser().then((user: any) => {
+      if (user?.preferences?.hide_getting_started) {
+        setGettingStartedDismissed(true);
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetchAssetTypeMap = async () => {
@@ -422,31 +436,64 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleTakeSnapshot = async () => {
+    try {
+      setSnapshotLoading(true);
+      await api.post('/dashboard/take-snapshot', {});
+      notify.success('Snapshot created successfully!');
+    } catch (err) {
+      notify.error(getErrorMessage(err, 'Failed to take snapshot'));
+    } finally {
+      setSnapshotLoading(false);
+    }
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h4">
           Portfolio Dashboard
         </Typography>
-        <Tooltip title={hideNumbers ? "Show Numbers" : "Hide Numbers"}>
-          <IconButton onClick={toggleHideNumbers} color="primary">
-            {hideNumbers ? <Visibility /> : <VisibilityOff />}
-          </IconButton>
-        </Tooltip>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={snapshotLoading ? <CircularProgress size={20} /> : <CameraAlt />}
+            onClick={handleTakeSnapshot}
+            disabled={snapshotLoading}
+          >
+            {snapshotLoading ? 'Taking Snapshot...' : 'Take Snapshot'}
+          </Button>
+          <Tooltip title={hideNumbers ? "Show Numbers" : "Hide Numbers"}>
+            <IconButton onClick={toggleHideNumbers} color="primary">
+              {hideNumbers ? <Visibility /> : <VisibilityOff />}
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
-      <Alert
-        severity="info"
-        icon={<GettingStartedIcon />}
-        action={
-          <Button color="inherit" size="small" onClick={() => setGettingStartedOpen(true)}>
-            Learn More
-          </Button>
-        }
-        sx={{ mb: 3 }}
-      >
-        New to PortAct? See how to set up your portfolios and start tracking your assets.
-      </Alert>
+      {!gettingStartedDismissed && (
+        <Alert
+          severity="info"
+          icon={<GettingStartedIcon />}
+          action={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Button color="inherit" size="small" onClick={() => setGettingStartedOpen(true)}>
+                Learn More
+              </Button>
+              <IconButton
+                size="small"
+                color="inherit"
+                onClick={() => setDismissConfirmOpen(true)}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          }
+          sx={{ mb: 3 }}
+        >
+          New to PortAct? See how to set up your portfolios and start tracking your assets.
+        </Alert>
+      )}
 
       {/* Summary Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -774,6 +821,34 @@ const Dashboard: React.FC = () => {
         </Grid>
 
       </Grid>
+
+      {/* Dismiss Getting Started Confirmation */}
+      <Dialog open={dismissConfirmOpen} onClose={() => setDismissConfirmOpen(false)}>
+        <DialogTitle>Hide Getting Started Guide?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will permanently hide the getting started banner from your dashboard. You won't see it again.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDismissConfirmOpen(false)}>Cancel</Button>
+          <Button
+            onClick={async () => {
+              setGettingStartedDismissed(true);
+              setDismissConfirmOpen(false);
+              try {
+                await authAPI.updatePreferences({ hide_getting_started: true });
+              } catch {
+                notify.error('Failed to save preference');
+              }
+            }}
+            color="primary"
+            variant="contained"
+          >
+            Hide Permanently
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Getting Started Dialog */}
       <Dialog open={gettingStartedOpen} onClose={() => setGettingStartedOpen(false)} maxWidth="sm" fullWidth>

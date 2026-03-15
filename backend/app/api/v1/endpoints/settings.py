@@ -15,6 +15,7 @@ from app.schemas.app_settings import (
     AppSettingResponse,
     AppSettingsBulkUpdate,
 )
+from app.services.ai_models_service import get_cached_models, refresh_ai_models_cache
 
 router = APIRouter()
 
@@ -28,6 +29,36 @@ SCHEDULER_KEYS = {
     "monthly_contribution_day",
     "monthly_contribution_hour",
     "monthly_contribution_minute",
+    "forex_refresh_hour",
+    "forex_refresh_minute",
+    "macro_data_refresh_day",
+    "macro_data_refresh_hour",
+    "rbi_rate_refresh_day",
+    "rbi_rate_refresh_hour",
+    "bank_fd_refresh_day",
+    "bank_fd_refresh_hour",
+    "govt_scheme_refresh_day",
+    "govt_scheme_refresh_hour",
+    "govt_scheme_refresh_minute",
+    "news_cache_refresh_minutes",
+    "nse_holidays_refresh_month",
+    "nse_holidays_refresh_day",
+    "mmi_morning_hour",
+    "mmi_morning_minute",
+    "mmi_afternoon_hour",
+    "mmi_afternoon_minute",
+    "btc_fng_hour",
+    "btc_fng_minute",
+    "us_fng_open_hour",
+    "us_fng_open_minute",
+    "us_fng_close_hour",
+    "us_fng_close_minute",
+    "liquidity_refresh_day_of_week",
+    "liquidity_refresh_hour",
+    "mf_systematic_plan_hour",
+    "mf_systematic_plan_minute",
+    "ai_models_refresh_hour",
+    "ai_models_refresh_minute",
 }
 
 MASK_PLACEHOLDER = "***"
@@ -145,6 +176,23 @@ async def bulk_update_settings(
     return _apply_masking(rows)
 
 
+@router.get("/secret/{key}")
+async def get_secret_value(
+    key: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_active_user),
+) -> Dict[str, str]:
+    """Return the unmasked value of a single secret setting (for edit dialogs)."""
+    _seed_defaults_if_empty(db)
+    _ensure_new_defaults(db)
+    setting = db.query(AppSettings).filter(AppSettings.key == key).first()
+    if not setting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Setting '{key}' not found")
+    if setting.value_type != "secret":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a secret setting")
+    return {"key": key, "value": setting.value or ""}
+
+
 @router.post("/reset", response_model=List[AppSettingResponse])
 async def reset_settings(
     db: Session = Depends(get_db),
@@ -183,6 +231,18 @@ def _get_setting_value(db: Session, key: str, default: str = "") -> str:
     """Helper to fetch a single setting value."""
     row = db.query(AppSettings).filter(AppSettings.key == key).first()
     return row.value if row and row.value else default
+
+
+@router.get("/api-keys-status")
+async def api_keys_status(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_active_user),
+) -> Dict[str, bool]:
+    """Return which API keys (category='api_keys') are configured (non-empty)."""
+    _seed_defaults_if_empty(db)
+    _ensure_new_defaults(db)
+    rows = db.query(AppSettings).filter(AppSettings.category == "api_keys").all()
+    return {row.key: bool(row.value and row.value.strip()) for row in rows}
 
 
 @router.get("/automations")
@@ -237,12 +297,128 @@ async def list_automations(
         "schedule": f"Daily at {news_evening}:00 IST",
     })
 
+    forex_h = _get_setting_value(db, "forex_refresh_hour", "9")
+    forex_m = _get_setting_value(db, "forex_refresh_minute", "0")
     system_automations.append({
         "name": "Daily Forex Refresh",
         "category": "scheduler",
         "description": "Updates foreign currency asset values with latest exchange rates",
         "enabled": True,
-        "schedule": "Daily at 9:00 UTC (2:30 PM IST)",
+        "schedule": f"Daily at {forex_h}:{forex_m.zfill(2)} UTC",
+    })
+
+    macro_day = _get_setting_value(db, "macro_data_refresh_day", "1")
+    macro_h = _get_setting_value(db, "macro_data_refresh_hour", "6")
+    system_automations.append({
+        "name": "Macro Data Refresh",
+        "category": "market_insight",
+        "description": "Monthly fetch of US CPI, unemployment, India CPI, VIX, Nifty PE, FII/DII flows, SIP inflows",
+        "enabled": True,
+        "schedule": f"Monthly on day {macro_day} at {macro_h}:00 UTC",
+    })
+
+    rbi_day = _get_setting_value(db, "rbi_rate_refresh_day", "10")
+    rbi_h = _get_setting_value(db, "rbi_rate_refresh_hour", "9")
+    system_automations.append({
+        "name": "RBI Repo Rate Scrape",
+        "category": "market_insight",
+        "description": "Bimonthly scrape of RBI repo rate (Feb, Apr, Jun, Aug, Oct, Dec — MPC meeting months)",
+        "enabled": True,
+        "schedule": f"Bimonthly on day {rbi_day} at {rbi_h}:00 UTC",
+    })
+
+    fd_day = _get_setting_value(db, "bank_fd_refresh_day", "1")
+    fd_h = _get_setting_value(db, "bank_fd_refresh_hour", "7")
+    system_automations.append({
+        "name": "Bank FD Rate Scrape",
+        "category": "market_insight",
+        "description": "Monthly scrape of bank fixed deposit interest rates",
+        "enabled": True,
+        "schedule": f"Monthly on day {fd_day} at {fd_h}:00 UTC",
+    })
+
+    govt_day = _get_setting_value(db, "govt_scheme_refresh_day", "1")
+    govt_h = _get_setting_value(db, "govt_scheme_refresh_hour", "7")
+    govt_m = _get_setting_value(db, "govt_scheme_refresh_minute", "30")
+    system_automations.append({
+        "name": "Govt Scheme Rate Scrape",
+        "category": "market_insight",
+        "description": "Monthly scrape of government savings scheme rates (PPF, SSY, NSC, etc.)",
+        "enabled": True,
+        "schedule": f"Monthly on day {govt_day} at {govt_h}:{govt_m.zfill(2)} UTC",
+    })
+
+    news_cache_min = _get_setting_value(db, "news_cache_refresh_minutes", "30")
+    system_automations.append({
+        "name": "Financial News Cache",
+        "category": "market_insight",
+        "description": "Refreshes upcoming financial events and global news headlines",
+        "enabled": True,
+        "schedule": f"Every {news_cache_min} minutes",
+    })
+
+    nse_month = _get_setting_value(db, "nse_holidays_refresh_month", "12")
+    nse_day = _get_setting_value(db, "nse_holidays_refresh_day", "1")
+    system_automations.append({
+        "name": "NSE Holidays Refresh",
+        "category": "market_insight",
+        "description": "Annual refresh of NSE trading holidays (seeds next year's holiday list)",
+        "enabled": True,
+        "schedule": f"Annual on month {nse_month} day {nse_day} at 01:00 UTC",
+    })
+
+    mmi_am_h = _get_setting_value(db, "mmi_morning_hour", "3")
+    mmi_am_m = _get_setting_value(db, "mmi_morning_minute", "45")
+    mmi_pm_h = _get_setting_value(db, "mmi_afternoon_hour", "10")
+    mmi_pm_m = _get_setting_value(db, "mmi_afternoon_minute", "0")
+    system_automations.append({
+        "name": "India Market Mood Index",
+        "category": "market_insight",
+        "description": "Daily scrape of India MMI from Tickertape (morning + afternoon)",
+        "enabled": True,
+        "schedule": f"Daily at {mmi_am_h}:{mmi_am_m.zfill(2)} & {mmi_pm_h}:{mmi_pm_m.zfill(2)} UTC",
+    })
+
+    btc_h = _get_setting_value(db, "btc_fng_hour", "0")
+    btc_m = _get_setting_value(db, "btc_fng_minute", "30")
+    system_automations.append({
+        "name": "Bitcoin Fear & Greed Index",
+        "category": "market_insight",
+        "description": "Daily fetch of Bitcoin Fear & Greed Index from Alternative.me",
+        "enabled": True,
+        "schedule": f"Daily at {btc_h}:{btc_m.zfill(2)} UTC",
+    })
+
+    us_open_h = _get_setting_value(db, "us_fng_open_hour", "14")
+    us_open_m = _get_setting_value(db, "us_fng_open_minute", "45")
+    us_close_h = _get_setting_value(db, "us_fng_close_hour", "21")
+    us_close_m = _get_setting_value(db, "us_fng_close_minute", "0")
+    system_automations.append({
+        "name": "US Fear & Greed Index",
+        "category": "market_insight",
+        "description": "Fetches US Fear & Greed Index from CNN at market open and close",
+        "enabled": True,
+        "schedule": f"Daily at {us_open_h}:{us_open_m.zfill(2)} & {us_close_h}:{us_close_m.zfill(2)} UTC",
+    })
+
+    liq_dow = _get_setting_value(db, "liquidity_refresh_day_of_week", "mon")
+    liq_h = _get_setting_value(db, "liquidity_refresh_hour", "2")
+    system_automations.append({
+        "name": "Global Liquidity Data",
+        "category": "market_insight",
+        "description": "Weekly fetch of M2 money supply (FRED) and asset price history (Yahoo Finance)",
+        "enabled": True,
+        "schedule": f"Every {liq_dow.capitalize()} at {liq_h}:00 UTC",
+    })
+
+    mf_h = _get_setting_value(db, "mf_systematic_plan_hour", "4")
+    mf_m = _get_setting_value(db, "mf_systematic_plan_minute", "0")
+    system_automations.append({
+        "name": "MF Systematic Plans (SIP/STP/SWP)",
+        "category": "scheduler",
+        "description": "Daily execution of mutual fund systematic investment/transfer/withdrawal plans",
+        "enabled": True,
+        "schedule": f"Daily at {mf_h}:{mf_m.zfill(2)} UTC",
     })
 
     # ── Employment-based automations ──
@@ -324,3 +500,22 @@ async def list_automations(
         "system_automations": system_automations,
         "asset_automations": asset_automations,
     }
+
+
+# ───────────────────────── AI Models Cache ─────────────────────────
+
+
+@router.get("/ai-models")
+def get_ai_models(
+    refresh: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """
+    Return cached AI provider models.
+    Pass ?refresh=true to force a live refresh from all providers.
+    """
+    if refresh:
+        refresh_ai_models_cache()
+        # Re-read from DB after refresh
+    return get_cached_models(db)

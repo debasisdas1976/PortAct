@@ -72,6 +72,9 @@ const AssetTypesMaster = React.lazy(() => import('./pages/AssetTypesMaster'));
 const AssetInsight = React.lazy(() => import('./pages/AssetInsight'));
 const AttributeInsight = React.lazy(() => import('./pages/AttributeInsight'));
 const SIPCreator = React.lazy(() => import('./pages/SIPCreator'));
+const SIPSetup = React.lazy(() => import('./pages/SIPSetup'));
+const STPSetup = React.lazy(() => import('./pages/STPSetup'));
+const SWPSetup = React.lazy(() => import('./pages/SWPSetup'));
 const SuperAdmin = React.lazy(() => import('./pages/SuperAdmin'));
 const AssetAttributesMaster = React.lazy(() => import('./pages/AssetAttributesMaster'));
 const MaturityTimeline = React.lazy(() => import('./pages/MaturityTimeline'));
@@ -146,6 +149,9 @@ window.location.href = '/login?session_expired=true';
             <Route path="market-insight" element={<MarketInsight />} />
             <Route path="liquidity-insight" element={<LiquidityInsight />} />
             <Route path="sip-creator" element={<SIPCreator />} />
+            <Route path="sip-setup" element={<SIPSetup />} />
+            <Route path="stp-setup" element={<STPSetup />} />
+            <Route path="swp-setup" element={<SWPSetup />} />
             <Route path="bank-accounts" element={<BankAccounts />} />
             <Route path="demat-accounts" element={<DematAccounts />} />
             <Route path="demat-accounts/:id" element={<DematAccountDetail />} />

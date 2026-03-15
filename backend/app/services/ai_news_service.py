@@ -132,34 +132,16 @@ class AINewsService:
     # Public interface
     # ------------------------------------------------------------------
 
-    def get_provider_config(self) -> dict:
+    def _resolve_provider_config(self, provider: str, db_settings: dict) -> dict:
         """
-        Resolve the active provider's API key, endpoint, and model.
-        Priority: DB setting > env var > None.
+        Resolve a single provider's config from DB settings + env vars.
 
         Returns:
             {"provider": str, "api_key": str, "endpoint": str,
              "model": str, "api_format": str, "display_name": str}
         """
-        from app.core.database import SessionLocal
-        from app.models.app_settings import AppSettings
-
-        db = SessionLocal()
-        try:
-            ai_rows = db.query(AppSettings).filter(AppSettings.category == "ai").all()
-            db_settings = {row.key: row.value for row in ai_rows}
-        finally:
-            db.close()
-
-        provider = (db_settings.get("ai_news_provider") or settings.AI_NEWS_PROVIDER).lower()
-
-        if provider not in self.PROVIDERS:
-            logger.warning(f"Unknown AI provider '{provider}', falling back to openai.")
-            provider = "openai"
-
         prov_conf = self.PROVIDERS[provider]
 
-        # Resolve: DB value > env var fallback
         api_key = (
             db_settings.get(prov_conf["key_setting"])
             or getattr(settings, prov_conf["key_env"], None)
@@ -181,6 +163,63 @@ class AINewsService:
             "api_format": prov_conf["api_format"],
             "display_name": prov_conf["display_name"],
         }
+
+    def _load_ai_settings(self) -> dict:
+        """Load all AI category settings from the DB."""
+        from app.core.database import SessionLocal
+        from app.models.app_settings import AppSettings
+
+        db = SessionLocal()
+        try:
+            ai_rows = db.query(AppSettings).filter(AppSettings.category == "ai").all()
+            return {row.key: row.value for row in ai_rows}
+        finally:
+            db.close()
+
+    def get_provider_config(self) -> dict:
+        """
+        Resolve the active provider's API key, endpoint, and model.
+        Priority: DB setting > env var > None.
+        """
+        db_settings = self._load_ai_settings()
+        provider = (db_settings.get("ai_news_provider") or settings.AI_NEWS_PROVIDER).lower()
+
+        if provider not in self.PROVIDERS:
+            logger.warning(f"Unknown AI provider '{provider}', falling back to openai.")
+            provider = "openai"
+
+        return self._resolve_provider_config(provider, db_settings)
+
+    def get_fallback_chain(self) -> list[dict]:
+        """
+        Return a list of provider configs in fallback order:
+        active provider first, then all other providers that have an API key configured.
+        """
+        db_settings = self._load_ai_settings()
+        active = (db_settings.get("ai_news_provider") or settings.AI_NEWS_PROVIDER).lower()
+        if active not in self.PROVIDERS:
+            active = "openai"
+
+        # Build ordered list: active first, then others with keys
+        chain = []
+        seen = set()
+
+        # 1. Active provider always first
+        cfg = self._resolve_provider_config(active, db_settings)
+        if cfg["api_key"]:
+            chain.append(cfg)
+            seen.add(active)
+
+        # 2. Remaining providers that have a key configured
+        for prov in self.PROVIDERS:
+            if prov in seen:
+                continue
+            cfg = self._resolve_provider_config(prov, db_settings)
+            if cfg["api_key"]:
+                chain.append(cfg)
+                seen.add(prov)
+
+        return chain
 
     async def fetch_asset_news(
         self,
@@ -502,21 +541,8 @@ class AINewsService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _query_ai(self, prompt: str) -> AIResult:
-        """Route the prompt to the currently configured AI provider."""
-        config = self.get_provider_config()
-
-        if not config["api_key"]:
-            return AIResult(
-                success=False,
-                error=f"No API key configured for {config['display_name']}. "
-                      f"Set it in Settings → AI Configuration.",
-                error_type="no_api_key",
-                provider=config["display_name"],
-                model=config["model"],
-                fatal=True,
-            )
-
+    async def _call_single_provider(self, config: dict, prompt: str) -> AIResult:
+        """Call a single provider (anthropic or openai-compatible)."""
         if config["api_format"] == "anthropic":
             return await self._query_anthropic(
                 endpoint=config["endpoint"],
@@ -533,6 +559,51 @@ class AINewsService:
                 prompt=prompt,
                 provider_name=config["display_name"],
             )
+
+    async def _query_ai(self, prompt: str) -> AIResult:
+        """
+        Route the prompt to the active AI provider.
+        If it fails, automatically fall back to the next configured provider.
+        """
+        chain = self.get_fallback_chain()
+
+        if not chain:
+            return AIResult(
+                success=False,
+                error="No AI provider keys configured. "
+                      "Set at least one in Settings → AI Configuration.",
+                error_type="no_api_key",
+                provider=None,
+                model=None,
+                fatal=True,
+            )
+
+        last_result: AIResult | None = None
+        for i, config in enumerate(chain):
+            result = await self._call_single_provider(config, prompt)
+
+            if result.success:
+                if i > 0:
+                    logger.info(
+                        f"AI fallback succeeded: {config['display_name']} "
+                        f"(after {i} failed provider(s))"
+                    )
+                return result
+
+            last_result = result
+            # Fatal errors that won't be fixed by switching provider
+            # (e.g. prompt too long) — don't bother trying others
+            if result.fatal and result.error_type not in ("no_api_key", "api_error"):
+                break
+
+            if i < len(chain) - 1:
+                next_name = chain[i + 1]["display_name"]
+                logger.warning(
+                    f"{config['display_name']} failed ({result.error_type}), "
+                    f"falling back to {next_name}"
+                )
+
+        return last_result  # type: ignore[return-value]
 
     async def _query_provider(
         self,

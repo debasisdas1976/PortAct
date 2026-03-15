@@ -21,6 +21,7 @@ from app.models.asset_attribute import AssetAttribute, AssetAttributeValue, Asse
 from app.models.macro_data import MacroDataPoint
 from app.models.reference_rate import ReferenceRate
 from app.models.nse_holiday import NseHoliday
+from app.models.mf_systematic_plan import MFSystematicPlan
 
 __all__ = [
     "User",
@@ -59,6 +60,7 @@ __all__ = [
     "MacroDataPoint",
     "ReferenceRate",
     "NseHoliday",
+    "MFSystematicPlan",
 ]
 
 # Made with Bob

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Dict, Optional, Any
 from datetime import datetime, date
 
 
@@ -66,6 +66,7 @@ class UserInDB(UserBase):
     date_of_joining: Optional[date] = None
     pf_employee_pct: Optional[float] = None
     pf_employer_pct: Optional[float] = None
+    preferences: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True

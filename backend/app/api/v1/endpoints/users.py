@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -77,6 +77,21 @@ async def update_current_user(
     db.refresh(current_user)
 
     return current_user
+
+
+@router.patch("/me/preferences")
+async def update_preferences(
+    prefs: Dict[str, Any],
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Merge the given keys into the user's preferences dict."""
+    current = dict(current_user.preferences or {})
+    current.update(prefs)
+    current_user.preferences = current
+    db.commit()
+    db.refresh(current_user)
+    return current_user.preferences
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)

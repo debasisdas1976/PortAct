@@ -184,6 +184,11 @@ export const authAPI = {
     const response = await api.put('/users/me', data);
     return response.data;
   },
+
+  updatePreferences: async (prefs: Record<string, any>) => {
+    const response = await api.patch('/users/me/preferences', prefs);
+    return response.data;
+  },
 };
 
 // Portfolios API
@@ -551,6 +556,21 @@ export const settingsAPI = {
     const response = await api.get('/settings/automations');
     return response.data;
   },
+
+  getAiModels: async (refresh = false) => {
+    const response = await api.get('/settings/ai-models', { params: refresh ? { refresh: true } : {} });
+    return response.data;
+  },
+
+  getApiKeysStatus: async (): Promise<Record<string, boolean>> => {
+    const response = await api.get('/settings/api-keys-status');
+    return response.data;
+  },
+
+  getSecretValue: async (key: string): Promise<string> => {
+    const response = await api.get(`/settings/secret/${key}`);
+    return response.data.value;
+  },
 };
 
 // System API (version check)
@@ -685,6 +705,35 @@ export const liquidityAPI = {
 
   refresh: async () => {
     const response = await api.post('/liquidity/refresh');
+    return response.data;
+  },
+};
+
+// MF Systematic Plans API (SIP/STP/SWP Setup)
+export const mfPlansAPI = {
+  getAll: async (planType?: string) => {
+    const params: any = {};
+    if (planType) params.plan_type = planType;
+    const response = await api.get('/mf-plans', { params });
+    return response.data;
+  },
+
+  create: async (data: any) => {
+    const response = await api.post('/mf-plans', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: any) => {
+    const response = await api.put(`/mf-plans/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/mf-plans/${id}`);
+  },
+
+  toggle: async (id: number) => {
+    const response = await api.patch(`/mf-plans/${id}/toggle`);
     return response.data;
   },
 };

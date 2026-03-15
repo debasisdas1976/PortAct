@@ -1,12 +1,16 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Card, CardContent, Typography, TextField, Button, Grid, Alert,
   CircularProgress, Snackbar, Tabs, Tab, MenuItem, Select,
   FormControl, FormControlLabel, Switch, InputLabel, InputAdornment, Paper, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, IconButton, Chip,
-  Accordion, AccordionSummary, AccordionDetails,
+  TableCell, TableContainer, TableHead, TableRow, IconButton, Chip, Tooltip, Radio,
+  Dialog, DialogActions, DialogContent, DialogTitle,
 } from '@mui/material';
-import { Save, RestartAlt, Visibility, VisibilityOff, ExpandMore, Schedule, Work, AccountBalance } from '@mui/icons-material';
+import {
+  Save, RestartAlt, Visibility, VisibilityOff, Schedule, Work, AccountBalance, Public, Refresh,
+  Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
+} from '@mui/icons-material';
 import { authAPI, settingsAPI } from '../services/api';
 
 /* ─────────────────── types ─────────────────── */
@@ -54,17 +58,21 @@ const AI_PROVIDERS = [
   { value: 'mistral', label: 'Mistral AI' },
 ];
 
-const API_KEY_FIELDS = [
-  { key: 'ai_openai_api_key', label: 'OpenAI API Key', provider: 'openai' },
-  { key: 'ai_grok_api_key', label: 'Grok API Key', provider: 'grok' },
-  { key: 'ai_gemini_api_key', label: 'Google Gemini API Key', provider: 'gemini' },
-  { key: 'ai_anthropic_api_key', label: 'Anthropic Claude API Key', provider: 'anthropic' },
-  { key: 'ai_deepseek_api_key', label: 'DeepSeek API Key', provider: 'deepseek' },
-  { key: 'ai_mistral_api_key', label: 'Mistral API Key', provider: 'mistral' },
-  { key: 'finnhub_api_key', label: 'Finnhub API Key (Free)', provider: 'finnhub' },
-];
+const AI_PROVIDERS_MAP: Record<string, { key: string; label: string }> = {
+  openai: { key: 'ai_openai_api_key', label: 'OpenAI API Key' },
+  grok: { key: 'ai_grok_api_key', label: 'Grok API Key' },
+  gemini: { key: 'ai_gemini_api_key', label: 'Google Gemini API Key' },
+  anthropic: { key: 'ai_anthropic_api_key', label: 'Anthropic Claude API Key' },
+  deepseek: { key: 'ai_deepseek_api_key', label: 'DeepSeek API Key' },
+  mistral: { key: 'ai_mistral_api_key', label: 'Mistral API Key' },
+};
 
 const MARKET_API_KEY_FIELDS = [
+  {
+    key: 'finnhub_api_key',
+    label: 'Finnhub API Key',
+    helperText: 'Used for stock quotes and market data. Free tier at finnhub.io',
+  },
   {
     key: 'fred_api_key',
     label: 'FRED API Key',
@@ -87,10 +95,99 @@ const MARKET_API_KEY_FIELDS = [
   },
 ];
 
+/* ─────────────────── scheduler tasks ─────────────────── */
+
+type SchedFreq = 'interval' | 'daily' | 'weekly' | 'monthly' | 'bimonthly' | 'annual';
+
+interface SchedulerTask {
+  id: string;
+  name: string;
+  description: string;
+  category: 'portfolio' | 'market' | 'contribution';
+  freq: SchedFreq;
+  /** settings keys */
+  keys: {
+    interval_minutes?: string;
+    hour?: string;
+    minute?: string;
+    day?: string;
+    day_of_week?: string;
+    month?: string;
+    ist_hour?: string;    // if hour is IST not UTC
+    count?: string;       // non-schedule config (e.g. news_limit_per_user)
+  };
+}
+
+const SCHEDULER_TASKS: SchedulerTask[] = [
+  // ── Portfolio ──
+  { id: 'price', name: 'Price Updates', description: 'Auto-fetch latest prices for stocks, MF, crypto, commodities.', category: 'portfolio', freq: 'interval', keys: { interval_minutes: 'price_update_interval_minutes' } },
+  { id: 'eod', name: 'EOD Portfolio Snapshot', description: 'Capture daily portfolio value for charts & tracking.', category: 'portfolio', freq: 'daily', keys: { hour: 'eod_snapshot_hour', minute: 'eod_snapshot_minute' } },
+  { id: 'news_am', name: 'Morning News Alerts', description: 'AI-generated portfolio news (morning run).', category: 'portfolio', freq: 'daily', keys: { ist_hour: 'news_morning_hour' } },
+  { id: 'news_pm', name: 'Evening News Alerts', description: 'AI-generated portfolio news (evening run).', category: 'portfolio', freq: 'daily', keys: { ist_hour: 'news_evening_hour' } },
+  { id: 'news_limit', name: 'News Coverage', description: 'Number of assets analysed per scheduled news run.', category: 'portfolio', freq: 'daily', keys: { count: 'news_limit_per_user' } },
+  { id: 'forex', name: 'Forex Refresh', description: 'Daily update of foreign currency asset values.', category: 'portfolio', freq: 'daily', keys: { hour: 'forex_refresh_hour', minute: 'forex_refresh_minute' } },
+  { id: 'mf_plan', name: 'MF Systematic Plans', description: 'Daily SIP/STP/SWP execution for mutual funds.', category: 'portfolio', freq: 'daily', keys: { hour: 'mf_systematic_plan_hour', minute: 'mf_systematic_plan_minute' } },
+  { id: 'ai_models', name: 'AI Models Refresh', description: 'Refresh available AI model lists from all providers.', category: 'portfolio', freq: 'daily', keys: { hour: 'ai_models_refresh_hour', minute: 'ai_models_refresh_minute' } },
+  // ── Market Insight ──
+  { id: 'mmi_am', name: 'India MMI (Morning)', description: 'Market Mood Index scrape after NSE open.', category: 'market', freq: 'daily', keys: { hour: 'mmi_morning_hour', minute: 'mmi_morning_minute' } },
+  { id: 'mmi_pm', name: 'India MMI (Afternoon)', description: 'Intraday MMI update.', category: 'market', freq: 'daily', keys: { hour: 'mmi_afternoon_hour', minute: 'mmi_afternoon_minute' } },
+  { id: 'btc_fng', name: 'BTC Fear & Greed', description: 'Daily Bitcoin Fear & Greed Index.', category: 'market', freq: 'daily', keys: { hour: 'btc_fng_hour', minute: 'btc_fng_minute' } },
+  { id: 'us_fng_open', name: 'US Fear & Greed (Open)', description: 'US Fear & Greed Index at market open.', category: 'market', freq: 'daily', keys: { hour: 'us_fng_open_hour', minute: 'us_fng_open_minute' } },
+  { id: 'us_fng_close', name: 'US Fear & Greed (Close)', description: 'US Fear & Greed Index at market close.', category: 'market', freq: 'daily', keys: { hour: 'us_fng_close_hour', minute: 'us_fng_close_minute' } },
+  { id: 'news_cache', name: 'Financial News Cache', description: 'Refresh upcoming financial events & news.', category: 'market', freq: 'interval', keys: { interval_minutes: 'news_cache_refresh_minutes' } },
+  { id: 'liquidity', name: 'Global Liquidity Data', description: 'M2 money supply (FRED) + asset prices (Yahoo).', category: 'market', freq: 'weekly', keys: { day_of_week: 'liquidity_refresh_day_of_week', hour: 'liquidity_refresh_hour' } },
+  { id: 'macro', name: 'Macro Data Refresh', description: 'US CPI, unemployment, India CPI, VIX, Nifty PE, FII/DII, SIP.', category: 'market', freq: 'monthly', keys: { day: 'macro_data_refresh_day', hour: 'macro_data_refresh_hour' } },
+  { id: 'rbi', name: 'RBI Repo Rate', description: 'Bimonthly scrape on MPC meeting months.', category: 'market', freq: 'bimonthly', keys: { day: 'rbi_rate_refresh_day', hour: 'rbi_rate_refresh_hour' } },
+  { id: 'bank_fd', name: 'Bank FD Rates', description: 'Monthly scrape of bank FD interest rates.', category: 'market', freq: 'monthly', keys: { day: 'bank_fd_refresh_day', hour: 'bank_fd_refresh_hour' } },
+  { id: 'govt', name: 'Govt Scheme Rates', description: 'Monthly scrape of PPF, SSY, NSC, etc.', category: 'market', freq: 'monthly', keys: { day: 'govt_scheme_refresh_day', hour: 'govt_scheme_refresh_hour', minute: 'govt_scheme_refresh_minute' } },
+  { id: 'nse', name: 'NSE Holidays', description: 'Annual refresh of NSE trading holidays.', category: 'market', freq: 'annual', keys: { month: 'nse_holidays_refresh_month', day: 'nse_holidays_refresh_day' } },
+  // ── Contribution ──
+  { id: 'pf', name: 'PF & Gratuity', description: 'Monthly PF contributions and Gratuity revaluation.', category: 'contribution', freq: 'monthly', keys: { day: 'monthly_contribution_day', hour: 'monthly_contribution_hour', minute: 'monthly_contribution_minute' } },
+];
+
+const FREQ_LABELS: Record<SchedFreq, string> = {
+  interval: 'Interval',
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  bimonthly: 'Bimonthly',
+  annual: 'Annual',
+};
+
+const FREQ_COLORS: Record<SchedFreq, 'primary' | 'success' | 'info' | 'warning' | 'secondary' | 'default'> = {
+  interval: 'info',
+  daily: 'success',
+  weekly: 'primary',
+  monthly: 'warning',
+  bimonthly: 'secondary',
+  annual: 'default',
+};
+
+const WEEKDAY_OPTIONS = [
+  { value: 'mon', label: 'Monday' },
+  { value: 'tue', label: 'Tuesday' },
+  { value: 'wed', label: 'Wednesday' },
+  { value: 'thu', label: 'Thursday' },
+  { value: 'fri', label: 'Friday' },
+  { value: 'sat', label: 'Saturday' },
+  { value: 'sun', label: 'Sunday' },
+];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  portfolio: 'Portfolio',
+  market: 'Market Insight',
+  contribution: 'Contributions',
+};
+
 /* ─────────────────── component ─────────────────── */
 
 const Settings: React.FC = () => {
-  const [tab, setTab] = useState(0);
+  const [searchParams] = useSearchParams();
+  const initialTab = useMemo(() => {
+    const t = parseInt(searchParams.get('tab') ?? '0', 10);
+    return isNaN(t) ? 0 : Math.max(0, Math.min(t, 4));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [tab, setTab] = useState(initialTab);
   const [loading, setLoading] = useState(true);
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
 
@@ -107,6 +204,7 @@ const Settings: React.FC = () => {
   const [settingsForm, setSettingsForm] = useState<Record<string, string>>({});
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const savedSettingsRef = useRef<Record<string, string>>({});
 
   // Automations state
   const [automations, setAutomations] = useState<{
@@ -117,6 +215,22 @@ const Settings: React.FC = () => {
 
   // API key visibility toggles
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
+
+  // AI provider dialog state
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiEditingProvider, setAiEditingProvider] = useState<string | null>(null);
+  const [aiDialogForm, setAiDialogForm] = useState({ provider: '', api_key: '', model: '', endpoint: '', set_primary: false });
+  const [aiModelsCache, setAiModelsCache] = useState<Record<string, string[]>>({});
+  const [aiModelsLoading, setAiModelsLoading] = useState(false);
+
+  // Market data key dialog state
+  const [mktDialogOpen, setMktDialogOpen] = useState(false);
+  const [mktEditingKey, setMktEditingKey] = useState<string | null>(null);
+  const [mktDialogForm, setMktDialogForm] = useState({ api_key: '' });
+
+  // Scheduler edit dialog state
+  const [schedDialogOpen, setSchedDialogOpen] = useState(false);
+  const [schedEditingTask, setSchedEditingTask] = useState<SchedulerTask | null>(null);
 
   const toggleApiKeyVisibility = (key: string) => {
     setShowApiKeys(prev => ({ ...prev, [key]: !prev[key] }));
@@ -141,6 +255,7 @@ const Settings: React.FC = () => {
         }
       }
       setSettingsForm(form);
+      savedSettingsRef.current = form;
     } catch {
       setSnackbar({ open: true, message: 'Failed to load settings' });
     } finally {
@@ -164,8 +279,66 @@ const Settings: React.FC = () => {
 
   // Fetch automations when the tab is selected
   useEffect(() => {
-    if (tab === 3 && !automations) fetchAutomations();
+    if (tab === 4 && !automations) fetchAutomations();
   }, [tab, automations, fetchAutomations]);
+
+  // Fetch AI models cache when Application Settings tab is active
+  const fetchAiModels = useCallback(async (refresh = false) => {
+    setAiModelsLoading(true);
+    try {
+      const data = await settingsAPI.getAiModels(refresh);
+      setAiModelsCache(data.models || {});
+    } catch {
+      // Silently fail — model dropdown will just allow free-text
+    } finally {
+      setAiModelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 2) fetchAiModels();
+  }, [tab, fetchAiModels]);
+
+  // Auto-save Application Settings (tab 2) on change with debounce
+  useEffect(() => {
+    // Only auto-save on Application Settings tab
+    if (tab !== 2 && tab !== 3) return;
+    // Skip if no settings loaded yet
+    if (Object.keys(savedSettingsRef.current).length === 0) return;
+    // Compute changed keys
+    const changed: { key: string; value: string }[] = [];
+    for (const s of appSettings) {
+      const saved = savedSettingsRef.current[s.key] ?? (s.value ?? '');
+      if (settingsForm[s.key] !== saved) {
+        changed.push({ key: s.key, value: settingsForm[s.key] });
+      }
+    }
+    if (changed.length === 0) return;
+
+    const timer = setTimeout(async () => {
+      setSettingsSaving(true);
+      try {
+        const updated = await settingsAPI.bulkUpdate(changed);
+        setAppSettings(updated);
+        const form: Record<string, string> = {};
+        for (const s of updated as AppSetting[]) {
+          form[s.key] = s.value ?? '';
+          if (s.key === 'session_timeout_minutes') {
+            localStorage.setItem('sessionTimeoutMinutes', s.value ?? '30');
+          }
+        }
+        setSettingsForm(form);
+        savedSettingsRef.current = form;
+        setSnackbar({ open: true, message: `${changed.length} setting(s) saved automatically` });
+      } catch (err: any) {
+        setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to auto-save settings' });
+      } finally {
+        setSettingsSaving(false);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [settingsForm, appSettings, tab]);
 
   /* ── profile save ── */
   const handleSaveProfile = async () => {
@@ -206,39 +379,6 @@ const Settings: React.FC = () => {
     }
   };
 
-  /* ── app settings save ── */
-  const handleSaveSettings = async () => {
-    setSettingsSaving(true);
-    try {
-      const changed: { key: string; value: string }[] = [];
-      for (const s of appSettings) {
-        if (settingsForm[s.key] !== (s.value ?? '')) {
-          changed.push({ key: s.key, value: settingsForm[s.key] });
-        }
-      }
-      if (changed.length === 0) {
-        setSnackbar({ open: true, message: 'No changes to save' });
-        setSettingsSaving(false);
-        return;
-      }
-      const updated = await settingsAPI.bulkUpdate(changed);
-      setAppSettings(updated);
-      const form: Record<string, string> = {};
-      for (const s of updated as AppSetting[]) {
-        form[s.key] = s.value ?? '';
-        if (s.key === 'session_timeout_minutes') {
-          localStorage.setItem('sessionTimeoutMinutes', s.value ?? '30');
-        }
-      }
-      setSettingsForm(form);
-      setSnackbar({ open: true, message: `${changed.length} setting(s) updated. Schedulers rescheduled.` });
-    } catch (err: any) {
-      setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to save settings' });
-    } finally {
-      setSettingsSaving(false);
-    }
-  };
-
   const handleResetSettings = async () => {
     if (!window.confirm('Reset all application settings to their defaults? This will also clear any saved API keys.')) return;
     setResetting(true);
@@ -253,6 +393,7 @@ const Settings: React.FC = () => {
         }
       }
       setSettingsForm(form);
+      savedSettingsRef.current = form;
       setSnackbar({ open: true, message: 'Settings reset to defaults' });
     } catch (err: any) {
       setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to reset' });
@@ -280,6 +421,32 @@ const Settings: React.FC = () => {
     return d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
+  /** Build a human-readable schedule summary for a scheduler task */
+  const schedSummary = (t: SchedulerTask): string => {
+    const k = t.keys;
+    if (k.count) return `${settingsForm[k.count] ?? '—'} assets`;
+    if (k.interval_minutes) return `Every ${settingsForm[k.interval_minutes] ?? '—'} min`;
+    if (k.ist_hour) return `${settingsForm[k.ist_hour] ?? '—'}:00 IST`;
+    const h = k.hour ? parseInt(settingsForm[k.hour] ?? '0') : 0;
+    const m = k.minute ? parseInt(settingsForm[k.minute] ?? '0') : 0;
+    const timeStr = utcToIst(h, m);
+    if (t.freq === 'annual') {
+      const mo = settingsForm[k.month ?? ''] ?? '—';
+      const dy = settingsForm[k.day ?? ''] ?? '—';
+      return `${mo}/${dy} at ${timeStr}`;
+    }
+    if (t.freq === 'monthly' || t.freq === 'bimonthly') {
+      const dy = settingsForm[k.day ?? ''] ?? '1';
+      return `Day ${dy} at ${timeStr}`;
+    }
+    if (t.freq === 'weekly') {
+      const dow = settingsForm[k.day_of_week ?? ''] ?? 'mon';
+      const dayLabel = WEEKDAY_OPTIONS.find(w => w.value === dow)?.label ?? dow;
+      return `${dayLabel} at ${timeStr}`;
+    }
+    return timeStr;
+  };
+
   const selectedProvider = settingsForm['ai_news_provider'] ?? 'openai';
 
   if (loading) return (
@@ -292,10 +459,11 @@ const Settings: React.FC = () => {
     <Box>
       <Typography variant="h4" sx={{ mb: 2 }}>Application Setup</Typography>
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }} variant="scrollable" scrollButtons="auto">
         <Tab label="Profile" />
         <Tab label="Employment & Salary" />
         <Tab label="Application Settings" />
+        <Tab label="Scheduler Setup" />
         <Tab label="Automation Setup" />
       </Tabs>
 
@@ -488,223 +656,335 @@ const Settings: React.FC = () => {
       {/* ════════════ TAB 2 — Application Settings ════════════ */}
       {tab === 2 && (
         <Box>
-          {/* Scheduled Tasks */}
+          {/* AI Provider Configuration */}
           <Card sx={{ mb: 3 }}>
             <CardContent>
-              <Typography variant="h6" sx={{ mb: 1 }}>Scheduled Tasks</Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="h6">AI Provider Configuration</Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Tooltip title="Refresh available models from all providers">
+                    <IconButton size="small" onClick={() => fetchAiModels(true)} disabled={aiModelsLoading}>
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Button variant="contained" size="small" startIcon={<AddIcon />}
+                    onClick={() => {
+                      setAiEditingProvider(null);
+                      setAiDialogForm({ provider: '', api_key: '', model: '', endpoint: '', set_primary: true });
+                      setAiDialogOpen(true);
+                    }}>
+                    Add API Key
+                  </Button>
+                </Box>
+              </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                These background tasks run automatically to keep your portfolio data up-to-date.
+                Configure AI providers for portfolio news summaries. The primary provider is tried first.
+                If it fails, the system automatically falls back to the next configured provider.
+              </Typography>
+
+              {/* Provider table */}
+              {(() => {
+                const configuredProviders = AI_PROVIDERS.filter(
+                  p => (settingsForm[AI_PROVIDERS_MAP[p.value]?.key] ?? '').length > 0
+                );
+                return configuredProviders.length === 0 ? (
+                  <Alert severity="info">
+                    No AI provider keys configured. Click "Add API Key" to add your first provider, or keys from the server .env file will be used.
+                  </Alert>
+                ) : (
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell align="center"><strong>Primary</strong></TableCell>
+                          <TableCell><strong>Provider</strong></TableCell>
+                          <TableCell><strong>Role</strong></TableCell>
+                          <TableCell><strong>API Key</strong></TableCell>
+                          <TableCell><strong>Model</strong></TableCell>
+                          <TableCell><strong>Endpoint</strong></TableCell>
+                          <TableCell align="center"><strong>Actions</strong></TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {configuredProviders.map(p => {
+                          const keyVal = settingsForm[AI_PROVIDERS_MAP[p.value].key] ?? '';
+                          const modelVal = settingsForm[`ai_${p.value}_model`] ?? '';
+                          const endpointVal = settingsForm[`ai_${p.value}_endpoint`] ?? '';
+                          const isPrimary = p.value === selectedProvider;
+                          return (
+                            <TableRow key={p.value} selected={isPrimary}>
+                              <TableCell align="center" padding="checkbox">
+                                <Tooltip title="Set as primary provider">
+                                  <Radio size="small" checked={isPrimary}
+                                    onChange={() => setSettingsForm({ ...settingsForm, ai_news_provider: p.value })} />
+                                </Tooltip>
+                              </TableCell>
+                              <TableCell>{p.label}</TableCell>
+                              <TableCell>
+                                {isPrimary
+                                  ? <Chip label="Primary" color="success" size="small" />
+                                  : <Chip label="Fallback" color="default" size="small" variant="outlined" />}
+                              </TableCell>
+                              <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                {keyVal.startsWith('***') ? keyVal : '••••••••' + keyVal.slice(-4)}
+                              </TableCell>
+                              <TableCell>{modelVal || <Typography variant="body2" color="text.secondary">Default</Typography>}</TableCell>
+                              <TableCell>{endpointVal || <Typography variant="body2" color="text.secondary">Default</Typography>}</TableCell>
+                              <TableCell align="center">
+                                <Tooltip title="Edit">
+                                  <IconButton size="small" onClick={async () => {
+                                    setAiEditingProvider(p.value);
+                                    let realKey = '';
+                                    if (keyVal.length > 0) {
+                                      try { realKey = await settingsAPI.getSecretValue(AI_PROVIDERS_MAP[p.value].key); } catch { /* keep blank */ }
+                                    }
+                                    setAiDialogForm({
+                                      provider: p.value,
+                                      api_key: realKey,
+                                      model: modelVal,
+                                      endpoint: endpointVal,
+                                      set_primary: isPrimary,
+                                    });
+                                    setAiDialogOpen(true);
+                                  }}>
+                                    <EditIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Remove">
+                                  <IconButton size="small" color="error" onClick={() => {
+                                    setSettingsForm(prev => ({
+                                      ...prev,
+                                      [AI_PROVIDERS_MAP[p.value].key]: '',
+                                      [`ai_${p.value}_model`]: '',
+                                      [`ai_${p.value}_endpoint`]: '',
+                                    }));
+                                  }}>
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          {/* AI Provider Dialog */}
+          <Dialog open={aiDialogOpen} onClose={() => setAiDialogOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>{aiEditingProvider ? `Edit ${AI_PROVIDERS.find(p => p.value === aiEditingProvider)?.label}` : 'Add AI Provider Key'}</DialogTitle>
+            <DialogContent>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+                <TextField
+                  select label="AI Provider" value={aiDialogForm.provider}
+                  onChange={e => setAiDialogForm({ ...aiDialogForm, provider: e.target.value })}
+                  fullWidth required disabled={!!aiEditingProvider}
+                >
+                  {AI_PROVIDERS
+                    .filter(p => !!aiEditingProvider || !(settingsForm[AI_PROVIDERS_MAP[p.value]?.key] ?? '').length)
+                    .map(p => (
+                      <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
+                    ))}
+                </TextField>
+
+                <TextField
+                  label="API Key" fullWidth required
+                  type={showApiKeys['ai_dialog_key'] ? 'text' : 'password'}
+                  value={aiDialogForm.api_key}
+                  onChange={e => setAiDialogForm({ ...aiDialogForm, api_key: e.target.value })}
+                  placeholder={aiEditingProvider ? 'Enter new key or leave blank to keep existing' : 'Enter API key'}
+                  helperText={aiEditingProvider ? 'Leave blank to keep the existing key unchanged' : undefined}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={() => toggleApiKeyVisibility('ai_dialog_key')} edge="end">
+                          {showApiKeys['ai_dialog_key'] ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+
+                {(() => {
+                  const provModels = aiDialogForm.provider ? (aiModelsCache[aiDialogForm.provider] || []) : [];
+                  return provModels.length > 0 ? (
+                    <TextField
+                      select label="Model" fullWidth
+                      value={provModels.includes(aiDialogForm.model) ? aiDialogForm.model : ''}
+                      onChange={e => setAiDialogForm({ ...aiDialogForm, model: e.target.value })}
+                      helperText={aiModelsLoading ? 'Loading models...' : 'Select a model or leave blank for provider default'}
+                    >
+                      <MenuItem value="">
+                        <em>Default</em>
+                      </MenuItem>
+                      {provModels.map(m => (
+                        <MenuItem key={m} value={m}>{m}</MenuItem>
+                      ))}
+                    </TextField>
+                  ) : (
+                    <TextField
+                      label="Model Name (optional)" fullWidth
+                      value={aiDialogForm.model}
+                      onChange={e => setAiDialogForm({ ...aiDialogForm, model: e.target.value })}
+                      helperText={aiModelsLoading ? 'Loading models...' : 'Enter model name or leave blank for provider default'}
+                    />
+                  );
+                })()}
+
+                <TextField
+                  label="API Endpoint (optional)" fullWidth
+                  value={aiDialogForm.endpoint}
+                  onChange={e => setAiDialogForm({ ...aiDialogForm, endpoint: e.target.value })}
+                  helperText="Override for proxies or custom deployments"
+                />
+
+                <FormControlLabel
+                  control={
+                    <Switch checked={aiDialogForm.set_primary}
+                      onChange={e => setAiDialogForm({ ...aiDialogForm, set_primary: e.target.checked })} />
+                  }
+                  label="Set as primary provider"
+                />
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setAiDialogOpen(false)}>Cancel</Button>
+              <Button variant="contained" disabled={!aiDialogForm.provider || (!aiEditingProvider && !aiDialogForm.api_key)}
+                onClick={() => {
+                  const prov = aiDialogForm.provider;
+                  const updates: Record<string, string> = {};
+                  if (aiDialogForm.api_key) {
+                    updates[AI_PROVIDERS_MAP[prov].key] = aiDialogForm.api_key;
+                  }
+                  updates[`ai_${prov}_model`] = aiDialogForm.model;
+                  updates[`ai_${prov}_endpoint`] = aiDialogForm.endpoint;
+                  if (aiDialogForm.set_primary) {
+                    updates['ai_news_provider'] = prov;
+                  }
+                  setSettingsForm(prev => ({ ...prev, ...updates }));
+                  setAiDialogOpen(false);
+                }}>
+                {aiEditingProvider ? 'Update' : 'Add'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Market Data API Keys */}
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 1 }}>Market Data API Keys</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                API keys for external market data providers. Keys from the server .env file are used when not configured here.
               </Typography>
               <TableContainer component={Paper} variant="outlined">
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell><strong>Task</strong></TableCell>
+                      <TableCell><strong>Provider</strong></TableCell>
                       <TableCell><strong>Description</strong></TableCell>
-                      <TableCell align="right" sx={{ minWidth: 160 }}><strong>Schedule</strong></TableCell>
+                      <TableCell><strong>API Key</strong></TableCell>
+                      <TableCell align="center"><strong>Actions</strong></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {/* Price Updates */}
-                    <TableRow>
-                      <TableCell><Typography variant="body2" fontWeight="medium">Price Updates</Typography></TableCell>
-                      <TableCell><Typography variant="body2" color="text.secondary">Auto-fetches latest prices for stocks, mutual funds, crypto, and commodities.</Typography></TableCell>
-                      <TableCell align="right">
-                        <TextField size="small" type="number" label="Minutes" sx={{ width: 100 }}
-                          value={settingsForm['price_update_interval_minutes'] ?? ''}
-                          onChange={e => setSettingsForm({ ...settingsForm, price_update_interval_minutes: e.target.value })}
-                          inputProps={{ min: 5, max: 1440 }} />
-                      </TableCell>
-                    </TableRow>
-
-                    {/* EOD Snapshot */}
-                    <TableRow>
-                      <TableCell><Typography variant="body2" fontWeight="medium">EOD Portfolio Snapshot</Typography></TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">Captures daily portfolio value for historical tracking and performance charts.</Typography>
-                        {settingsForm['eod_snapshot_hour'] && (
-                          <Typography variant="caption" color="primary">
-                            IST: {utcToIst(parseInt(settingsForm['eod_snapshot_hour'] || '13'), parseInt(settingsForm['eod_snapshot_minute'] || '30'))}
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell align="right">
-                        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                          <TextField size="small" type="number" label="Hour (UTC)" sx={{ width: 100 }}
-                            value={settingsForm['eod_snapshot_hour'] ?? ''}
-                            onChange={e => setSettingsForm({ ...settingsForm, eod_snapshot_hour: e.target.value })}
-                            inputProps={{ min: 0, max: 23 }} />
-                          <TextField size="small" type="number" label="Min" sx={{ width: 80 }}
-                            value={settingsForm['eod_snapshot_minute'] ?? ''}
-                            onChange={e => setSettingsForm({ ...settingsForm, eod_snapshot_minute: e.target.value })}
-                            inputProps={{ min: 0, max: 59 }} />
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-
-                    {/* Morning News */}
-                    <TableRow>
-                      <TableCell><Typography variant="body2" fontWeight="medium">Morning News Alerts</Typography></TableCell>
-                      <TableCell><Typography variant="body2" color="text.secondary">AI-generated news alerts for your portfolio holdings (morning run).</Typography></TableCell>
-                      <TableCell align="right">
-                        <TextField size="small" type="number" label="Hour (IST)" sx={{ width: 100 }}
-                          value={settingsForm['news_morning_hour'] ?? ''}
-                          onChange={e => setSettingsForm({ ...settingsForm, news_morning_hour: e.target.value })}
-                          inputProps={{ min: 0, max: 23 }} />
-                      </TableCell>
-                    </TableRow>
-
-                    {/* Evening News */}
-                    <TableRow>
-                      <TableCell><Typography variant="body2" fontWeight="medium">Evening News Alerts</Typography></TableCell>
-                      <TableCell><Typography variant="body2" color="text.secondary">AI-generated news alerts for your portfolio holdings (evening run).</Typography></TableCell>
-                      <TableCell align="right">
-                        <TextField size="small" type="number" label="Hour (IST)" sx={{ width: 100 }}
-                          value={settingsForm['news_evening_hour'] ?? ''}
-                          onChange={e => setSettingsForm({ ...settingsForm, news_evening_hour: e.target.value })}
-                          inputProps={{ min: 0, max: 23 }} />
-                      </TableCell>
-                    </TableRow>
-
-                    {/* News Limit */}
-                    <TableRow>
-                      <TableCell><Typography variant="body2" fontWeight="medium">News Coverage</Typography></TableCell>
-                      <TableCell><Typography variant="body2" color="text.secondary">Number of portfolio assets analysed per scheduled news run.</Typography></TableCell>
-                      <TableCell align="right">
-                        <TextField size="small" type="number" label="Assets" sx={{ width: 100 }}
-                          value={settingsForm['news_limit_per_user'] ?? ''}
-                          onChange={e => setSettingsForm({ ...settingsForm, news_limit_per_user: e.target.value })}
-                          inputProps={{ min: 1, max: 100 }} />
-                      </TableCell>
-                    </TableRow>
+                    {MARKET_API_KEY_FIELDS.map(({ key, label, helperText }) => {
+                      const keyVal = settingsForm[key] ?? '';
+                      const hasKey = keyVal.length > 0;
+                      return (
+                        <TableRow key={key}>
+                          <TableCell><Typography variant="body2" fontWeight="medium">{label}</Typography></TableCell>
+                          <TableCell><Typography variant="body2" color="text.secondary">{helperText}</Typography></TableCell>
+                          <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                            {hasKey
+                              ? (keyVal.startsWith('***') ? keyVal : '••••••••' + keyVal.slice(-4))
+                              : <Chip label="Not Set" size="small" variant="outlined" color="warning" />}
+                          </TableCell>
+                          <TableCell align="center">
+                            <Tooltip title={hasKey ? 'Edit API Key' : 'Add API Key'}>
+                              <IconButton size="small" onClick={async () => {
+                                setMktEditingKey(key);
+                                let realKey = '';
+                                if (hasKey) {
+                                  try { realKey = await settingsAPI.getSecretValue(key); } catch { /* keep blank */ }
+                                }
+                                setMktDialogForm({ api_key: realKey });
+                                setMktDialogOpen(true);
+                              }}>
+                                {hasKey ? <EditIcon fontSize="small" /> : <AddIcon fontSize="small" color="primary" />}
+                              </IconButton>
+                            </Tooltip>
+                            {hasKey && (
+                              <Tooltip title="Remove API Key">
+                                <IconButton size="small" color="error" onClick={() => {
+                                  setSettingsForm(prev => ({ ...prev, [key]: '' }));
+                                }}>
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
             </CardContent>
           </Card>
 
-          {/* AI Configuration */}
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 2 }}>AI Configuration</Typography>
-
-              {/* Provider Selection */}
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>AI News Provider</InputLabel>
-                    <Select value={selectedProvider} label="AI News Provider"
-                      onChange={e => setSettingsForm({ ...settingsForm, ai_news_provider: e.target.value })}>
-                      {AI_PROVIDERS.map(p => (
-                        <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
-
-              {/* API Keys */}
-              <Typography variant="subtitle2" sx={{ mt: 3, mb: 1 }}>API Keys</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Enter API keys for your AI providers. Leave blank to use keys from the server .env file.
-                Existing keys are masked for security.
-              </Typography>
-              <Grid container spacing={2}>
-                {API_KEY_FIELDS.map(({ key, label, provider }) => (
-                  <Grid item xs={12} sm={6} key={key}>
-                    <TextField
-                      fullWidth size="small" label={label}
-                      type={showApiKeys[key] ? 'text' : 'password'}
-                      value={settingsForm[key] ?? ''}
-                      onChange={e => setSettingsForm({ ...settingsForm, [key]: e.target.value })}
-                      placeholder="Enter API key or leave blank for .env"
-                      InputProps={{
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <IconButton size="small" onClick={() => toggleApiKeyVisibility(key)} edge="end">
-                              {showApiKeys[key] ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                            </IconButton>
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          ...(provider === selectedProvider ? { borderColor: 'primary.main' } : {}),
-                        },
-                      }}
-                      helperText={provider === selectedProvider ? 'Active provider' : undefined}
-                      color={provider === selectedProvider ? 'primary' : undefined}
-                      focused={provider === selectedProvider}
-                    />
-                  </Grid>
-                ))}
-              </Grid>
-
-              {/* Advanced AI Settings */}
-              <Accordion sx={{ mt: 3 }} disableGutters elevation={0} variant="outlined">
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Typography variant="subtitle2">Advanced AI Settings</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Override the model name and API endpoint for the currently selected provider ({AI_PROVIDERS.find(p => p.value === selectedProvider)?.label}).
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth size="small" label="Model Name"
-                        value={settingsForm[`ai_${selectedProvider}_model`] ?? ''}
-                        onChange={e => setSettingsForm({ ...settingsForm, [`ai_${selectedProvider}_model`]: e.target.value })}
-                        helperText="Leave default unless you need a specific model version"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth size="small" label="API Endpoint"
-                        value={settingsForm[`ai_${selectedProvider}_endpoint`] ?? ''}
-                        onChange={e => setSettingsForm({ ...settingsForm, [`ai_${selectedProvider}_endpoint`]: e.target.value })}
-                        helperText="Override for proxies or custom deployments"
-                      />
-                    </Grid>
-                  </Grid>
-                </AccordionDetails>
-              </Accordion>
-            </CardContent>
-          </Card>
-
-          {/* Market Data API Keys */}
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 1 }}>API Keys</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                API keys for external market data providers. Leave blank to use keys from the server .env file.
-                Existing keys are masked for security.
-              </Typography>
-              <Grid container spacing={2}>
-                {MARKET_API_KEY_FIELDS.map(({ key, label, helperText }) => (
-                  <Grid item xs={12} sm={6} key={key}>
-                    <TextField
-                      fullWidth size="small" label={label}
-                      type={showApiKeys[key] ? 'text' : 'password'}
-                      value={settingsForm[key] ?? ''}
-                      onChange={e => setSettingsForm({ ...settingsForm, [key]: e.target.value })}
-                      placeholder="Enter API key or leave blank for .env"
-                      helperText={helperText}
-                      InputProps={{
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <IconButton size="small" onClick={() => toggleApiKeyVisibility(key)} edge="end">
-                              {showApiKeys[key] ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                            </IconButton>
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  </Grid>
-                ))}
-              </Grid>
-            </CardContent>
-          </Card>
+          {/* Market Data Key Dialog */}
+          <Dialog open={mktDialogOpen} onClose={() => setMktDialogOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>
+              {(() => {
+                const field = MARKET_API_KEY_FIELDS.find(f => f.key === mktEditingKey);
+                const hasExisting = (settingsForm[mktEditingKey ?? ''] ?? '').length > 0;
+                return `${hasExisting ? 'Edit' : 'Add'} ${field?.label ?? 'API Key'}`;
+              })()}
+            </DialogTitle>
+            <DialogContent>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+                <Typography variant="body2" color="text.secondary">
+                  {MARKET_API_KEY_FIELDS.find(f => f.key === mktEditingKey)?.helperText}
+                </Typography>
+                <TextField
+                  label="API Key" fullWidth
+                  type={showApiKeys['mkt_dialog_key'] ? 'text' : 'password'}
+                  value={mktDialogForm.api_key}
+                  onChange={e => setMktDialogForm({ api_key: e.target.value })}
+                  placeholder={(settingsForm[mktEditingKey ?? ''] ?? '').length > 0
+                    ? 'Enter new key or leave blank to keep existing' : 'Enter API key'}
+                  helperText={(settingsForm[mktEditingKey ?? ''] ?? '').length > 0
+                    ? 'Leave blank to keep the existing key unchanged' : undefined}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={() => toggleApiKeyVisibility('mkt_dialog_key')} edge="end">
+                          {showApiKeys['mkt_dialog_key'] ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setMktDialogOpen(false)}>Cancel</Button>
+              <Button variant="contained"
+                disabled={!mktDialogForm.api_key && !(settingsForm[mktEditingKey ?? ''] ?? '').length}
+                onClick={() => {
+                  if (mktEditingKey && mktDialogForm.api_key) {
+                    setSettingsForm(prev => ({ ...prev, [mktEditingKey]: mktDialogForm.api_key }));
+                  }
+                  setMktDialogOpen(false);
+                }}>
+                Save
+              </Button>
+            </DialogActions>
+          </Dialog>
 
           {/* Session */}
           <Card sx={{ mb: 3 }}>
@@ -722,11 +1002,9 @@ const Settings: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button variant="contained" startIcon={settingsSaving ? <CircularProgress size={20} /> : <Save />}
-              onClick={handleSaveSettings} disabled={settingsSaving || resetting}>
-              Save Settings
-            </Button>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            {settingsSaving && <CircularProgress size={20} />}
+            {settingsSaving && <Typography variant="body2" color="text.secondary">Saving...</Typography>}
             <Button variant="outlined" color="warning" startIcon={resetting ? <CircularProgress size={20} /> : <RestartAlt />}
               onClick={handleResetSettings} disabled={settingsSaving || resetting}>
               Reset to Defaults
@@ -735,8 +1013,160 @@ const Settings: React.FC = () => {
         </Box>
       )}
 
-      {/* ════════════ TAB 3 — Automation Setup ════════════ */}
+      {/* ════════════ TAB 3 — Scheduler Setup ════════════ */}
       {tab === 3 && (
+        <Box>
+          {(['portfolio', 'market', 'contribution'] as const).map(cat => (
+            <Card sx={{ mb: 3 }} key={cat}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 1 }}>{CATEGORY_LABELS[cat]} Tasks</Typography>
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>Task</strong></TableCell>
+                        <TableCell><strong>Description</strong></TableCell>
+                        <TableCell><strong>Frequency</strong></TableCell>
+                        <TableCell><strong>Schedule</strong></TableCell>
+                        <TableCell align="center"><strong>Edit</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {SCHEDULER_TASKS.filter(t => t.category === cat).map(t => (
+                        <TableRow key={t.id}>
+                          <TableCell><Typography variant="body2" fontWeight="medium">{t.name}</Typography></TableCell>
+                          <TableCell><Typography variant="body2" color="text.secondary">{t.description}</Typography></TableCell>
+                          <TableCell>
+                            <Chip label={FREQ_LABELS[t.freq]} color={FREQ_COLORS[t.freq]} size="small" variant="outlined" />
+                          </TableCell>
+                          <TableCell><Typography variant="body2">{schedSummary(t)}</Typography></TableCell>
+                          <TableCell align="center">
+                            <IconButton size="small" onClick={() => { setSchedEditingTask(t); setSchedDialogOpen(true); }}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          ))}
+
+          {/* Scheduler Edit Dialog */}
+          <Dialog open={schedDialogOpen} onClose={() => setSchedDialogOpen(false)} maxWidth="sm" fullWidth>
+            {schedEditingTask && (() => {
+              const t = schedEditingTask;
+              const k = t.keys;
+              return (
+                <>
+                  <DialogTitle>Edit Schedule — {t.name}</DialogTitle>
+                  <DialogContent>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+                      <Typography variant="body2" color="text.secondary">{t.description}</Typography>
+
+                      <TextField select label="Frequency" value={t.freq} disabled fullWidth size="small">
+                        {Object.entries(FREQ_LABELS).map(([v, l]) => (
+                          <MenuItem key={v} value={v}>{l}</MenuItem>
+                        ))}
+                      </TextField>
+
+                      {/* Interval: minutes */}
+                      {k.interval_minutes && (
+                        <TextField type="number" label="Interval (minutes)" fullWidth size="small"
+                          value={settingsForm[k.interval_minutes] ?? ''}
+                          onChange={e => setSettingsForm({ ...settingsForm, [k.interval_minutes!]: e.target.value })}
+                          inputProps={{ min: 5, max: 1440 }}
+                          helperText="How often this task runs (in minutes)" />
+                      )}
+
+                      {/* IST hour (news alerts) */}
+                      {k.ist_hour && (
+                        <TextField type="number" label="Hour (IST)" fullWidth size="small"
+                          value={settingsForm[k.ist_hour] ?? ''}
+                          onChange={e => setSettingsForm({ ...settingsForm, [k.ist_hour!]: e.target.value })}
+                          inputProps={{ min: 0, max: 23 }}
+                          helperText="Hour in IST (0-23) when this task runs" />
+                      )}
+
+                      {/* Count (non-schedule config) */}
+                      {k.count && (
+                        <TextField type="number" label="Count" fullWidth size="small"
+                          value={settingsForm[k.count] ?? ''}
+                          onChange={e => setSettingsForm({ ...settingsForm, [k.count!]: e.target.value })}
+                          inputProps={{ min: 1, max: 100 }}
+                          helperText="Number of items to process per run" />
+                      )}
+
+                      {/* Annual: month + day */}
+                      {t.freq === 'annual' && k.month && (
+                        <TextField type="number" label="Month" fullWidth size="small"
+                          value={settingsForm[k.month] ?? ''}
+                          onChange={e => setSettingsForm({ ...settingsForm, [k.month!]: e.target.value })}
+                          inputProps={{ min: 1, max: 12 }}
+                          helperText="Month (1-12)" />
+                      )}
+
+                      {/* Weekly: day of week */}
+                      {k.day_of_week && (
+                        <TextField select label="Day of Week" fullWidth size="small"
+                          value={settingsForm[k.day_of_week] ?? 'mon'}
+                          onChange={e => setSettingsForm({ ...settingsForm, [k.day_of_week!]: e.target.value })}>
+                          {WEEKDAY_OPTIONS.map(d => (
+                            <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>
+                          ))}
+                        </TextField>
+                      )}
+
+                      {/* Monthly / bimonthly / annual: day of month */}
+                      {k.day && (t.freq === 'monthly' || t.freq === 'bimonthly' || t.freq === 'annual') && (
+                        <TextField type="number" label="Day of Month" fullWidth size="small"
+                          value={settingsForm[k.day] ?? ''}
+                          onChange={e => setSettingsForm({ ...settingsForm, [k.day!]: e.target.value })}
+                          inputProps={{ min: 1, max: 28 }}
+                          helperText="Day of the month (1-28)" />
+                      )}
+
+                      {/* UTC hour + minute (for daily/weekly/monthly/bimonthly tasks that have hour key) */}
+                      {k.hour && !k.ist_hour && (
+                        <Box sx={{ display: 'flex', gap: 2 }}>
+                          <TextField type="number" label="Hour (UTC)" fullWidth size="small"
+                            value={settingsForm[k.hour] ?? ''}
+                            onChange={e => setSettingsForm({ ...settingsForm, [k.hour!]: e.target.value })}
+                            inputProps={{ min: 0, max: 23 }}
+                            helperText={`IST: ${utcToIst(parseInt(settingsForm[k.hour] ?? '0'), parseInt(settingsForm[k.minute ?? ''] ?? '0'))}`} />
+                          {k.minute && (
+                            <TextField type="number" label="Minute" fullWidth size="small"
+                              value={settingsForm[k.minute] ?? ''}
+                              onChange={e => setSettingsForm({ ...settingsForm, [k.minute!]: e.target.value })}
+                              inputProps={{ min: 0, max: 59 }} />
+                          )}
+                        </Box>
+                      )}
+                    </Box>
+                  </DialogContent>
+                  <DialogActions>
+                    <Button onClick={() => setSchedDialogOpen(false)}>Close</Button>
+                  </DialogActions>
+                </>
+              );
+            })()}
+          </Dialog>
+
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            {settingsSaving && <CircularProgress size={20} />}
+            {settingsSaving && <Typography variant="body2" color="text.secondary">Saving...</Typography>}
+            <Button variant="outlined" color="warning" startIcon={resetting ? <CircularProgress size={20} /> : <RestartAlt />}
+              onClick={handleResetSettings} disabled={settingsSaving || resetting}>
+              Reset to Defaults
+            </Button>
+          </Box>
+        </Box>
+      )}
+
+      {/* ════════════ TAB 4 — Automation Setup ════════════ */}
+      {tab === 4 && (
         <Box>
           <Alert severity="info" sx={{ mb: 3 }}>
             This page shows all automations configured in your account — both system-level scheduled tasks
@@ -772,6 +1202,52 @@ const Settings: React.FC = () => {
                       <TableBody>
                         {automations.system_automations
                           .filter(a => a.category === 'scheduler')
+                          .map((a, i) => (
+                            <TableRow key={i}>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight="medium">{a.name}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">{a.description}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Chip label={a.enabled ? 'Active' : 'Inactive'}
+                                  color={a.enabled ? 'success' : 'default'} size="small" />
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2">{a.schedule}</Typography>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+
+              {/* Market Insight Automations */}
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Public color="primary" />
+                    <Typography variant="h6">Market Insight Automations</Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Scheduled data fetches for the Market Insight and Liquidity Insight pages.
+                  </Typography>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell><strong>Automation</strong></TableCell>
+                          <TableCell><strong>Description</strong></TableCell>
+                          <TableCell align="center"><strong>Status</strong></TableCell>
+                          <TableCell align="right"><strong>Schedule</strong></TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {automations.system_automations
+                          .filter(a => a.category === 'market_insight')
                           .map((a, i) => (
                             <TableRow key={i}>
                               <TableCell>

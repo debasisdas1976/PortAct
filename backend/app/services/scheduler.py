@@ -20,6 +20,8 @@ from app.services.mmi_service import refresh_mmi, refresh_btc_fng, refresh_us_fn
 from app.services.reference_rates_service import refresh_bank_fd_rates, refresh_govt_scheme_rates
 from app.services.financial_events_service import refresh_news_cache
 from app.services.nse_holidays_service import ensure_holidays
+from app.services.mf_systematic_plan_service import process_due_plans
+from app.services.ai_models_service import refresh_ai_models_cache
 
 # Use a larger thread pool so that multiple I/O-bound jobs (HTTP scrapes, price
 # updates, EOD snapshots) can run concurrently without exhausting workers.
@@ -189,173 +191,194 @@ def _liquidity_startup_refresh():
         db.close()
 
 
-def start_scheduler(db: Optional[Session] = None):
-    """Start the background scheduler with all periodic tasks."""
-    if scheduler.running:
-        logger.info("Background scheduler is already running.")
-        return
+def _read_all_schedule_settings(db: Optional[Session]) -> dict:
+    """Read all scheduler settings from DB, falling back to defaults."""
+    gs = lambda key, default: _get_setting(db, key, default)
+    return {
+        "price_interval": gs("price_update_interval_minutes", settings.PRICE_UPDATE_INTERVAL_MINUTES),
+        "eod_hour": gs("eod_snapshot_hour", settings.EOD_SNAPSHOT_HOUR),
+        "eod_minute": gs("eod_snapshot_minute", settings.EOD_SNAPSHOT_MINUTE),
+        "mc_day": gs("monthly_contribution_day", settings.MONTHLY_CONTRIBUTION_DAY),
+        "mc_hour": gs("monthly_contribution_hour", settings.MONTHLY_CONTRIBUTION_HOUR),
+        "mc_minute": gs("monthly_contribution_minute", settings.MONTHLY_CONTRIBUTION_MINUTE),
+        "forex_hour": gs("forex_refresh_hour", 9),
+        "forex_minute": gs("forex_refresh_minute", 0),
+        "macro_day": gs("macro_data_refresh_day", 1),
+        "macro_hour": gs("macro_data_refresh_hour", 6),
+        "rbi_day": gs("rbi_rate_refresh_day", 10),
+        "rbi_hour": gs("rbi_rate_refresh_hour", 9),
+        "bank_fd_day": gs("bank_fd_refresh_day", 1),
+        "bank_fd_hour": gs("bank_fd_refresh_hour", 7),
+        "govt_day": gs("govt_scheme_refresh_day", 1),
+        "govt_hour": gs("govt_scheme_refresh_hour", 7),
+        "govt_minute": gs("govt_scheme_refresh_minute", 30),
+        "news_cache_minutes": gs("news_cache_refresh_minutes", 30),
+        "nse_month": gs("nse_holidays_refresh_month", 12),
+        "nse_day": gs("nse_holidays_refresh_day", 1),
+        "mmi_am_hour": gs("mmi_morning_hour", 3),
+        "mmi_am_minute": gs("mmi_morning_minute", 45),
+        "mmi_pm_hour": gs("mmi_afternoon_hour", 10),
+        "mmi_pm_minute": gs("mmi_afternoon_minute", 0),
+        "btc_fng_hour": gs("btc_fng_hour", 0),
+        "btc_fng_minute": gs("btc_fng_minute", 30),
+        "us_fng_open_hour": gs("us_fng_open_hour", 14),
+        "us_fng_open_minute": gs("us_fng_open_minute", 45),
+        "us_fng_close_hour": gs("us_fng_close_hour", 21),
+        "us_fng_close_minute": gs("us_fng_close_minute", 0),
+        "liquidity_dow": gs("liquidity_refresh_day_of_week", "mon"),
+        "liquidity_hour": gs("liquidity_refresh_hour", 2),
+        "mf_plan_hour": gs("mf_systematic_plan_hour", 4),
+        "mf_plan_minute": gs("mf_systematic_plan_minute", 0),
+        "ai_models_hour": gs("ai_models_refresh_hour", 1),
+        "ai_models_minute": gs("ai_models_refresh_minute", 0),
+    }
 
-    price_interval = _get_setting(db, "price_update_interval_minutes", settings.PRICE_UPDATE_INTERVAL_MINUTES)
-    eod_hour = _get_setting(db, "eod_snapshot_hour", settings.EOD_SNAPSHOT_HOUR)
-    eod_minute = _get_setting(db, "eod_snapshot_minute", settings.EOD_SNAPSHOT_MINUTE)
-    mc_day = _get_setting(db, "monthly_contribution_day", settings.MONTHLY_CONTRIBUTION_DAY)
-    mc_hour = _get_setting(db, "monthly_contribution_hour", settings.MONTHLY_CONTRIBUTION_HOUR)
-    mc_minute = _get_setting(db, "monthly_contribution_minute", settings.MONTHLY_CONTRIBUTION_MINUTE)
 
-    # Price update job
+def _schedule_all_jobs(s: dict):
+    """Add or reschedule all jobs using the settings dict from _read_all_schedule_settings."""
     scheduler.add_job(
         func=update_all_prices,
-        trigger=IntervalTrigger(minutes=price_interval),
+        trigger=IntervalTrigger(minutes=s["price_interval"]),
         id="price_update_job",
         name="Update asset prices",
         replace_existing=True,
     )
-
-    # EOD snapshot job (runs forex refresh first to ensure fresh INR values)
     scheduler.add_job(
         func=_eod_with_forex_refresh,
-        trigger=CronTrigger(hour=eod_hour, minute=eod_minute, timezone="UTC"),
+        trigger=CronTrigger(hour=s["eod_hour"], minute=s["eod_minute"], timezone="UTC"),
         id="eod_snapshot_job",
         name="End of Day Portfolio Snapshot (with Forex Refresh)",
         replace_existing=True,
     )
-
-    # Monthly PF contribution & Gratuity update job
     scheduler.add_job(
         func=MonthlyContributionService.process_all_users,
-        trigger=CronTrigger(day=mc_day, hour=mc_hour, minute=mc_minute, timezone="UTC"),
+        trigger=CronTrigger(day=s["mc_day"], hour=s["mc_hour"], minute=s["mc_minute"], timezone="UTC"),
         id="monthly_contribution_job",
         name="Monthly PF Contribution & Gratuity Update",
         replace_existing=True,
     )
-
-    # Daily forex refresh for all non-INR assets (9 AM UTC = 2:30 PM IST)
     scheduler.add_job(
         func=refresh_foreign_currency_values,
-        trigger=CronTrigger(hour=9, minute=0, timezone="UTC"),
+        trigger=CronTrigger(hour=s["forex_hour"], minute=s["forex_minute"], timezone="UTC"),
         id="forex_refresh_job",
         name="Daily Foreign Currency Value Refresh",
         replace_existing=True,
     )
-
-    # Monthly macro data refresh — runs on 1st of each month at 06:00 UTC
-    # Picks up newly published CPI, GDP, VIX, PE, FII/DII, SIP figures
     scheduler.add_job(
         func=_macro_data_refresh,
-        trigger=CronTrigger(day=1, hour=6, minute=0, timezone="UTC"),
+        trigger=CronTrigger(day=s["macro_day"], hour=s["macro_hour"], minute=0, timezone="UTC"),
         id="macro_data_refresh_job",
         name="Monthly Macro-Economic Data Refresh",
         replace_existing=True,
     )
-
-    # Bimonthly RBI repo rate scrape — runs on the 10th of each MPC meeting month
-    # MPC meetings: Feb, Apr, Jun, Aug, Oct, Dec (results typically on 6th-8th)
     scheduler.add_job(
         func=_rbi_rate_refresh,
-        trigger=CronTrigger(month="2,4,6,8,10,12", day=10, hour=9, minute=0, timezone="UTC"),
+        trigger=CronTrigger(month="2,4,6,8,10,12", day=s["rbi_day"], hour=s["rbi_hour"], minute=0, timezone="UTC"),
         id="rbi_rate_refresh_job",
         name="Bimonthly RBI Repo Rate Scrape",
         replace_existing=True,
     )
-
-    # Monthly bank FD rate scrape — 1st of every month at 07:00 UTC
     scheduler.add_job(
         func=_bank_fd_refresh,
-        trigger=CronTrigger(day=1, hour=7, minute=0, timezone="UTC"),
+        trigger=CronTrigger(day=s["bank_fd_day"], hour=s["bank_fd_hour"], minute=0, timezone="UTC"),
         id="bank_fd_refresh_job",
         name="Monthly Bank FD Rate Scrape",
         replace_existing=True,
     )
-
-    # Monthly govt scheme rate scrape — 1st of every month at 07:30 UTC
-    # Rates can change monthly (declared quarterly, but checking monthly ensures we catch it)
     scheduler.add_job(
         func=_govt_scheme_refresh,
-        trigger=CronTrigger(day=1, hour=7, minute=30, timezone="UTC"),
+        trigger=CronTrigger(day=s["govt_day"], hour=s["govt_hour"], minute=s["govt_minute"], timezone="UTC"),
         id="govt_scheme_refresh_job",
         name="Monthly Govt Savings Scheme Rate Scrape",
         replace_existing=True,
     )
-
-    # Financial news cache refresh — every 30 minutes
     scheduler.add_job(
         func=_news_cache_refresh,
-        trigger=IntervalTrigger(minutes=30),
+        trigger=IntervalTrigger(minutes=s["news_cache_minutes"]),
         id="news_cache_refresh_job",
-        name="Financial News Cache Refresh (30 min)",
+        name="Financial News Cache Refresh",
         replace_existing=True,
     )
-
-    # Annual NSE holiday refresh — Dec 1 at 01:00 UTC (seeds next year's holiday list)
     scheduler.add_job(
         func=_nse_holidays_refresh,
-        trigger=CronTrigger(month=12, day=1, hour=1, minute=0, timezone="UTC"),
+        trigger=CronTrigger(month=s["nse_month"], day=s["nse_day"], hour=1, minute=0, timezone="UTC"),
         id="nse_holidays_refresh_job",
         name="Annual NSE Trading Holidays Refresh",
         replace_existing=True,
     )
-
-    # Daily MMI refresh — 3:45 AM UTC (9:15 AM IST, just after NSE market open)
-    # A second run at 10:00 AM UTC (3:30 PM IST) catches intraday updates.
     scheduler.add_job(
         func=_mmi_refresh,
-        trigger=CronTrigger(hour=3, minute=45, timezone="UTC"),
+        trigger=CronTrigger(hour=s["mmi_am_hour"], minute=s["mmi_am_minute"], timezone="UTC"),
         id="mmi_refresh_job_morning",
         name="Daily India MMI Refresh (morning)",
         replace_existing=True,
     )
     scheduler.add_job(
         func=_mmi_refresh,
-        trigger=CronTrigger(hour=10, minute=0, timezone="UTC"),
+        trigger=CronTrigger(hour=s["mmi_pm_hour"], minute=s["mmi_pm_minute"], timezone="UTC"),
         id="mmi_refresh_job_afternoon",
         name="Daily India MMI Refresh (afternoon)",
         replace_existing=True,
     )
-
-    # BTC Fear & Greed — Alternative.me updates once daily (midnight UTC)
     scheduler.add_job(
         func=_btc_fng_refresh,
-        trigger=CronTrigger(hour=0, minute=30, timezone="UTC"),
+        trigger=CronTrigger(hour=s["btc_fng_hour"], minute=s["btc_fng_minute"], timezone="UTC"),
         id="btc_fng_refresh_job",
         name="Daily Bitcoin Fear & Greed Index Refresh",
         replace_existing=True,
     )
-
-    # US Fear & Greed (CNN) — updates throughout the trading day; refresh at market open + close
     scheduler.add_job(
         func=_us_fng_refresh,
-        trigger=CronTrigger(hour=14, minute=45, timezone="UTC"),  # ~9:45 AM ET (market open)
+        trigger=CronTrigger(hour=s["us_fng_open_hour"], minute=s["us_fng_open_minute"], timezone="UTC"),
         id="us_fng_refresh_job_open",
         name="Daily US Fear & Greed Refresh (market open)",
         replace_existing=True,
     )
     scheduler.add_job(
         func=_us_fng_refresh,
-        trigger=CronTrigger(hour=21, minute=0, timezone="UTC"),   # ~4:00 PM ET (market close)
+        trigger=CronTrigger(hour=s["us_fng_close_hour"], minute=s["us_fng_close_minute"], timezone="UTC"),
         id="us_fng_refresh_job_close",
         name="Daily US Fear & Greed Refresh (market close)",
         replace_existing=True,
     )
-
-    # Weekly global liquidity refresh — every Monday at 02:00 UTC
-    # Fetches M2 money supply from FRED and asset price history from Yahoo Finance
     scheduler.add_job(
         func=_liquidity_refresh,
-        trigger=CronTrigger(day_of_week="mon", hour=2, minute=0, timezone="UTC"),
+        trigger=CronTrigger(day_of_week=s["liquidity_dow"], hour=s["liquidity_hour"], minute=0, timezone="UTC"),
         id="liquidity_refresh_job",
         name="Weekly Global Liquidity Data Refresh (FRED + Yahoo Finance)",
         replace_existing=True,
     )
+    scheduler.add_job(
+        func=process_due_plans,
+        trigger=CronTrigger(hour=s["mf_plan_hour"], minute=s["mf_plan_minute"], timezone="UTC"),
+        id="mf_systematic_plan_job",
+        name="Daily MF Systematic Plan Execution (SIP/STP/SWP)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        func=refresh_ai_models_cache,
+        trigger=CronTrigger(hour=s["ai_models_hour"], minute=s["ai_models_minute"], timezone="UTC"),
+        id="ai_models_refresh_job",
+        name="Daily AI Provider Models Cache Refresh",
+        replace_existing=True,
+    )
+
+
+def start_scheduler(db: Optional[Session] = None):
+    """Start the background scheduler with all periodic tasks."""
+    if scheduler.running:
+        logger.info("Background scheduler is already running.")
+        return
+
+    s = _read_all_schedule_settings(db)
+    _schedule_all_jobs(s)
 
     scheduler.start()
     logger.info(
-        f"Background scheduler started. "
-        f"Price updates every {price_interval} min. "
-        f"EOD snapshots at {eod_hour:02d}:{eod_minute:02d} UTC. "
-        f"Monthly contributions on day {mc_day} at {mc_hour:02d}:{mc_minute:02d} UTC. "
-        f"Forex refresh daily at 09:00 UTC + before EOD. "
-        f"Macro data (BLS+WB) daily at 06:00 UTC. "
-        f"RBI rate on 10th of Feb/Apr/Jun/Aug/Oct/Dec at 09:00 UTC."
+        f"Background scheduler started — all schedules read from DB/defaults. "
+        f"Price updates every {s['price_interval']} min, "
+        f"EOD at {s['eod_hour']:02d}:{s['eod_minute']:02d} UTC, "
+        f"Forex at {s['forex_hour']:02d}:{s['forex_minute']:02d} UTC."
     )
 
     # Run missed-snapshot and missed-contribution catch-up in background threads
@@ -400,24 +423,12 @@ def run_price_update_now():
 
 
 def apply_schedule_settings(db: Session) -> None:
-    """Re-read scheduler settings from the DB and reschedule running jobs."""
+    """Re-read scheduler settings from the DB and reschedule all running jobs."""
     if not scheduler.running:
         logger.warning("Scheduler not running; skipping reschedule.")
         return
 
-    price_interval = _get_setting(db, "price_update_interval_minutes", settings.PRICE_UPDATE_INTERVAL_MINUTES)
-    eod_hour = _get_setting(db, "eod_snapshot_hour", settings.EOD_SNAPSHOT_HOUR)
-    eod_minute = _get_setting(db, "eod_snapshot_minute", settings.EOD_SNAPSHOT_MINUTE)
-    mc_day = _get_setting(db, "monthly_contribution_day", settings.MONTHLY_CONTRIBUTION_DAY)
-    mc_hour = _get_setting(db, "monthly_contribution_hour", settings.MONTHLY_CONTRIBUTION_HOUR)
-    mc_minute = _get_setting(db, "monthly_contribution_minute", settings.MONTHLY_CONTRIBUTION_MINUTE)
+    s = _read_all_schedule_settings(db)
+    _schedule_all_jobs(s)
 
-    scheduler.reschedule_job("price_update_job", trigger=IntervalTrigger(minutes=price_interval))
-    scheduler.reschedule_job("eod_snapshot_job", trigger=CronTrigger(hour=eod_hour, minute=eod_minute, timezone="UTC"))
-    scheduler.reschedule_job("monthly_contribution_job", trigger=CronTrigger(day=mc_day, hour=mc_hour, minute=mc_minute, timezone="UTC"))
-
-    logger.info(
-        f"Scheduler rescheduled — prices every {price_interval} min, "
-        f"EOD at {eod_hour:02d}:{eod_minute:02d} UTC, "
-        f"monthly contributions on day {mc_day} at {mc_hour:02d}:{mc_minute:02d} UTC."
-    )
+    logger.info("Scheduler rescheduled — all jobs updated from DB settings.")

@@ -196,8 +196,18 @@ const insightsItems: NavItem[] = [
   { text: 'Liquidity Insight', icon: React.createElement(LiquidityIcon), path: '/liquidity-insight' },
 ];
 
-const utilitiesItems: NavItem[] = [
-  { text: 'SIP Creator', icon: React.createElement(MISIcon), path: '/sip-creator' },
+const utilitiesGroups: AssetGroup[] = [
+  {
+    key: 'mf_sip_utility',
+    title: 'Mutual Fund SIP Utility',
+    icon: React.createElement(MISIcon),
+    items: [
+      { text: 'Generate Past Transaction (for XIRR)', icon: React.createElement(MISIcon), path: '/sip-creator' },
+      { text: 'SIP Setup', icon: React.createElement(MISIcon), path: '/sip-setup' },
+      { text: 'STP Setup', icon: React.createElement(CurrencyExchangeIcon), path: '/stp-setup' },
+      { text: 'SWP Setup', icon: React.createElement(PaidIcon), path: '/swp-setup' },
+    ],
+  },
 ];
 
 const assetOverviewItem: NavItem = {
@@ -244,7 +254,7 @@ export const railSections: RailSection[] = [
   },
   {
     key: 'assets',
-    label: 'Assets',
+    label: 'Assets Setup',
     icon: React.createElement(WalletIcon),
     assetGroups: assetGroups,
     bottomItems: [
@@ -275,7 +285,7 @@ export const railSections: RailSection[] = [
     key: 'utilities',
     label: 'Utilities',
     icon: React.createElement(BuildIcon),
-    items: utilitiesItems,
+    assetGroups: utilitiesGroups,
   },
   {
     key: 'admin',
@@ -311,7 +321,7 @@ export const allNavItems: NavItem[] = [
   ...assetGroups.flatMap((g) => g.items),
   { text: 'Cash In Hand', icon: React.createElement(WalletIcon), path: '/cash-in-hand' },
   ...expenseItems,
-  ...utilitiesItems,
+  ...utilitiesGroups.flatMap((g) => g.items),
   ...adminItems,
   ...masterDataItems,
   { text: 'Help', icon: React.createElement(HelpIcon), path: '/help' },

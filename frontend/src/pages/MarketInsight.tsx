@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import GaugeComponent from 'react-gauge-component';
 import {
-  Box, Paper, Typography,
-  Chip, IconButton, Tooltip, Stack,
+  Box, Paper, Typography, Button,
+  Chip, IconButton, Tooltip, Stack, Popover, Link,
   useTheme, Alert,
 } from '@mui/material';
 import {
@@ -13,6 +14,7 @@ import {
   AccountBalance as BankIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
+  WarningAmber as WarningAmberIcon,
 } from '@mui/icons-material';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
@@ -713,10 +715,131 @@ const SentimentGauge: React.FC<{
   );
 };
 
+// ── API Key Warning Config ────────────────────────────────────────────────────
+
+interface ApiKeyInfo {
+  settingKey: string;
+  label: string;
+  description: string;
+  registrationUrl: string;
+  registrationLabel: string;
+}
+
+const API_KEY_INFO: Record<string, ApiKeyInfo> = {
+  cmc_api_key: {
+    settingKey: 'cmc_api_key',
+    label: 'CoinMarketCap API Key',
+    description: 'A CoinMarketCap API key provides enhanced Bitcoin Fear & Greed data. Without it, the free Alternative.me API is used as a fallback.',
+    registrationUrl: 'https://coinmarketcap.com/api/',
+    registrationLabel: 'Get a free API key at coinmarketcap.com',
+  },
+  fred_api_key: {
+    settingKey: 'fred_api_key',
+    label: 'FRED API Key',
+    description: 'A FRED API key provides reliable access to Federal Reserve economic data (M2 money supply, Fed Funds Rate, Treasury Yields) with higher rate limits.',
+    registrationUrl: 'https://fred.stlouisfed.org/docs/api/api_key.html',
+    registrationLabel: 'Get a free API key at fred.stlouisfed.org',
+  },
+  finnhub_api_key: {
+    settingKey: 'finnhub_api_key',
+    label: 'Finnhub API Key',
+    description: 'A Finnhub API key enables stock-specific news and market data for enhanced portfolio alerts.',
+    registrationUrl: 'https://finnhub.io/register',
+    registrationLabel: 'Get a free API key at finnhub.io',
+  },
+};
+
+const ApiKeyWarning: React.FC<{
+  apiKey: string;
+  configured: boolean | undefined;
+  navigate: ReturnType<typeof useNavigate>;
+}> = ({ apiKey, configured, navigate }) => {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const info = API_KEY_INFO[apiKey];
+  if (!info || configured !== false) return null;
+
+  return (
+    <>
+      <Tooltip title="API key not configured — click for details">
+        <IconButton
+          size="small"
+          onClick={(e) => setAnchorEl(e.currentTarget)}
+          sx={{
+            color: '#111',
+            p: 0.5,
+            bgcolor: '#f44336',
+            border: '2px solid #d32f2f',
+            borderRadius: '50%',
+            '&:hover': { color: '#000', bgcolor: '#ef5350' },
+            '@keyframes apiKeyPulse': {
+              '0%, 100%': { boxShadow: '0 0 0 0 rgba(244,67,54,0.5)' },
+              '50%': { boxShadow: '0 0 10px 4px rgba(244,67,54,0.45)' },
+            },
+            animation: 'apiKeyPulse 1.5s ease-in-out infinite',
+          }}
+        >
+          <WarningAmberIcon sx={{ fontSize: 20 }} />
+        </IconButton>
+      </Tooltip>
+      <Popover
+        open={Boolean(anchorEl)}
+        anchorEl={anchorEl}
+        onClose={() => setAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { sx: { p: 2, maxWidth: 360, borderRadius: 2 } } }}
+      >
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: '#ff9800' }}>
+          {info.label} Required
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          {info.description}
+        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Link
+            href={info.registrationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="body2"
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+          >
+            <OpenInNewIcon sx={{ fontSize: 14 }} />
+            {info.registrationLabel}
+          </Link>
+          <Link
+            component="button"
+            variant="body2"
+            onClick={() => {
+              setAnchorEl(null);
+              navigate('/settings?tab=2');
+            }}
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, textAlign: 'left' }}
+          >
+            <BankIcon sx={{ fontSize: 14 }} />
+            Administration &rarr; Application Setup &rarr; Application Settings
+          </Link>
+        </Box>
+      </Popover>
+    </>
+  );
+};
+
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 const MarketInsight: React.FC = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
+
+  // API key configuration status (true = configured, false = not configured)
+  const [apiKeyStatus, setApiKeyStatus] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+    axios.get<Record<string, boolean>>('/api/v1/settings/api-keys-status', {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((res) => setApiKeyStatus(res.data)).catch(() => { /* ignore */ });
+  }, []);
 
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>(() => {
     const init: Record<string, LiveQuote> = {};
@@ -931,6 +1054,30 @@ const MarketInsight: React.FC = () => {
           </Tooltip>
         </Stack>
       </Box>
+
+      {/* ── API Key Warning Banner ────────────────────────────────────────── */}
+      {Object.keys(API_KEY_INFO).some((k) => apiKeyStatus[k] === false) && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2.5, borderRadius: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => navigate('/settings?tab=2')}>
+              Configure
+            </Button>
+          }
+        >
+          Some charts require API keys for latest data. Please visit the respective provider websites to create free API keys, then configure them in{' '}
+          <Link
+            component="button"
+            variant="body2"
+            color="inherit"
+            sx={{ fontWeight: 700, textDecoration: 'underline', verticalAlign: 'baseline' }}
+            onClick={() => navigate('/settings?tab=2')}
+          >
+            Administration &rarr; Application Setup &rarr; Application Settings
+          </Link>.
+        </Alert>
+      )}
 
       {/* ── Section 1: Global Market Indices Ticker ─────────────────────── */}
       <Paper
@@ -1263,7 +1410,11 @@ const MarketInsight: React.FC = () => {
                 : 'linear-gradient(135deg,#f3e8ff 0%,#faf5ff 100%)',
               border: `1px solid ${theme.palette.divider}`,
               display: 'flex', flexDirection: 'column', alignItems: 'center',
+              position: 'relative',
             }}>
+              <Box sx={{ position: 'absolute', top: 8, right: 8 }}>
+                <ApiKeyWarning apiKey="cmc_api_key" configured={apiKeyStatus.cmc_api_key} navigate={navigate} />
+              </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, gap: 1 }}>
                 <Typography sx={{ fontSize: 20, lineHeight: 1.2 }}>₿</Typography>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Bitcoin Fear & Greed Index</Typography>
@@ -1639,7 +1790,10 @@ const MarketInsight: React.FC = () => {
 
         {/* US Fed Funds Rate */}
         {macroData.us_fed_rate?.length ? (
-        <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#001433,#002766)' : 'linear-gradient(145deg,#f0f4ff,#fff)' }}>
+        <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#001433,#002766)' : 'linear-gradient(145deg,#f0f4ff,#fff)', position: 'relative' }}>
+          <Box sx={{ position: 'absolute', top: 8, right: 8 }}>
+            <ApiKeyWarning apiKey="fred_api_key" configured={apiKeyStatus.fred_api_key} navigate={navigate} />
+          </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#003087,#0052cc)', mr: 0.5 }}>
               <Typography sx={{ fontSize: 16 }}>🇺🇸</Typography>
@@ -1671,7 +1825,10 @@ const MarketInsight: React.FC = () => {
 
         {/* US 10Y Treasury Yield */}
         {macroData.us_10y_yield?.length ? (
-        <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#0a1a00,#1a3300)' : 'linear-gradient(145deg,#f4fff0,#fff)' }}>
+        <Paper elevation={2} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, background: theme.palette.mode === 'dark' ? 'linear-gradient(145deg,#0a1a00,#1a3300)' : 'linear-gradient(145deg,#f4fff0,#fff)', position: 'relative' }}>
+          <Box sx={{ position: 'absolute', top: 8, right: 8 }}>
+            <ApiKeyWarning apiKey="fred_api_key" configured={apiKeyStatus.fred_api_key} navigate={navigate} />
+          </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
             <Box sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, background: 'linear-gradient(135deg,#1b5e20,#43a047)', mr: 0.5 }}>
               <Typography sx={{ fontSize: 16 }}>📜</Typography>

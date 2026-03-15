@@ -15,9 +15,11 @@ import {
   TextField,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
+import { useSelector } from 'react-redux';
 import { assetsAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { getErrorMessage } from '../utils/errorUtils';
+import { RootState } from '../store';
 import { getAssetTypeConfig, type FieldDef } from '../config/assetFieldConfig';
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -69,6 +71,7 @@ const GenericAssetEditDialog: React.FC<GenericAssetEditDialogProps> = ({
   portfolioId,
 }) => {
   const { notify } = useNotification();
+  const portfolios = useSelector((state: RootState) => state.portfolio.portfolios);
   const config = getAssetTypeConfig(assetType);
 
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -166,10 +169,10 @@ const GenericAssetEditDialog: React.FC<GenericAssetEditDialogProps> = ({
       if (config.accountType === 'bank') data.bank_account_id = '';
     }
 
-    data.portfolio_id = portfolioId || '';
+    data.portfolio_id = portfolioId || (portfolios.length === 1 ? portfolios[0].id : '');
     setFormData(data);
     setDialogError('');
-  }, [open, asset, assetType, config, portfolioId]);
+  }, [open, asset, assetType, config, portfolioId, portfolios]);
 
   if (!config) return null;
 
@@ -482,6 +485,19 @@ const GenericAssetEditDialog: React.FC<GenericAssetEditDialogProps> = ({
         <Grid container spacing={2} sx={{ mt: 0.5 }}>
           {config.fields.map(renderField)}
           {renderAccountSelector()}
+          <Grid item xs={12} sm={6}>
+            <TextField
+              select
+              fullWidth
+              label="Portfolio"
+              value={formData.portfolio_id || ''}
+              onChange={(e) => setField('portfolio_id', e.target.value ? Number(e.target.value) : '')}
+            >
+              {portfolios.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </TextField>
+          </Grid>
         </Grid>
       </DialogContent>
       <DialogActions>

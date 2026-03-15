@@ -41,6 +41,21 @@ class SnapshotSource(UpperStrEnum):
     CRYPTO_CASH = auto()     # "crypto_cash" — crypto account cash (FK via crypto_account_id)
 
 
+class SystematicPlanType(UpperStrEnum):
+    """Type of mutual fund systematic plan."""
+    SIP = auto()   # "sip" — Systematic Investment Plan
+    STP = auto()   # "stp" — Systematic Transfer Plan
+    SWP = auto()   # "swp" — Systematic Withdrawal Plan
+
+
+class SystematicFrequency(UpperStrEnum):
+    """Frequency for systematic plan execution."""
+    DAILY = auto()        # "daily"
+    WEEKLY = auto()       # "weekly"
+    FORTNIGHTLY = auto()  # "fortnightly"
+    MONTHLY = auto()      # "monthly"
+
+
 def LowerEnum(enum_class, **kw):
     """SQLAlchemy Enum type that uses .value (lowercase) for DB storage.
 

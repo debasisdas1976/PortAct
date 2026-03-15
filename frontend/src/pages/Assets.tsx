@@ -495,16 +495,53 @@ const Assets: React.FC = () => {
       commodity: [],
       crypto: [],
       cash: [],
-      other: [],
+      retirement_plans: [],
+      govt_schemes: [],
+      bonds: [],
+      real_estate: [],
+    };
+
+    // Map asset types that share a tab to their group key
+    const typeGroupMap: { [key: string]: string } = {
+      stock: 'stock',
+      esop: 'stock',
+      rsu: 'stock',
+      reit: 'stock',
+      invit: 'stock',
+      us_stock: 'us_stock',
+      equity_mutual_fund: 'equity_mutual_fund',
+      hybrid_mutual_fund: 'hybrid_mutual_fund',
+      debt_mutual_fund: 'debt_mutual_fund',
+      commodity: 'commodity',
+      sovereign_gold_bond: 'commodity',
+      crypto: 'crypto',
+      cash: 'cash',
+      savings_account: 'cash',
+      fixed_deposit: 'cash',
+      recurring_deposit: 'cash',
+      pf: 'retirement_plans',
+      nps: 'retirement_plans',
+      gratuity: 'retirement_plans',
+      pension: 'retirement_plans',
+      insurance_policy: 'retirement_plans',
+      ppf: 'govt_schemes',
+      ssy: 'govt_schemes',
+      nsc: 'govt_schemes',
+      kvp: 'govt_schemes',
+      scss: 'govt_schemes',
+      mis: 'govt_schemes',
+      corporate_bond: 'bonds',
+      rbi_bond: 'bonds',
+      tax_saving_bond: 'bonds',
+      land: 'real_estate',
+      farm_land: 'real_estate',
+      house: 'real_estate',
     };
 
     groupedAssets.forEach((asset) => {
       const type = asset.asset_type.toLowerCase();
-      if (types[type]) {
-        types[type].push(asset);
-      } else {
-        types.other.push(asset);
-      }
+      const group = typeGroupMap[type] || 'cash';
+      types[group].push(asset);
     });
 
     types.all = [...groupedAssets];
@@ -540,8 +577,8 @@ const Assets: React.FC = () => {
 
   // Calculate summary statistics for current tab
   const getCurrentTabAssets = () => {
-    const tabMap = ['all', 'stock', 'us_stock', 'equity_mutual_fund', 'hybrid_mutual_fund', 'debt_mutual_fund', 'commodity', 'crypto', 'cash', 'other', 'bank_accounts'];
-    return tabMap[currentTab] === 'bank_accounts' ? [] : assetsByType[tabMap[currentTab]] || [];
+    const tabMap = ['all', 'stock', 'us_stock', 'equity_mutual_fund', 'hybrid_mutual_fund', 'debt_mutual_fund', 'commodity', 'crypto', 'cash', 'retirement_plans', 'govt_schemes', 'bonds', 'real_estate'];
+    return assetsByType[tabMap[currentTab]] || [];
   };
 
   const currentTabAssets = getCurrentTabAssets();
@@ -564,12 +601,6 @@ const Assets: React.FC = () => {
   if (currentTab === 8) {
     totalValue += totalBankBalance + totalDematCash;
     totalInvested += totalBankBalance + totalDematCash;
-  }
-
-  // If on "Bank Accounts" tab (index 10), show only bank account totals
-  if (currentTab === 10) {
-    totalValue = totalBankBalance;
-    totalInvested = totalBankBalance;
   }
   
   const totalGainLoss = totalValue - totalInvested;
@@ -800,58 +831,6 @@ const Assets: React.FC = () => {
       </Typography>
       {renderAssetsTable(assetsByType.cash)}
     </Box>
-  );
-
-  const renderBankAccountsTable = () => (
-    <TableContainer>
-      <Table>
-        <TableHead>
-          <TableRow>
-            <TableCell>Bank Name</TableCell>
-            <TableCell>Account Type</TableCell>
-            <TableCell>Account Number</TableCell>
-            <TableCell>Nickname</TableCell>
-            <TableCell align="right">Current Balance</TableCell>
-            <TableCell>Status</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {bankAccounts.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={6} align="center">
-                <Typography color="text.secondary">
-                  No bank accounts found. Add a bank account to track your balances.
-                </Typography>
-              </TableCell>
-            </TableRow>
-          ) : (
-            bankAccounts.map((account) => (
-              <TableRow key={account.id}>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <AccountBalance />
-                    {account.bank_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  {account.account_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </TableCell>
-                <TableCell>****{account.account_number.slice(-4)}</TableCell>
-                <TableCell>{account.nickname || '-'}</TableCell>
-                <TableCell align="right">{formatCurrency(account.current_balance)}</TableCell>
-                <TableCell>
-                  <Chip
-                    label={account.is_active ? 'Active' : 'Inactive'}
-                    color={account.is_active ? 'success' : 'default'}
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
-    </TableContainer>
   );
 
 
@@ -1446,8 +1425,10 @@ const Assets: React.FC = () => {
             <Tab label={`Commodities (${assetsByType.commodity.reduce((sum, g) => sum + g.instances.length, 0)})`} />
             <Tab label={`Crypto (${assetsByType.crypto.reduce((sum, g) => sum + g.instances.length, 0)})`} />
             <Tab label={`Cash (${bankAccounts.length + dematAccounts.length + assetsByType.cash.reduce((sum, g) => sum + g.instances.length, 0)})`} />
-            <Tab label={`Other (${assetsByType.other.reduce((sum, g) => sum + g.instances.length, 0)})`} />
-            <Tab label={`Bank Accounts (${bankAccounts.length})`} />
+            <Tab label={`Retirement (${assetsByType.retirement_plans.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Govt. Schemes (${assetsByType.govt_schemes.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Bonds (${assetsByType.bonds.reduce((sum, g) => sum + g.instances.length, 0)})`} />
+            <Tab label={`Real Estate (${assetsByType.real_estate.reduce((sum, g) => sum + g.instances.length, 0)})`} />
           </Tabs>
         </Box>
 
@@ -1479,10 +1460,16 @@ const Assets: React.FC = () => {
           {renderCashHoldingsTable()}
         </TabPanel>
         <TabPanel value={currentTab} index={9}>
-          {renderAssetsTable(assetsByType.other)}
+          {renderAssetsTable(assetsByType.retirement_plans)}
         </TabPanel>
         <TabPanel value={currentTab} index={10}>
-          {renderBankAccountsTable()}
+          {renderAssetsTable(assetsByType.govt_schemes)}
+        </TabPanel>
+        <TabPanel value={currentTab} index={11}>
+          {renderAssetsTable(assetsByType.bonds)}
+        </TabPanel>
+        <TabPanel value={currentTab} index={12}>
+          {renderAssetsTable(assetsByType.real_estate)}
         </TabPanel>
       </Paper>
 
