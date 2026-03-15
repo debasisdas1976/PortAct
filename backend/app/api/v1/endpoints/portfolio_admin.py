@@ -31,11 +31,21 @@ from app.models.portfolio import Portfolio
 from app.models.portfolio_snapshot import PortfolioSnapshot, AssetSnapshot
 from app.models.mutual_fund_holding import MutualFundHolding
 from app.models.asset_attribute import AssetAttribute, AssetAttributeValue, AssetAttributeAssignment
+from app.models.mf_systematic_plan import MFSystematicPlan
+from app.models.app_settings import AppSettings
+from app.models.asset_category_master import AssetCategoryMaster
+from app.models.asset_type_master import AssetTypeMaster
+from app.models.bank import BankMaster
+from app.models.broker import BrokerMaster
+from app.models.institution import InstitutionMaster
+from app.models.macro_data import MacroDataPoint
+from app.models.reference_rate import ReferenceRate
+from app.models.nse_holiday import NseHoliday
 
 router = APIRouter()
 
-EXPORT_VERSION = "6.0"
-SUPPORTED_VERSIONS = {"1.0", "2.0", "3.0", "4.0", "5.0", "6.0"}
+EXPORT_VERSION = "7.0"
+SUPPORTED_VERSIONS = {"1.0", "2.0", "3.0", "4.0", "5.0", "6.0", "7.0"}
 
 
 # ─── helpers ────────────────────────────────────────────────────────────────
@@ -122,10 +132,58 @@ async def export_portfolio(
         ps_dict["asset_snapshots"] = [_to_dict(a_snap) for a_snap in ps.asset_snapshots]
         snapshots_data.append(ps_dict)
 
+    # MF systematic plans (SIP/STP/SWP)
+    mf_plans = db.query(MFSystematicPlan).filter(MFSystematicPlan.user_id == uid).all()
+
+    # User profile (exclude auth fields — email/password are tied to the account)
+    user_profile = {
+        "full_name": current_user.full_name,
+        "phone": current_user.phone,
+        "date_of_birth": current_user.date_of_birth.isoformat() if current_user.date_of_birth else None,
+        "gender": current_user.gender,
+        "address": current_user.address,
+        "city": current_user.city,
+        "state": current_user.state,
+        "pincode": current_user.pincode,
+        "is_employed": current_user.is_employed,
+        "basic_salary": current_user.basic_salary,
+        "da_percentage": current_user.da_percentage,
+        "employer_name": current_user.employer_name,
+        "date_of_joining": current_user.date_of_joining.isoformat() if current_user.date_of_joining else None,
+        "pf_employee_pct": current_user.pf_employee_pct,
+        "pf_employer_pct": current_user.pf_employer_pct,
+        "preferences": current_user.preferences,
+    }
+
+    # ── System / configuration data ──────────────────────────────────────
+    # App settings (exclude secret values — they must be re-entered)
+    all_settings = db.query(AppSettings).all()
+    settings_data = []
+    for s in all_settings:
+        d = _to_dict(s)
+        if s.value_type == "secret":
+            d["value"] = ""  # never export secrets
+        settings_data.append(d)
+
+    # Master data
+    master_asset_categories = [_to_dict(r) for r in db.query(AssetCategoryMaster).all()]
+    master_asset_types = [_to_dict(r) for r in db.query(AssetTypeMaster).all()]
+    master_banks = [_to_dict(r) for r in db.query(BankMaster).all()]
+    master_brokers = [_to_dict(r) for r in db.query(BrokerMaster).all()]
+    master_crypto_exchanges = [_to_dict(r) for r in db.query(CryptoExchangeMaster).all()]
+    master_institutions = [_to_dict(r) for r in db.query(InstitutionMaster).all()]
+
+    # Reference / market data
+    macro_data = [_to_dict(r) for r in db.query(MacroDataPoint).all()]
+    ref_rates = [_to_dict(r) for r in db.query(ReferenceRate).all()]
+    nse_holidays = [_to_dict(r) for r in db.query(NseHoliday).all()]
+
     payload = {
         "export_version": EXPORT_VERSION,
         "exported_at": datetime.now().isoformat(),
         "exported_by": current_user.email,
+        # ── user-scoped data ──
+        "user_profile": user_profile,
         "portfolios": [_to_dict(r) for r in portfolios],
         "bank_accounts": [_to_dict(r) for r in bank_accounts],
         "demat_accounts": [_to_dict(r) for r in demat_accounts],
@@ -140,6 +198,20 @@ async def export_portfolio(
         "asset_attributes": [_to_dict(r) for r in user_asset_attributes],
         "asset_attribute_values": [_to_dict(r) for r in user_attribute_values],
         "asset_attribute_assignments": [_to_dict(r) for r in user_attribute_assignments],
+        "mf_systematic_plans": [_to_dict(r) for r in mf_plans],
+        # ── system / configuration data ──
+        "app_settings": settings_data,
+        "master_data": {
+            "asset_categories": master_asset_categories,
+            "asset_types": master_asset_types,
+            "banks": master_banks,
+            "brokers": master_brokers,
+            "crypto_exchanges": master_crypto_exchanges,
+            "institutions": master_institutions,
+        },
+        "macro_data_points": macro_data,
+        "reference_rates": ref_rates,
+        "nse_holidays": nse_holidays,
     }
 
     json_bytes = json.dumps(payload, default=str, indent=2).encode("utf-8")
@@ -187,7 +259,11 @@ async def restore_portfolio(
         for k in ("portfolios", "bank_accounts", "demat_accounts", "crypto_accounts",
                   "assets", "expense_categories", "expenses", "transactions",
                   "mutual_fund_holdings", "alerts", "portfolio_snapshots", "asset_snapshots",
-                  "asset_attributes", "asset_attribute_values", "asset_attribute_assignments")
+                  "asset_attributes", "asset_attribute_values", "asset_attribute_assignments",
+                  "mf_systematic_plans", "user_profile", "app_settings",
+                  "master_asset_categories", "master_asset_types", "master_banks",
+                  "master_brokers", "master_crypto_exchanges", "master_institutions",
+                  "macro_data_points", "reference_rates", "nse_holidays")
     }
 
     # old_id → new_id maps
@@ -831,6 +907,363 @@ async def restore_portfolio(
                 )
                 db.add(obj)
                 stats["asset_snapshots"]["imported"] += 1
+
+    # ── 10. MF Systematic Plans (v7.0+) ─────────────────────────────────────
+    for r in data.get("mf_systematic_plans", []):
+        new_asset_id = asset_map.get(r.get("asset_id"))
+        if not new_asset_id:
+            stats["mf_systematic_plans"]["skipped"] += 1
+            continue
+
+        new_target_asset_id = asset_map.get(r.get("target_asset_id"))
+
+        # Match by (user_id, plan_type, asset_id, amount, start_date)
+        start_dt = _parse_dt(r.get("start_date"))
+        start_d = start_dt.date() if isinstance(start_dt, datetime) else start_dt
+        existing = (
+            db.query(MFSystematicPlan)
+            .filter(
+                MFSystematicPlan.user_id == uid,
+                MFSystematicPlan.plan_type == r.get("plan_type"),
+                MFSystematicPlan.asset_id == new_asset_id,
+                MFSystematicPlan.amount == r.get("amount"),
+                MFSystematicPlan.start_date == start_d,
+            )
+            .first()
+        )
+        if existing:
+            stats["mf_systematic_plans"]["skipped"] += 1
+        else:
+            end_dt = _parse_dt(r.get("end_date"))
+            end_d = end_dt.date() if isinstance(end_dt, datetime) else end_dt
+            last_exec_dt = _parse_dt(r.get("last_executed_date"))
+            last_exec_d = last_exec_dt.date() if isinstance(last_exec_dt, datetime) else last_exec_dt
+
+            obj = MFSystematicPlan(
+                user_id=uid,
+                plan_type=r.get("plan_type"),
+                asset_id=new_asset_id,
+                target_asset_id=new_target_asset_id,
+                amount=r.get("amount"),
+                frequency=r.get("frequency"),
+                execution_day=r.get("execution_day"),
+                start_date=start_d,
+                end_date=end_d,
+                is_active=r.get("is_active", True),
+                last_executed_date=last_exec_d,
+                notes=r.get("notes"),
+            )
+            db.add(obj)
+            stats["mf_systematic_plans"]["imported"] += 1
+    db.flush()
+
+    # ── 11. User profile (v7.0+) ─────────────────────────────────────────
+    profile = data.get("user_profile")
+    if profile and isinstance(profile, dict):
+        profile_fields = [
+            "full_name", "phone", "gender", "address", "city", "state",
+            "pincode", "is_employed", "basic_salary", "da_percentage",
+            "employer_name", "pf_employee_pct", "pf_employer_pct", "preferences",
+        ]
+        for field in profile_fields:
+            if field in profile and profile[field] is not None:
+                setattr(current_user, field, profile[field])
+
+        # Date fields need parsing
+        dob = profile.get("date_of_birth")
+        if dob:
+            try:
+                current_user.date_of_birth = date.fromisoformat(dob) if isinstance(dob, str) else dob
+            except (ValueError, TypeError):
+                pass
+        doj = profile.get("date_of_joining")
+        if doj:
+            try:
+                current_user.date_of_joining = date.fromisoformat(doj) if isinstance(doj, str) else doj
+            except (ValueError, TypeError):
+                pass
+        db.flush()
+        stats["user_profile"]["imported"] = 1
+
+    # ── 12. App settings (v7.0+) ─────────────────────────────────────────
+    for r in data.get("app_settings", []):
+        key = r.get("key")
+        if not key:
+            continue
+        # Skip secret values that are empty (not exported)
+        if r.get("value_type") == "secret" and not r.get("value"):
+            stats["app_settings"]["skipped"] += 1
+            continue
+
+        existing = db.query(AppSettings).filter(AppSettings.key == key).first()
+        if existing:
+            # Update non-secret values
+            existing.value = r.get("value")
+            existing.label = r.get("label") or existing.label
+            existing.description = r.get("description") or existing.description
+            stats["app_settings"]["imported"] += 1
+        else:
+            obj = AppSettings(
+                key=key,
+                value=r.get("value"),
+                value_type=r.get("value_type", "string"),
+                category=r.get("category"),
+                label=r.get("label"),
+                description=r.get("description"),
+            )
+            db.add(obj)
+            stats["app_settings"]["imported"] += 1
+    db.flush()
+
+    # ── 13. Master data (v7.0+) ──────────────────────────────────────────
+    master = data.get("master_data", {})
+
+    # 13a. Asset categories (upsert by name)
+    for r in master.get("asset_categories", []):
+        name = r.get("name")
+        if not name:
+            continue
+        existing = db.query(AssetCategoryMaster).filter(AssetCategoryMaster.name == name).first()
+        if existing:
+            existing.display_label = r.get("display_label", existing.display_label)
+            existing.color = r.get("color", existing.color)
+            existing.sort_order = r.get("sort_order", existing.sort_order)
+            existing.is_active = r.get("is_active", existing.is_active)
+            stats["master_asset_categories"]["imported"] += 1
+        else:
+            obj = AssetCategoryMaster(
+                name=name,
+                display_label=r.get("display_label", name),
+                color=r.get("color"),
+                sort_order=r.get("sort_order", 0),
+                is_active=r.get("is_active", True),
+            )
+            db.add(obj)
+            stats["master_asset_categories"]["imported"] += 1
+    db.flush()
+
+    # 13b. Asset types (upsert by name — depends on categories above)
+    for r in master.get("asset_types", []):
+        name = r.get("name")
+        if not name:
+            continue
+        existing = db.query(AssetTypeMaster).filter(AssetTypeMaster.name == name).first()
+        if existing:
+            existing.display_label = r.get("display_label", existing.display_label)
+            existing.category = r.get("category", existing.category)
+            existing.is_active = r.get("is_active", existing.is_active)
+            existing.sort_order = r.get("sort_order", existing.sort_order)
+            existing.allowed_conversions = r.get("allowed_conversions", existing.allowed_conversions)
+            stats["master_asset_types"]["imported"] += 1
+        else:
+            obj = AssetTypeMaster(
+                name=name,
+                display_label=r.get("display_label", name),
+                category=r.get("category"),
+                is_active=r.get("is_active", True),
+                sort_order=r.get("sort_order", 0),
+                allowed_conversions=r.get("allowed_conversions"),
+            )
+            db.add(obj)
+            stats["master_asset_types"]["imported"] += 1
+    db.flush()
+
+    # 13c. Banks (upsert by name)
+    for r in master.get("banks", []):
+        name = r.get("name")
+        if not name:
+            continue
+        existing = db.query(BankMaster).filter(BankMaster.name == name).first()
+        if existing:
+            existing.display_label = r.get("display_label", existing.display_label)
+            existing.bank_type = r.get("bank_type", existing.bank_type)
+            existing.website = r.get("website", existing.website)
+            existing.has_parser = r.get("has_parser", existing.has_parser)
+            existing.supported_formats = r.get("supported_formats", existing.supported_formats)
+            existing.is_active = r.get("is_active", existing.is_active)
+            existing.sort_order = r.get("sort_order", existing.sort_order)
+            stats["master_banks"]["imported"] += 1
+        else:
+            obj = BankMaster(
+                name=name,
+                display_label=r.get("display_label", name),
+                bank_type=r.get("bank_type", "commercial"),
+                website=r.get("website"),
+                has_parser=r.get("has_parser", False),
+                supported_formats=r.get("supported_formats"),
+                is_active=r.get("is_active", True),
+                sort_order=r.get("sort_order", 0),
+            )
+            db.add(obj)
+            stats["master_banks"]["imported"] += 1
+    db.flush()
+
+    # 13d. Brokers (upsert by name)
+    for r in master.get("brokers", []):
+        name = r.get("name")
+        if not name:
+            continue
+        existing = db.query(BrokerMaster).filter(BrokerMaster.name == name).first()
+        if existing:
+            existing.display_label = r.get("display_label", existing.display_label)
+            existing.broker_type = r.get("broker_type", existing.broker_type)
+            existing.supported_markets = r.get("supported_markets", existing.supported_markets)
+            existing.website = r.get("website", existing.website)
+            existing.has_parser = r.get("has_parser", existing.has_parser)
+            existing.supported_formats = r.get("supported_formats", existing.supported_formats)
+            existing.is_active = r.get("is_active", existing.is_active)
+            existing.sort_order = r.get("sort_order", existing.sort_order)
+            stats["master_brokers"]["imported"] += 1
+        else:
+            obj = BrokerMaster(
+                name=name,
+                display_label=r.get("display_label", name),
+                broker_type=r.get("broker_type", "discount"),
+                supported_markets=r.get("supported_markets", "domestic"),
+                website=r.get("website"),
+                has_parser=r.get("has_parser", False),
+                supported_formats=r.get("supported_formats"),
+                is_active=r.get("is_active", True),
+                sort_order=r.get("sort_order", 0),
+            )
+            db.add(obj)
+            stats["master_brokers"]["imported"] += 1
+    db.flush()
+
+    # 13e. Crypto exchanges (upsert by name)
+    for r in master.get("crypto_exchanges", []):
+        name = r.get("name")
+        if not name:
+            continue
+        existing = db.query(CryptoExchangeMaster).filter(CryptoExchangeMaster.name == name).first()
+        if existing:
+            existing.display_label = r.get("display_label", existing.display_label)
+            existing.exchange_type = r.get("exchange_type", existing.exchange_type)
+            existing.website = r.get("website", existing.website)
+            existing.has_parser = r.get("has_parser", existing.has_parser)
+            existing.supported_formats = r.get("supported_formats", existing.supported_formats)
+            existing.is_active = r.get("is_active", existing.is_active)
+            existing.sort_order = r.get("sort_order", existing.sort_order)
+            stats["master_crypto_exchanges"]["imported"] += 1
+        else:
+            obj = CryptoExchangeMaster(
+                name=name,
+                display_label=r.get("display_label", name),
+                exchange_type=r.get("exchange_type", "exchange"),
+                website=r.get("website"),
+                has_parser=r.get("has_parser", False),
+                supported_formats=r.get("supported_formats"),
+                is_active=r.get("is_active", True),
+                sort_order=r.get("sort_order", 0),
+            )
+            db.add(obj)
+            stats["master_crypto_exchanges"]["imported"] += 1
+    db.flush()
+
+    # 13f. Institutions (upsert by name + category)
+    for r in master.get("institutions", []):
+        name = r.get("name")
+        category = r.get("category")
+        if not name or not category:
+            continue
+        existing = db.query(InstitutionMaster).filter(
+            InstitutionMaster.name == name,
+            InstitutionMaster.category == category,
+        ).first()
+        if existing:
+            existing.display_label = r.get("display_label", existing.display_label)
+            existing.website = r.get("website", existing.website)
+            existing.has_parser = r.get("has_parser", existing.has_parser)
+            existing.supported_formats = r.get("supported_formats", existing.supported_formats)
+            existing.is_active = r.get("is_active", existing.is_active)
+            existing.sort_order = r.get("sort_order", existing.sort_order)
+            stats["master_institutions"]["imported"] += 1
+        else:
+            obj = InstitutionMaster(
+                name=name,
+                display_label=r.get("display_label", name),
+                category=category,
+                website=r.get("website"),
+                has_parser=r.get("has_parser", False),
+                supported_formats=r.get("supported_formats"),
+                is_active=r.get("is_active", True),
+                sort_order=r.get("sort_order", 0),
+            )
+            db.add(obj)
+            stats["master_institutions"]["imported"] += 1
+    db.flush()
+
+    # ── 14. Macro data points (v7.0+) ────────────────────────────────────
+    for r in data.get("macro_data_points", []):
+        series = r.get("series")
+        period = r.get("period")
+        if not series or not period:
+            continue
+        existing = db.query(MacroDataPoint).filter(
+            MacroDataPoint.series == series,
+            MacroDataPoint.period == period,
+        ).first()
+        if existing:
+            existing.value = r.get("value", existing.value)
+            existing.label = r.get("label", existing.label)
+            stats["macro_data_points"]["imported"] += 1
+        else:
+            obj = MacroDataPoint(
+                series=series,
+                period=period,
+                label=r.get("label", ""),
+                value=r.get("value", 0),
+            )
+            db.add(obj)
+            stats["macro_data_points"]["imported"] += 1
+    db.flush()
+
+    # ── 15. Reference rates (v7.0+) ──────────────────────────────────────
+    for r in data.get("reference_rates", []):
+        category = r.get("category")
+        name = r.get("name")
+        if not category or not name:
+            continue
+        existing = db.query(ReferenceRate).filter(
+            ReferenceRate.category == category,
+            ReferenceRate.name == name,
+        ).first()
+        if existing:
+            existing.rate = r.get("rate", existing.rate)
+            existing.sub_info = r.get("sub_info", existing.sub_info)
+            stats["reference_rates"]["imported"] += 1
+        else:
+            obj = ReferenceRate(
+                category=category,
+                name=name,
+                rate=r.get("rate", 0),
+                sub_info=r.get("sub_info"),
+            )
+            db.add(obj)
+            stats["reference_rates"]["imported"] += 1
+    db.flush()
+
+    # ── 16. NSE holidays (v7.0+) ─────────────────────────────────────────
+    for r in data.get("nse_holidays", []):
+        hol_date_str = r.get("date")
+        try:
+            hol_date = date.fromisoformat(hol_date_str) if isinstance(hol_date_str, str) else hol_date_str
+        except (ValueError, TypeError):
+            continue
+        if not hol_date:
+            continue
+        existing = db.query(NseHoliday).filter(NseHoliday.date == hol_date).first()
+        if existing:
+            stats["nse_holidays"]["skipped"] += 1
+        else:
+            obj = NseHoliday(
+                date=hol_date,
+                name=r.get("name", ""),
+                year=r.get("year") or hol_date.year,
+            )
+            db.add(obj)
+            stats["nse_holidays"]["imported"] += 1
+    db.flush()
 
     db.commit()
 

@@ -247,7 +247,7 @@ class TestExport:
         resp = auth_client.get("/api/v1/portfolio/export")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["export_version"] == "6.0"
+        assert data["export_version"] == "7.0"
         assert data["exported_by"] == "test@example.com"
         assert data["assets"] == []
         assert data["bank_accounts"] == []
@@ -259,12 +259,16 @@ class TestExport:
         data = resp.json()
         expected_keys = {
             "export_version", "exported_at", "exported_by",
+            "user_profile",
             "portfolios", "bank_accounts", "demat_accounts",
             "crypto_accounts", "assets", "expense_categories",
             "expenses", "transactions", "mutual_fund_holdings",
             "alerts", "portfolio_snapshots",
             "asset_attributes", "asset_attribute_values",
             "asset_attribute_assignments",
+            "mf_systematic_plans",
+            "app_settings", "master_data",
+            "macro_data_points", "reference_rates", "nse_holidays",
         }
         assert expected_keys == set(data.keys())
 

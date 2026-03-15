@@ -866,8 +866,8 @@ def main():
         export_resp.raise_for_status()
         source_payload = export_resp.json()
 
-        if source_payload.get("export_version") == "4.0":
-            ok("Export version is 4.0")
+        if source_payload.get("export_version") == "7.0":
+            ok("Export version is 7.0")
         else:
             fail("Export version", f"got {source_payload.get('export_version')}")
 
